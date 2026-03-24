@@ -196,7 +196,7 @@ export default function SkillsScreen() {
           skill_id: savedSkill.id,
           config: { source: 'clawhub', slug: skill.name },
           status: 'active',
-        })
+        }, { onConflict: 'agent_id,skill_id' })
 
         await supabase.channel(`agent:${selectedAgentId}`).send({
           type: 'broadcast',
