@@ -159,7 +159,7 @@ export default function SkillsScreen() {
       try {
         const r = await fetch(`${CLAWHUB}/search?q=${encodeURIComponent(query)}&limit=20`)
         const data = await r.json()
-        const results: ClawHubSkill[] = data.results ?? []
+        const results: ClawHubSkill[] = (data.results ?? []).map((r: any) => ({ ...r, name: r.slug ?? r.name }))
         const translated = await Promise.all(results.map(translateSkill))
         setSearchResults(translated)
       } catch {}
