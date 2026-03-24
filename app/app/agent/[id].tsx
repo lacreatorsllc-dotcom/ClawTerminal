@@ -92,6 +92,15 @@ export default function AgentDetailScreen() {
     const content = input.trim()
     setInput('')
     await sendMessage(channelRef.current, id, user.id, content)
+
+    // If this is a Telegram agent, forward the message via Edge Function
+    if (agent?.metadata?.type === 'telegram') {
+      fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/telegram-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: id, userId: user.id, text: content }),
+      }).catch(() => {}) // fire-and-forget
+    }
   }
 
   if (!agent) return (
