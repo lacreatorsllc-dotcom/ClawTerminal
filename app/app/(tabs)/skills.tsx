@@ -262,7 +262,7 @@ export default function SkillsScreen() {
       <FlatList
         data={[]}
         keyExtractor={() => ''}
-        renderItem={null}
+        renderItem={() => null}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
