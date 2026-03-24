@@ -1,0 +1,173 @@
+import { useEffect } from 'react'
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform } from 'react-native'
+import { router } from 'expo-router'
+import { supabase } from '../../lib/supabase'
+import { useAgentsStore } from '../../stores/agentsStore'
+import { useAuthStore } from '../../stores/authStore'
+import { useUIStore } from '../../stores/uiStore'
+import { Colors } from '../../constants/colors'
+import type { Agent, AgentStatus } from '../../lib/types'
+
+const STATUS_COLOR: Record<AgentStatus, string> = {
+  connected: Colors.accentGreen,
+  connecting: Colors.accentTeal,
+  stale: Colors.accentAmber,
+  error: Colors.accentRed,
+  disconnected: Colors.textSecondary,
+}
+
+const STATUS_LABEL: Record<AgentStatus, string> = {
+  connected: 'Active',
+  connecting: 'Connecting',
+  stale: 'Reconnecting',
+  error: 'Error',
+  disconnected: 'Offline',
+}
+
+function AgentCard({ agent }: { agent: Agent }) {
+  const getConnectionStatus = useAgentsStore((s) => s.getConnectionStatus)
+  const status = getConnectionStatus(agent.id)
+
+  return (
+    <TouchableOpacity
+      style={[styles.card, status === 'connected' && styles.cardActive]}
+      onPress={() => router.push(`/agent/${agent.id}`)}
+    >
+      <View style={styles.cardLeft}>
+        <View style={[styles.avatar, { borderColor: STATUS_COLOR[status] }]}>
+          <Text style={styles.avatarText}>{agent.name[0]?.toUpperCase()}</Text>
+        </View>
+        <View>
+          <Text style={styles.agentName}>{agent.name}</Text>
+          <Text style={styles.agentMeta}>Last seen: {agent.last_seen ? new Date(agent.last_seen).toLocaleTimeString() : '—'}</Text>
+        </View>
+      </View>
+      <View style={styles.statusBadge}>
+        <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[status] }]} />
+        <Text style={[styles.statusText, { color: STATUS_COLOR[status] }]}>{STATUS_LABEL[status]}</Text>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+export default function AgentsScreen() {
+  const { agents, setAgents, upsertAgent } = useAgentsStore()
+  const { user } = useAuthStore()
+  const setConnectModalVisible = useUIStore((s) => s.setConnectModalVisible)
+
+  useEffect(() => {
+    if (!user) return
+
+    supabase
+      .from('agents')
+      .select('*')
+      .eq('user_id', user.id)
+      .then(({ data }) => { if (data) setAgents(data) })
+
+    const channel = supabase
+      .channel(`user:${user.id}:agents`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'agents',
+        filter: `user_id=eq.${user.id}`,
+      }, (payload) => {
+        if (payload.eventType === 'INSERT') upsertAgent(payload.new as any)
+        if (payload.eventType === 'UPDATE') upsertAgent(payload.new as any)
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user])
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Text style={styles.title}>Clawτerminal</Text>
+          <View style={styles.systemStatus}>
+            <View style={styles.systemStatusDot} />
+            <Text style={styles.systemStatusText}>System Online</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.connectBtn} onPress={() => router.push('/connect')}>
+          <Text style={styles.connectBtnText}>+ Connect</Text>
+        </TouchableOpacity>
+      </View>
+
+      {agents.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyIcon}>◈</Text>
+          <Text style={styles.emptyTitle}>No agents connected</Text>
+          <Text style={styles.emptySubtitle}>Run the setup command to connect your first agent</Text>
+          <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/connect')}>
+            <Text style={styles.emptyBtnText}>Connect an agent</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={agents}
+          keyExtractor={(a) => a.id}
+          renderItem={({ item }) => <AgentCard agent={item} />}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.bgPrimary },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 60,
+    paddingBottom: 20,
+  },
+  headerLeft: { gap: 4 },
+  title: { fontSize: 24, fontWeight: '700', color: Colors.textPrimary, letterSpacing: 2, textTransform: 'uppercase' },
+  systemStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  systemStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accentTeal },
+  systemStatusText: { color: Colors.accentTeal, fontSize: 9, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
+  connectBtn: {
+    backgroundColor: 'rgba(193, 18, 31, 0.1)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  connectBtnText: { color: Colors.accentCrimson, fontSize: 13, fontWeight: '600' },
+  list: { paddingHorizontal: 16, gap: 10 },
+  card: {
+    backgroundColor: '#0f0f0f',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cardActive: {},
+  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(193, 18, 31, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarText: { color: Colors.accentCrimson, fontSize: 20, fontWeight: '700' },
+  agentName: { color: Colors.textPrimary, fontSize: 16, fontWeight: '600' },
+  agentMeta: { color: Colors.textSecondary, fontSize: 11, marginTop: 2, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, gap: 12 },
+  emptyIcon: { fontSize: 48, color: Colors.textMuted },
+  emptyTitle: { fontSize: 20, fontWeight: '600', color: Colors.textPrimary },
+  emptySubtitle: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
+  emptyBtn: { backgroundColor: Colors.accentCrimson, borderRadius: 24, paddingHorizontal: 28, paddingVertical: 14, marginTop: 8 },
+  emptyBtnText: { color: Colors.bgPrimary, fontSize: 15, fontWeight: '600' },
+})

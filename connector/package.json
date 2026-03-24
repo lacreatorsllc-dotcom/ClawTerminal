@@ -1,0 +1,27 @@
+{
+  "name": "claw-connector",
+  "version": "0.1.0",
+  "description": "Bridges a local AI agent to the ClawTerminal mobile app via Supabase",
+  "main": "./dist/index.js",
+  "bin": {
+    "claw-connector": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}

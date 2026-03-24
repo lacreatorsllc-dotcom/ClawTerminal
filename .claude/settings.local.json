@@ -1,0 +1,51 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'export PENTAGON_AGENT_ID=6322CA85-57A5-41AB-80CB-E25FDD67B585' >> \"$CLAUDE_ENV_FILE\""
+          },
+          {
+            "type": "command",
+            "command": "~/.pentagon/hooks/session-start.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "~/.pentagon/hooks/agent-stop.sh"
+        }]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "~/.pentagon/hooks/tool-activity.sh"
+        }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "~/.pentagon/hooks/post-tool.sh",
+          "async": true
+        }]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [{
+          "type": "command",
+          "command": "~/.pentagon/hooks/session-end.sh"
+        }]
+      }
+    ]
+  }
+}
