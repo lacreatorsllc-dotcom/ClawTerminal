@@ -88,7 +88,7 @@ export default function ClawHubSkillDetailScreen() {
           status: 'active',
         }, { onConflict: 'agent_id,skill_id' })
 
-        await supabase.channel(`agent:${agentId}`).send({
+        await supabase.channel(`agent:${agentId}:events`).send({
           type: 'broadcast',
           event: 'skill-assigned',
           payload: { skillName, slug, version },
@@ -97,17 +97,11 @@ export default function ClawHubSkillDetailScreen() {
         setInstalled(true)
         showToast(`${skillName} installed on ${agentName}`)
 
-        const msg = `Skill installed: ${skillName} v${version}`
         await supabase.from('messages').insert({
           agent_id: agentId,
           user_id: user!.id,
           direction: 'outbound',
-          content: msg,
-        })
-        await supabase.channel(`agent:${agentId}`).send({
-          type: 'broadcast',
-          event: 'message',
-          payload: { direction: 'outbound', content: msg, ts: Date.now() },
+          content: `Skill installed: ${skillName} v${version}`,
         })
       } catch {
         showToast('Install failed — try again')
