@@ -178,7 +178,7 @@ export default function SkillsScreen() {
       const skillName = skill.displayName ?? skill.name
       const version = skill.latestVersion ?? '1.0.0'
 
-      const { data: savedSkill } = await supabase
+      const { data: savedSkill, error: skillError } = await supabase
         .from('skills')
         .upsert({
           name: skillName,
@@ -190,20 +190,20 @@ export default function SkillsScreen() {
         .select('id')
         .single()
 
-      if (savedSkill) {
-        await supabase.from('agent_skills').upsert({
-          agent_id: selectedAgentId,
-          skill_id: savedSkill.id,
-          config: { source: 'clawhub', slug: skill.name },
-          status: 'active',
-        }, { onConflict: 'agent_id,skill_id' })
+      if (skillError || !savedSkill) throw new Error(skillError?.message ?? 'skill insert failed')
 
-        await supabase.channel(`agent:${selectedAgentId}`).send({
-          type: 'broadcast',
-          event: 'skill-assigned',
-          payload: { skillName, slug: skill.name, version },
-        })
-      }
+      await supabase.from('agent_skills').upsert({
+        agent_id: selectedAgentId,
+        skill_id: savedSkill.id,
+        config: { source: 'clawhub', slug: skill.name },
+        status: 'active',
+      }, { onConflict: 'agent_id,skill_id' })
+
+      await supabase.channel(`agent:${selectedAgentId}`).send({
+        type: 'broadcast',
+        event: 'skill-assigned',
+        payload: { skillName, slug: skill.name, version },
+      })
 
       setInstalledSlugs((prev) => new Set([...prev, skill.name]))
       showToast(`${skillName} installed on ${agent.name}`)
