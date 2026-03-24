@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator } from 'react-native'
 import { router } from 'expo-router'
-import { supabase, getOrCreateSkill } from '../../lib/supabase'
+import { supabase } from '../../lib/supabase'
 import { useSkillsStore } from '../../stores/skillsStore'
 import { useAgentsStore } from '../../stores/agentsStore'
 import { useAuthStore } from '../../stores/authStore'
@@ -142,15 +142,12 @@ export default function SkillsScreen() {
     if (!selectedAgentId) return
     supabase
       .from('agent_skills')
-      .select('config')
+      .select('skill_slug')
       .eq('agent_id', selectedAgentId)
       .eq('status', 'active')
       .then(({ data }) => {
         if (!data) return
-        const slugs = data
-          .map((row: any) => row.config?.slug as string | undefined)
-          .filter(Boolean) as string[]
-        setInstalledSlugs(new Set(slugs))
+        setInstalledSlugs(new Set(data.map((row: any) => row.skill_slug as string)))
       })
   }, [selectedAgentId])
 
@@ -197,21 +194,12 @@ export default function SkillsScreen() {
       const skillName = skill.displayName ?? skill.name
       const version = skill.latestVersion ?? '1.0.0'
 
-      const skillId = await getOrCreateSkill({
-        name: skillName,
-        description: skill.summary ?? '',
-        category: 'Registry',
-        version,
-      })
-
-      if (!skillId) throw new Error('skill insert failed')
-
       await supabase.from('agent_skills').upsert({
         agent_id: selectedAgentId,
-        skill_id: skillId,
-        config: { source: 'clawhub', slug: skill.name },
+        skill_slug: skill.name,
+        config: { displayName: skillName, version },
         status: 'active',
-      }, { onConflict: 'agent_id,skill_id' })
+      }, { onConflict: 'agent_id,skill_slug' })
 
       await supabase.channel(`agent:${selectedAgentId}:events`).send({
         type: 'broadcast',

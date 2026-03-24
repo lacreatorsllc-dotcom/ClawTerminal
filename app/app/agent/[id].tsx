@@ -52,21 +52,19 @@ export default function AgentDetailScreen() {
     setLoadingSkills(true)
     supabase
       .from('agent_skills')
-      .select('skill_id')
+      .select('skill_slug, config, status')
       .eq('agent_id', id)
       .eq('status', 'active')
-      .then(async ({ data: assignments }) => {
-        if (!assignments || assignments.length === 0) {
-          setAgentSkills([])
-          setLoadingSkills(false)
-          return
-        }
-        const skillIds = assignments.map((a: any) => a.skill_id)
-        const { data: skillData } = await supabase
-          .from('skills')
-          .select('id, name, description, version, category')
-          .in('id', skillIds)
-        setAgentSkills(skillData ?? [])
+      .then(({ data }) => {
+        setAgentSkills(
+          (data ?? []).map((row: any) => ({
+            id: row.skill_slug,
+            name: row.config?.displayName ?? row.skill_slug,
+            description: '',
+            version: row.config?.version ?? '1.0.0',
+            category: 'Registry',
+          }))
+        )
         setLoadingSkills(false)
       })
   }, [id, tab])

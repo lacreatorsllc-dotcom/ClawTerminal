@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
-import { supabase, getOrCreateSkill } from '../../../lib/supabase'
+import { supabase } from '../../../lib/supabase'
 import { useAgentsStore } from '../../../stores/agentsStore'
 import { useAuthStore } from '../../../stores/authStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -67,21 +67,12 @@ export default function ClawHubSkillDetailScreen() {
         const skillName = detail.skill?.displayName ?? slug
         const version = detail.skill?.latestVersion ?? '1.0.0'
 
-        const skillId = await getOrCreateSkill({
-          name: skillName,
-          description: detail.skill?.summary ?? '',
-          category: 'Registry',
-          version,
-        })
-
-        if (!skillId) throw new Error('skill insert failed')
-
         await supabase.from('agent_skills').upsert({
           agent_id: agentId,
-          skill_id: skillId,
-          config: { source: 'clawhub', slug },
+          skill_slug: slug,
+          config: { displayName: skillName, version },
           status: 'active',
-        }, { onConflict: 'agent_id,skill_id' })
+        }, { onConflict: 'agent_id,skill_slug' })
 
         await supabase.channel(`agent:${agentId}:events`).send({
           type: 'broadcast',
