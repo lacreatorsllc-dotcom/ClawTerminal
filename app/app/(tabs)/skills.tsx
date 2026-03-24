@@ -54,7 +54,6 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: {
           <Text style={styles.skillName}>{skill.displayName}</Text>
           {skill.isOfficial && <View style={styles.officialBadge}><Text style={styles.officialBadgeText}>Official</Text></View>}
         </View>
-        <View style={styles.badge}><Text style={styles.badgeText}>ClawHub</Text></View>
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
       <View style={styles.cardFooter}>
@@ -183,7 +182,7 @@ export default function SkillsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Skills</Text>
-        <Text style={styles.subtitle}>ClawHub registry + {skills.length} local</Text>
+        <Text style={styles.subtitle}>{clawHubSkills.length + skills.length} available</Text>
       </View>
 
       {/* Search */}
@@ -192,7 +191,7 @@ export default function SkillsScreen() {
           style={styles.searchInput}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search ClawHub..."
+          placeholder="Search skills..."
           placeholderTextColor={Colors.textMuted}
           autoCapitalize="none"
           autoCorrect={false}
@@ -208,17 +207,9 @@ export default function SkillsScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <>
-            {/* Local skills — only show when not searching */}
-            {!query.trim() && skills.length > 0 && (
-              <>
-                <Text style={styles.sectionLabel}>Featured</Text>
-                {skills.map((s) => <LocalSkillCard key={s.id} skill={s} />)}
-              </>
-            )}
-
-            {/* ClawHub skills */}
+            {/* ClawHub skills — featured first */}
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>{query.trim() ? 'Search results' : 'From ClawHub'}</Text>
+              <Text style={styles.sectionLabel}>{query.trim() ? 'Search results' : 'Featured'}</Text>
               {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
             </View>
 
