@@ -141,11 +141,21 @@ Deno.serve(async (req) => {
     content: text,
   })
 
-  // Broadcast to Realtime so app receives it live
-  await supabase.channel(`agent:${agentId}`).send({
-    type: 'broadcast',
-    event: 'message',
-    payload: { direction: 'outbound', content: text, ts: Date.now() },
+  // Broadcast to Realtime via HTTP API (works from Edge Functions without a persistent WS connection)
+  await fetch(`${SUPABASE_URL}/realtime/v1/api/broadcast`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_SERVICE_KEY,
+      'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+    },
+    body: JSON.stringify({
+      messages: [{
+        topic: `agent:${agentId}`,
+        event: 'message',
+        payload: { direction: 'outbound', content: text, ts: Date.now() },
+      }],
+    }),
   })
 
   return new Response('ok', { status: 200 })
