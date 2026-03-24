@@ -25,31 +25,28 @@ export default function ClawHubSkillDetailScreen() {
 
   useEffect(() => {
     if (!slug) return
-    fetch(`${CLAWHUB}/skills/${slug}`)
+    fetch(`${CLAWHUB}/packages/${slug}`)
       .then((r) => r.json())
       .then(async (data) => {
-        const rawDisplayName: string = data?.skill?.displayName ?? ''
-        const rawSummary: string = data?.skill?.summary ?? ''
-        const rawChangelog: string = data?.latestVersion?.changelog ?? ''
+        const pkg = data?.package
+        const rawDisplayName: string = pkg?.displayName ?? ''
+        const rawSummary: string = pkg?.summary ?? ''
 
-        const [translatedDisplayName, translatedSummary, translatedChangelog] = await Promise.all([
+        const [translatedDisplayName, translatedSummary] = await Promise.all([
           translateToEnglish(rawDisplayName),
           translateToEnglish(rawSummary),
-          translateToEnglish(rawChangelog),
         ])
 
         setDetail({
           ...data,
           skill: {
-            ...data.skill,
+            ...pkg,
             displayName: translatedDisplayName,
             originalDisplayName: translatedDisplayName !== rawDisplayName ? rawDisplayName : undefined,
             summary: translatedSummary,
             originalSummary: translatedSummary !== rawSummary ? rawSummary : undefined,
           },
         })
-        setChangelog(translatedChangelog || null)
-        setOriginalChangelog(translatedChangelog !== rawChangelog ? rawChangelog : null)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -68,7 +65,7 @@ export default function ClawHubSkillDetailScreen() {
       setInstalling(true)
       try {
         const skillName = detail.skill?.displayName ?? slug
-        const version = detail.latestVersion?.version ?? '1.0.0'
+        const version = detail.skill?.latestVersion ?? '1.0.0'
 
         const { data: savedSkill } = await supabase
           .from('skills')
@@ -117,7 +114,7 @@ export default function ClawHubSkillDetailScreen() {
   }, [detail, slug, agents, user, showToast])
 
   const skill = detail?.skill
-  const version = detail?.latestVersion?.version
+  const version = skill?.latestVersion
   const owner = detail?.owner
 
   return (
@@ -142,7 +139,7 @@ export default function ClawHubSkillDetailScreen() {
           <View style={styles.metaRow}>
             {owner && <Text style={styles.meta}>by @{owner.handle}</Text>}
             {version && <><Text style={styles.metaDot}>·</Text><Text style={styles.meta}>v{version}</Text></>}
-            {detail.latestVersion?.license && <><Text style={styles.metaDot}>·</Text><Text style={styles.meta}>{detail.latestVersion.license}</Text></>}
+            {skill.channel && <><Text style={styles.metaDot}>·</Text><Text style={styles.meta}>{skill.channel}</Text></>}
           </View>
 
           {skill.summary ? <Text style={styles.summary}>{skill.summary}</Text> : null}
