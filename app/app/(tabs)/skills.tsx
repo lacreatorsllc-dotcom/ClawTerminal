@@ -137,13 +137,7 @@ export default function SkillsScreen() {
   const [installingSlug, setInstallingSlug] = useState<string | null>(null)
   const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(new Set())
 
-  // Reload installed slugs whenever screen comes into focus (e.g. returning from detail page)
-  const selectedAgentIdRef = useRef(selectedAgentId)
-  selectedAgentIdRef.current = selectedAgentId
-
-  useFocusEffect(useCallback(() => {
-    const agentId = selectedAgentIdRef.current
-    if (!agentId) return
+  const loadInstalledSlugs = useCallback((agentId: string) => {
     supabase
       .from('agent_skills')
       .select('skill_slug')
@@ -152,7 +146,19 @@ export default function SkillsScreen() {
       .then(({ data }) => {
         if (data) setInstalledSlugs(new Set(data.map((r: any) => r.skill_slug as string)))
       })
-  }, []))
+  }, [])
+
+  // Load when agent becomes available (cold start)
+  useEffect(() => {
+    if (selectedAgentId) loadInstalledSlugs(selectedAgentId)
+  }, [selectedAgentId])
+
+  // Reload on focus (returning from detail page install)
+  const selectedAgentIdRef = useRef(selectedAgentId)
+  selectedAgentIdRef.current = selectedAgentId
+  useFocusEffect(useCallback(() => {
+    if (selectedAgentIdRef.current) loadInstalledSlugs(selectedAgentIdRef.current)
+  }, [loadInstalledSlugs]))
 
   // Load local skills + ClawHub top skills
   useEffect(() => {

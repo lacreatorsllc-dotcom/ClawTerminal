@@ -23,6 +23,19 @@ export default function ClawHubSkillDetailScreen() {
   const [installing, setInstalling] = useState(false)
   const [installed, setInstalled] = useState(false)
 
+  // Check if already installed for any of this user's agents
+  useEffect(() => {
+    if (!slug || !agents.length) return
+    const agentIds = agents.map((a) => a.id)
+    supabase
+      .from('agent_skills')
+      .select('id')
+      .eq('skill_slug', slug)
+      .in('agent_id', agentIds)
+      .limit(1)
+      .then(({ data }) => { if (data && data.length > 0) setInstalled(true) })
+  }, [slug, agents])
+
   useEffect(() => {
     if (!slug) return
     fetch(`${CLAWHUB}/packages/${slug}`)
