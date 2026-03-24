@@ -12,7 +12,7 @@ const CLAWHUB = 'https://clawhub.ai/api/v1'
 
 export default function ClawHubSkillDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>()
-  const { agents } = useAgentsStore()
+  const { agents, getConnectionStatus } = useAgentsStore()
   const { user } = useAuthStore()
   const showToast = useUIStore((s) => s.showToast)
 
@@ -55,7 +55,7 @@ export default function ClawHubSkillDetailScreen() {
   const handleInstall = useCallback(async () => {
     if (!user || !detail) return
 
-    const connectedAgents = agents.filter((a) => a.status === 'connected')
+    const connectedAgents = agents.filter((a) => getConnectionStatus(a.id) === 'connected')
     if (connectedAgents.length === 0) {
       Alert.alert('No agents', 'Connect an agent first before installing skills.')
       return

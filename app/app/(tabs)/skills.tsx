@@ -112,7 +112,7 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSk
 // ── Main screen ─────────────────────────────────────────────────────────────
 export default function SkillsScreen() {
   const { skills, setSkills } = useSkillsStore()
-  const { agents } = useAgentsStore()
+  const { agents, getConnectionStatus } = useAgentsStore()
   const { user } = useAuthStore()
   const showToast = useUIStore((s) => s.showToast)
 
@@ -125,11 +125,12 @@ export default function SkillsScreen() {
   // Selected agent for install
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
 
-  // Auto-select first connected agent
+  // Auto-select first connected agent (use derived status from store)
   useEffect(() => {
     if (selectedAgentId) return
-    const connected = agents.find((a) => a.status === 'connected')
+    const connected = agents.find((a) => getConnectionStatus(a.id) === 'connected')
     if (connected) setSelectedAgentId(connected.id)
+    else if (agents.length > 0) setSelectedAgentId(agents[0].id)
   }, [agents])
 
   // Per-skill install state
@@ -186,7 +187,8 @@ export default function SkillsScreen() {
   }, [query])
 
   const handleInstall = useCallback(async (skill: ClawHubSkill) => {
-    if (!user || !selectedAgentId) return
+    if (!user) { showToast('Not logged in'); return }
+    if (!selectedAgentId) { showToast('No agent selected'); return }
     const agent = agents.find((a) => a.id === selectedAgentId)
     if (!agent) return
 
