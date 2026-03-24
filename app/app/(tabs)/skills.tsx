@@ -48,31 +48,27 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: {
   installed: boolean
 }) {
   return (
-    <TouchableOpacity style={styles.card} activeOpacity={0.85}>
+    <TouchableOpacity
+      style={[styles.card, installed && styles.cardInstalled]}
+      activeOpacity={0.8}
+      onPress={() => !installed && onInstall(skill)}
+      disabled={installing}
+    >
       <View style={styles.cardHeader}>
         <View style={styles.nameRow}>
           <Text style={styles.skillName}>{skill.displayName}</Text>
           {skill.isOfficial && <View style={styles.officialBadge}><Text style={styles.officialBadgeText}>Official</Text></View>}
         </View>
-      </View>
-      <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
-      <View style={styles.cardFooter}>
-        <Text style={styles.version}>by @{skill.ownerHandle} · v{skill.latestVersion}</Text>
         {installed ? (
-          <View style={styles.installedBadge}><Text style={styles.installedBadgeText}>Installed ✓</Text></View>
+          <View style={styles.installedBadge}><Text style={styles.installedBadgeText}>✓</Text></View>
+        ) : installing ? (
+          <ActivityIndicator size="small" color={Colors.accentTeal} />
         ) : (
-          <TouchableOpacity
-            style={[styles.installBtn, installing && styles.installBtnLoading]}
-            onPress={() => onInstall(skill)}
-            disabled={installing}
-          >
-            {installing
-              ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
-              : <Text style={styles.installBtnText}>Install</Text>
-            }
-          </TouchableOpacity>
+          <View style={styles.installBtn}><Text style={styles.installBtnText}>Install</Text></View>
         )}
       </View>
+      <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
+      <Text style={styles.version}>by @{skill.ownerHandle} · v{skill.latestVersion}</Text>
     </TouchableOpacity>
   )
 }
@@ -261,6 +257,7 @@ const styles = StyleSheet.create({
   sectionLabel: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase' },
   emptyText: { color: Colors.textSecondary, textAlign: 'center', paddingVertical: 24 },
   card: { backgroundColor: '#0f0f0f', borderRadius: 16, padding: 16, gap: 8 },
+  cardInstalled: { borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   nameRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   skillName: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
