@@ -67,6 +67,36 @@ export function subscribeToAgent(
 }
 
 // ─────────────────────────────────────────────
+// Skill helpers
+// ─────────────────────────────────────────────
+
+export async function getOrCreateSkill(params: {
+  name: string
+  description: string
+  category: string
+  version: string
+}): Promise<string | null> {
+  // Try to find existing skill by name
+  const { data: existing } = await supabase
+    .from('skills')
+    .select('id')
+    .eq('name', params.name)
+    .maybeSingle()
+
+  if (existing) return existing.id
+
+  // Insert new skill
+  const { data: created, error } = await supabase
+    .from('skills')
+    .insert({ ...params, config_schema: { fields: [] } })
+    .select('id')
+    .single()
+
+  if (error || !created) return null
+  return created.id
+}
+
+// ─────────────────────────────────────────────
 // Send message (app → agent)
 // Broadcasts for real-time delivery AND persists for history
 // ─────────────────────────────────────────────
