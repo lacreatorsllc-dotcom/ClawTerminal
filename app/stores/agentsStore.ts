@@ -4,9 +4,11 @@ import type { Agent, AgentStatus } from '../lib/types'
 interface AgentsState {
   agents: Agent[]
   activeAgentId: string | null
+  loading: boolean
   setAgents: (agents: Agent[]) => void
   upsertAgent: (agent: Agent) => void
   setActiveAgent: (id: string | null) => void
+  setLoading: (loading: boolean) => void
   getConnectionStatus: (agentId: string) => AgentStatus
 }
 
@@ -24,6 +26,7 @@ function deriveStatus(status: string | null, lastSeen: string | null): AgentStat
 export const useAgentsStore = create<AgentsState>((set, get) => ({
   agents: [],
   activeAgentId: null,
+  loading: true,
   setAgents: (agents) => set({ agents }),
   upsertAgent: (agent) =>
     set((state) => {
@@ -36,6 +39,7 @@ export const useAgentsStore = create<AgentsState>((set, get) => ({
       return { agents: [...state.agents, agent] }
     }),
   setActiveAgent: (activeAgentId) => set({ activeAgentId }),
+  setLoading: (loading) => set({ loading }),
   getConnectionStatus: (agentId) => {
     const agent = get().agents.find((a) => a.id === agentId)
     if (!agent) return 'disconnected'

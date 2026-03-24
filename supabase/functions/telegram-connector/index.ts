@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
   await supabase.from('messages').insert({
     agent_id: agentId,
     user_id: userId,
-    direction: 'outbound',
+    direction: 'inbound',
     content: text,
   })
 
@@ -153,7 +153,7 @@ Deno.serve(async (req) => {
       messages: [{
         topic: `agent:${agentId}`,
         event: 'message',
-        payload: { direction: 'outbound', content: text, ts: Date.now() },
+        payload: { direction: 'inbound', content: text, ts: Date.now() },
       }],
     }),
   })

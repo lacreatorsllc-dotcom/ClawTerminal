@@ -4,7 +4,6 @@ import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { useAgentsStore } from '../../stores/agentsStore'
 import { useAuthStore } from '../../stores/authStore'
-import { useUIStore } from '../../stores/uiStore'
 import { Colors } from '../../constants/colors'
 import type { Agent, AgentStatus } from '../../lib/types'
 
@@ -107,7 +106,6 @@ function AgentCard({ agent }: { agent: Agent }) {
 export default function AgentsScreen() {
   const { agents, setAgents, upsertAgent, loading, setLoading } = useAgentsStore()
   const { user } = useAuthStore()
-  const setConnectModalVisible = useUIStore((s) => s.setConnectModalVisible)
 
   useEffect(() => {
     if (!user) return
@@ -118,13 +116,14 @@ export default function AgentsScreen() {
         .from('agents')
         .select('*')
         .eq('user_id', user.id)
-      if (data) {
-        setAgents(data)
-        // enforce minimum skeleton display time on first load
-        const elapsed = Date.now() - start
-        const delay = Math.max(0, SKELETON_MIN_MS - elapsed)
-        setTimeout(() => setLoading(false), delay)
-      }
+
+      // always update agents (even if empty array)
+      setAgents(data ?? [])
+
+      // enforce minimum skeleton display time on first load
+      const elapsed = Date.now() - start
+      const delay = Math.max(0, SKELETON_MIN_MS - elapsed)
+      setTimeout(() => setLoading(false), delay)
     }
 
     fetchAgents()
@@ -138,8 +137,8 @@ export default function AgentsScreen() {
         table: 'agents',
         filter: `user_id=eq.${user.id}`,
       }, (payload) => {
-        if (payload.eventType === 'INSERT') upsertAgent(payload.new as any)
-        if (payload.eventType === 'UPDATE') upsertAgent(payload.new as any)
+        if (payload.eventType === 'INSERT') upsertAgent(payload.new as Agent)
+        if (payload.eventType === 'UPDATE') upsertAgent(payload.new as Agent)
       })
       .subscribe()
 

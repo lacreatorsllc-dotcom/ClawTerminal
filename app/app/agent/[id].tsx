@@ -11,7 +11,15 @@ import { useChatStore } from '../../stores/chatStore'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
 
-type Tab = 'chat' | 'status' | 'vitals' | 'activity'
+type Tab = 'chat' | 'status' | 'vitals' | 'activity' | 'skills'
+
+interface InstalledSkill {
+  id: string
+  name: string
+  description: string
+  version: string
+  category: string | null
+}
 
 const STATUS_COLOR: Record<AgentStatus, string> = {
   connected: Colors.accentGreen,
@@ -25,6 +33,8 @@ export default function AgentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const [tab, setTab] = useState<Tab>('chat')
   const [tokenStats, setTokenStats] = useState<{ input: number; output: number; messageCount: number } | null>(null)
+  const [agentSkills, setAgentSkills] = useState<InstalledSkill[]>([])
+  const [loadingSkills, setLoadingSkills] = useState(false)
   const [input, setInput] = useState('')
   const flatListRef = useRef<FlatList>(null)
   const channelRef = useRef<any>(null)
@@ -36,6 +46,26 @@ export default function AgentDetailScreen() {
   const agent = agents.find((a) => a.id === id)
   const messages = messagesByAgent[id] ?? []
   const status = id ? getConnectionStatus(id) : 'disconnected'
+
+  useEffect(() => {
+    if (!id || tab !== 'skills') return
+    setLoadingSkills(true)
+    supabase
+      .from('agent_skills')
+      .select('skill_id, skills(id, name, description, version, category)')
+      .eq('agent_id', id)
+      .eq('status', 'active')
+      .then(({ data }) => {
+        if (data) {
+          setAgentSkills(
+            data
+              .map((row: any) => row.skills)
+              .filter(Boolean)
+          )
+        }
+      })
+      .finally(() => setLoadingSkills(false))
+  }, [id, tab])
 
   useEffect(() => {
     if (!id || tab !== 'vitals') return
@@ -127,7 +157,7 @@ export default function AgentDetailScreen() {
 
       {/* Tabs */}
       <View style={styles.tabs}>
-        {(['chat', 'status', 'vitals', 'activity'] as Tab[]).map((t) => (
+        {(['chat', 'status', 'vitals', 'activity', 'skills'] as Tab[]).map((t) => (
           <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t.charAt(0).toUpperCase() + t.slice(1)}</Text>
           </TouchableOpacity>
@@ -255,6 +285,40 @@ export default function AgentDetailScreen() {
           )}
         </View>
       )}
+      {/* Skills Tab */}
+      {tab === 'skills' && (
+        <View style={{ flex: 1 }}>
+          {loadingSkills ? (
+            <View style={styles.tabContent}>
+              <ActivityIndicator color={Colors.accentTeal} />
+            </View>
+          ) : agentSkills.length === 0 ? (
+            <View style={styles.tabContent}>
+              <Text style={styles.activityEmpty}>No skills installed — browse the Skills tab to add some</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={agentSkills}
+              keyExtractor={(s) => s.id}
+              contentContainerStyle={styles.activityList}
+              renderItem={({ item }) => (
+                <View style={styles.skillRow}>
+                  <View style={styles.skillRowContent}>
+                    <Text style={styles.skillRowName}>{item.name}</Text>
+                    {item.description ? (
+                      <Text style={styles.skillRowDesc} numberOfLines={2}>{item.description}</Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.skillRowMeta}>
+                    {item.category ? <Text style={styles.skillRowCategory}>{item.category}</Text> : null}
+                    <Text style={styles.skillRowVersion}>v{item.version}</Text>
+                  </View>
+                </View>
+              )}
+            />
+          )}
+        </View>
+      )}
     </KeyboardAvoidingView>
   )
 }
@@ -347,4 +411,19 @@ const styles = StyleSheet.create({
   activityLabel: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
   activityText: { fontSize: 14, color: Colors.textPrimary, lineHeight: 19 },
   activityTime: { fontSize: 11, color: Colors.textMuted, marginTop: 4 },
+  skillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.bgBorder,
+    gap: 12,
+  },
+  skillRowContent: { flex: 1, gap: 3 },
+  skillRowName: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
+  skillRowDesc: { fontSize: 12, color: Colors.textSecondary, lineHeight: 16 },
+  skillRowMeta: { alignItems: 'flex-end', gap: 4 },
+  skillRowCategory: { fontSize: 10, fontWeight: '700', color: Colors.accentTeal, textTransform: 'uppercase', letterSpacing: 0.5 },
+  skillRowVersion: { fontSize: 11, color: Colors.textMuted },
 })

@@ -6,6 +6,7 @@ import { useAgentsStore } from '../../../stores/agentsStore'
 import { useAuthStore } from '../../../stores/authStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { Colors } from '../../../constants/colors'
+import { translateToEnglish } from '../../../lib/translate'
 
 const CLAWHUB = 'https://clawhub.ai/api/v1'
 
@@ -17,6 +18,7 @@ export default function ClawHubSkillDetailScreen() {
 
   const [detail, setDetail] = useState<any>(null)
   const [changelog, setChangelog] = useState<string | null>(null)
+  const [originalChangelog, setOriginalChangelog] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [installing, setInstalling] = useState(false)
   const [installed, setInstalled] = useState(false)
@@ -25,9 +27,29 @@ export default function ClawHubSkillDetailScreen() {
     if (!slug) return
     fetch(`${CLAWHUB}/skills/${slug}`)
       .then((r) => r.json())
-      .then((data) => {
-        setDetail(data)
-        setChangelog(data.latestVersion?.changelog ?? null)
+      .then(async (data) => {
+        const rawDisplayName: string = data?.skill?.displayName ?? ''
+        const rawSummary: string = data?.skill?.summary ?? ''
+        const rawChangelog: string = data?.latestVersion?.changelog ?? ''
+
+        const [translatedDisplayName, translatedSummary, translatedChangelog] = await Promise.all([
+          translateToEnglish(rawDisplayName),
+          translateToEnglish(rawSummary),
+          translateToEnglish(rawChangelog),
+        ])
+
+        setDetail({
+          ...data,
+          skill: {
+            ...data.skill,
+            displayName: translatedDisplayName,
+            originalDisplayName: translatedDisplayName !== rawDisplayName ? rawDisplayName : undefined,
+            summary: translatedSummary,
+            originalSummary: translatedSummary !== rawSummary ? rawSummary : undefined,
+          },
+        })
+        setChangelog(translatedChangelog || null)
+        setOriginalChangelog(translatedChangelog !== rawChangelog ? rawChangelog : null)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -115,6 +137,7 @@ export default function ClawHubSkillDetailScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <Text style={styles.skillName}>{skill.displayName}</Text>
+          {skill.originalDisplayName ? <Text style={styles.original}>{skill.originalDisplayName}</Text> : null}
 
           <View style={styles.metaRow}>
             {owner && <Text style={styles.meta}>by @{owner.handle}</Text>}
@@ -123,11 +146,13 @@ export default function ClawHubSkillDetailScreen() {
           </View>
 
           {skill.summary ? <Text style={styles.summary}>{skill.summary}</Text> : null}
+          {skill.originalSummary ? <Text style={styles.original}>{skill.originalSummary}</Text> : null}
 
           {changelog ? (
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>What's included</Text>
               <Text style={styles.changelogText}>{changelog}</Text>
+              {originalChangelog ? <Text style={styles.original}>{originalChangelog}</Text> : null}
             </View>
           ) : null}
 
@@ -167,6 +192,7 @@ const styles = StyleSheet.create({
   section: { gap: 8 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1, textTransform: 'uppercase' },
   changelogText: { fontSize: 14, color: Colors.textSecondary, lineHeight: 21 },
+  original: { fontSize: 12, color: Colors.textMuted, lineHeight: 18, fontStyle: 'italic' },
   installBtn: {
     backgroundColor: Colors.accentCrimson,
     borderRadius: 12,

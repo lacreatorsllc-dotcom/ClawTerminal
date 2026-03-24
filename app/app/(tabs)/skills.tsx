@@ -1,12 +1,30 @@
-import { useEffect, useState } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator } from 'react-native'
+import { useEffect, useState, useCallback } from 'react'
+import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator } from 'react-native'
 import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { useSkillsStore } from '../../stores/skillsStore'
+import { useAgentsStore } from '../../stores/agentsStore'
+import { useAuthStore } from '../../stores/authStore'
+import { useUIStore } from '../../stores/uiStore'
 import { Colors } from '../../constants/colors'
+import { translateToEnglish } from '../../lib/translate'
 import type { Skill } from '../../lib/types'
 
 const CLAWHUB = 'https://clawhub.ai/api/v1'
+
+async function translateSkill(skill: ClawHubSkill): Promise<ClawHubSkill> {
+  const [displayName, summary] = await Promise.all([
+    translateToEnglish(skill.displayName),
+    translateToEnglish(skill.summary),
+  ])
+  return {
+    ...skill,
+    displayName,
+    summary,
+    originalDisplayName: displayName !== skill.displayName ? skill.displayName : undefined,
+    originalSummary: summary !== skill.summary ? skill.summary : undefined,
+  }
+}
 
 interface ClawHubSkill {
   name: string
@@ -16,6 +34,8 @@ interface ClawHubSkill {
   ownerHandle: string
   channel: string
   isOfficial: boolean
+  originalSummary?: string
+  originalDisplayName?: string
 }
 
 // ── Local skill card ────────────────────────────────────────────────────────
@@ -38,10 +58,17 @@ function LocalSkillCard({ skill }: { skill: Skill }) {
 }
 
 // ── ClawHub skill card ──────────────────────────────────────────────────────
-function ClawHubSkillCard({ skill }: { skill: ClawHubSkill }) {
+interface ClawHubSkillCardProps {
+  skill: ClawHubSkill
+  onInstall: (skill: ClawHubSkill) => void
+  installing: boolean
+  installed: boolean
+}
+
+function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSkillCardProps) {
   return (
     <TouchableOpacity
-      style={styles.card}
+      style={[styles.card, installed && styles.cardInstalled]}
       activeOpacity={0.8}
       onPress={() => router.push(`/skill/clawhub/${skill.name}`)}
     >
@@ -52,11 +79,31 @@ function ClawHubSkillCard({ skill }: { skill: ClawHubSkill }) {
         </View>
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
+      {skill.originalSummary ? (
+        <Text style={styles.skillDescOriginal} numberOfLines={2}>{skill.originalSummary}</Text>
+      ) : null}
       <View style={styles.cardFooter}>
         <Text style={styles.version}>by @{skill.ownerHandle} · v{skill.latestVersion}</Text>
-        <TouchableOpacity style={styles.installBtn} onPress={() => router.push(`/skill/clawhub/${skill.name}`)}>
-          <Text style={styles.installBtnText}>Install</Text>
-        </TouchableOpacity>
+        {installed ? (
+          <View style={styles.installedBadge}>
+            <Text style={styles.installedBadgeText}>Installed ✓</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.installBtn, installing && styles.installBtnLoading]}
+            onPress={(e) => {
+              // @ts-ignore — stopPropagation exists on synthetic events
+              e.stopPropagation?.()
+              onInstall(skill)
+            }}
+            disabled={installing}
+          >
+            {installing
+              ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
+              : <Text style={styles.installBtnText}>Install</Text>
+            }
+          </TouchableOpacity>
+        )}
       </View>
     </TouchableOpacity>
   )
@@ -65,6 +112,9 @@ function ClawHubSkillCard({ skill }: { skill: ClawHubSkill }) {
 // ── Main screen ─────────────────────────────────────────────────────────────
 export default function SkillsScreen() {
   const { skills, setSkills } = useSkillsStore()
+  const { agents } = useAgentsStore()
+  const { user } = useAuthStore()
+  const showToast = useUIStore((s) => s.showToast)
 
   const [query, setQuery] = useState('')
   const [clawHubSkills, setClawHubSkills] = useState<ClawHubSkill[]>([])
@@ -72,13 +122,31 @@ export default function SkillsScreen() {
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
 
+  // Selected agent for install
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
+
+  // Auto-select first connected agent
+  useEffect(() => {
+    if (selectedAgentId) return
+    const connected = agents.find((a) => a.status === 'connected')
+    if (connected) setSelectedAgentId(connected.id)
+  }, [agents])
+
+  // Per-skill install state
+  const [installingSlug, setInstallingSlug] = useState<string | null>(null)
+  const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(new Set())
+
   // Load local skills + ClawHub top skills
   useEffect(() => {
     supabase.from('skills').select('*').then(({ data }) => { if (data) setSkills(data) })
 
     fetch(`${CLAWHUB}/packages?family=skill&limit=30`)
       .then((r) => r.json())
-      .then((data) => setClawHubSkills(data.items ?? []))
+      .then(async (data) => {
+        const items: ClawHubSkill[] = data.items ?? []
+        const translated = await Promise.all(items.map(translateSkill))
+        setClawHubSkills(translated)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
@@ -91,12 +159,59 @@ export default function SkillsScreen() {
       try {
         const r = await fetch(`${CLAWHUB}/search?q=${encodeURIComponent(query)}&limit=20`)
         const data = await r.json()
-        setSearchResults(data.results ?? [])
+        const results: ClawHubSkill[] = data.results ?? []
+        const translated = await Promise.all(results.map(translateSkill))
+        setSearchResults(translated)
       } catch {}
       setSearching(false)
     }, 350)
     return () => clearTimeout(timer)
   }, [query])
+
+  const handleInstall = useCallback(async (skill: ClawHubSkill) => {
+    if (!user || !selectedAgentId) return
+    const agent = agents.find((a) => a.id === selectedAgentId)
+    if (!agent) return
+
+    setInstallingSlug(skill.name)
+    try {
+      const skillName = skill.displayName ?? skill.name
+      const version = skill.latestVersion ?? '1.0.0'
+
+      const { data: savedSkill } = await supabase
+        .from('skills')
+        .upsert({
+          name: skillName,
+          description: skill.summary ?? '',
+          category: 'Registry',
+          version,
+          config_schema: { fields: [] },
+        }, { onConflict: 'name' })
+        .select('id')
+        .single()
+
+      if (savedSkill) {
+        await supabase.from('agent_skills').upsert({
+          agent_id: selectedAgentId,
+          skill_id: savedSkill.id,
+          config: { source: 'clawhub', slug: skill.name },
+          status: 'active',
+        })
+
+        await supabase.channel(`agent:${selectedAgentId}`).send({
+          type: 'broadcast',
+          event: 'skill-assigned',
+          payload: { skillName, slug: skill.name, version },
+        })
+      }
+
+      setInstalledSlugs((prev) => new Set([...prev, skill.name]))
+      showToast(`${skillName} installed on ${agent.name}`)
+    } catch {
+      showToast('Install failed — try again')
+    }
+    setInstallingSlug(null)
+  }, [agents, selectedAgentId, user, showToast])
 
   const displayedClawHub = query.trim() ? searchResults : clawHubSkills
 
@@ -107,6 +222,28 @@ export default function SkillsScreen() {
         <Text style={styles.title}>Skills</Text>
         <Text style={styles.subtitle}>{clawHubSkills.length + skills.length} available</Text>
       </View>
+
+      {/* Agent picker */}
+      {agents.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.agentPicker}
+        >
+          {agents.map((a) => (
+            <TouchableOpacity
+              key={a.id}
+              style={[styles.agentChip, selectedAgentId === a.id && styles.agentChipSelected]}
+              onPress={() => setSelectedAgentId(a.id)}
+            >
+              <View style={[styles.agentDot, { backgroundColor: a.status === 'connected' ? Colors.accentGreen : Colors.textMuted }]} />
+              <Text style={[styles.agentChipText, selectedAgentId === a.id && styles.agentChipTextSelected]}>
+                {a.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {/* Search */}
       <View style={styles.searchRow}>
@@ -141,7 +278,13 @@ export default function SkillsScreen() {
             )}
 
             {displayedClawHub.map((s) => (
-              <ClawHubSkillCard key={s.name} skill={s} />
+              <ClawHubSkillCard
+                key={s.name}
+                skill={s}
+                onInstall={handleInstall}
+                installing={installingSlug === s.name}
+                installed={installedSlugs.has(s.name)}
+              />
             ))}
           </>
         }
@@ -155,6 +298,25 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 12 },
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
+  agentPicker: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
+  agentChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+  },
+  agentChipSelected: {
+    borderColor: Colors.accentCrimson,
+    backgroundColor: 'rgba(220,38,38,0.08)',
+  },
+  agentDot: { width: 6, height: 6, borderRadius: 3 },
+  agentChipText: { fontSize: 13, fontWeight: '500', color: Colors.textSecondary },
+  agentChipTextSelected: { color: Colors.accentCrimson },
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -187,6 +349,7 @@ const styles = StyleSheet.create({
   officialBadge: { backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
   officialBadgeText: { color: Colors.accentAmber, fontSize: 10, fontWeight: '700' },
   skillDesc: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
+  skillDescOriginal: { color: Colors.textMuted, fontSize: 11, lineHeight: 16, fontStyle: 'italic' },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
   version: { color: Colors.textMuted, fontSize: 11, flex: 1 },
   installBtn: {
