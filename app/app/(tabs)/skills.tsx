@@ -1,11 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Platform } from 'react-native'
+import { useEffect, useState } from 'react'
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator } from 'react-native'
 import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { useSkillsStore } from '../../stores/skillsStore'
-import { useAgentsStore } from '../../stores/agentsStore'
-import { useAuthStore } from '../../stores/authStore'
-import { useUIStore } from '../../stores/uiStore'
 import { Colors } from '../../constants/colors'
 import type { Skill } from '../../lib/types'
 
@@ -41,34 +38,23 @@ function LocalSkillCard({ skill }: { skill: Skill }) {
 }
 
 // ── ClawHub skill card ──────────────────────────────────────────────────────
-function ClawHubSkillCard({ skill, onInstall, installing, installed }: {
-  skill: ClawHubSkill
-  onInstall: (skill: ClawHubSkill) => void
-  installing: boolean
-  installed: boolean
-}) {
+function ClawHubSkillCard({ skill }: { skill: ClawHubSkill }) {
   return (
     <TouchableOpacity
-      style={[styles.card, installed && styles.cardInstalled]}
+      style={styles.card}
       activeOpacity={0.8}
-      onPress={() => !installed && onInstall(skill)}
-      disabled={installing}
+      onPress={() => router.push(`/skill/clawhub/${skill.name}`)}
     >
       <View style={styles.cardHeader}>
         <View style={styles.nameRow}>
           <Text style={styles.skillName}>{skill.displayName}</Text>
           {skill.isOfficial && <View style={styles.officialBadge}><Text style={styles.officialBadgeText}>Official</Text></View>}
         </View>
-        {installed ? (
-          <View style={styles.installedBadge}><Text style={styles.installedBadgeText}>✓</Text></View>
-        ) : installing ? (
-          <ActivityIndicator size="small" color={Colors.accentTeal} />
-        ) : (
-          <View style={styles.installBtn}><Text style={styles.installBtnText}>Install</Text></View>
-        )}
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
-      <Text style={styles.version}>by @{skill.ownerHandle} · v{skill.latestVersion}</Text>
+      <View style={styles.cardFooter}>
+        <Text style={styles.version}>by @{skill.ownerHandle} · v{skill.latestVersion}</Text>
+      </View>
     </TouchableOpacity>
   )
 }
@@ -76,17 +62,12 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: {
 // ── Main screen ─────────────────────────────────────────────────────────────
 export default function SkillsScreen() {
   const { skills, setSkills } = useSkillsStore()
-  const { agents } = useAgentsStore()
-  const { user } = useAuthStore()
-  const showToast = useUIStore((s) => s.showToast)
 
   const [query, setQuery] = useState('')
   const [clawHubSkills, setClawHubSkills] = useState<ClawHubSkill[]>([])
   const [searchResults, setSearchResults] = useState<ClawHubSkill[]>([])
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
-  const [installing, setInstalling] = useState<string | null>(null)
-  const [installed, setInstalled] = useState<Set<string>>(new Set())
 
   // Load local skills + ClawHub top skills
   useEffect(() => {
@@ -113,63 +94,6 @@ export default function SkillsScreen() {
     }, 350)
     return () => clearTimeout(timer)
   }, [query])
-
-  const handleInstall = useCallback(async (skill: ClawHubSkill) => {
-    if (!user) return
-
-    // Pick the first connected agent, or prompt
-    const connectedAgent = agents.find((a) => a.status === 'connected')
-    if (!connectedAgent) {
-      showToast('Connect an agent first')
-      return
-    }
-
-    setInstalling(skill.name)
-
-    try {
-      // Upsert into skills table
-      const { data: savedSkill } = await supabase
-        .from('skills')
-        .upsert({
-          name: skill.displayName,
-          description: skill.summary || '',
-          category: 'ClawHub',
-          version: skill.latestVersion,
-          config_schema: { fields: [] },
-        }, { onConflict: 'name' })
-        .select('id')
-        .single()
-
-      if (savedSkill) {
-        // Assign to agent
-        await supabase.from('agent_skills').upsert({
-          agent_id: connectedAgent.id,
-          skill_id: savedSkill.id,
-          config: { source: 'clawhub', slug: skill.name },
-          status: 'active',
-        })
-
-        // Notify agent via broadcast
-        await supabase.channel(`agent:${connectedAgent.id}`).send({
-          type: 'broadcast',
-          event: 'skill-assigned',
-          payload: {
-            skillName: skill.displayName,
-            slug: skill.name,
-            version: skill.latestVersion,
-            source: 'clawhub',
-          },
-        })
-      }
-
-      setInstalled((prev) => new Set(prev).add(skill.name))
-      showToast(`${skill.displayName} installed on ${connectedAgent.name}`)
-    } catch {
-      showToast('Install failed — try again')
-    }
-
-    setInstalling(null)
-  }, [agents, user, showToast])
 
   const displayedClawHub = query.trim() ? searchResults : clawHubSkills
 
@@ -214,13 +138,7 @@ export default function SkillsScreen() {
             )}
 
             {displayedClawHub.map((s) => (
-              <ClawHubSkillCard
-                key={s.name}
-                skill={s}
-                onInstall={handleInstall}
-                installing={installing === s.name}
-                installed={installed.has(s.name)}
-              />
+              <ClawHubSkillCard key={s.name} skill={s} />
             ))}
           </>
         }
