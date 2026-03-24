@@ -136,6 +136,23 @@ export default function SkillsScreen() {
   const [installingSlug, setInstallingSlug] = useState<string | null>(null)
   const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(new Set())
 
+  // Load installed slugs for selected agent from DB
+  useEffect(() => {
+    if (!selectedAgentId) return
+    supabase
+      .from('agent_skills')
+      .select('config')
+      .eq('agent_id', selectedAgentId)
+      .eq('status', 'active')
+      .then(({ data }) => {
+        if (!data) return
+        const slugs = data
+          .map((row: any) => row.config?.slug as string | undefined)
+          .filter(Boolean) as string[]
+        setInstalledSlugs(new Set(slugs))
+      })
+  }, [selectedAgentId])
+
   // Load local skills + ClawHub top skills
   useEffect(() => {
     supabase.from('skills').select('*').then(({ data }) => { if (data) setSkills(data) })
