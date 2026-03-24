@@ -54,6 +54,9 @@ function ClawHubSkillCard({ skill }: { skill: ClawHubSkill }) {
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
       <View style={styles.cardFooter}>
         <Text style={styles.version}>by @{skill.ownerHandle} · v{skill.latestVersion}</Text>
+        <TouchableOpacity style={styles.installBtn} onPress={() => router.push(`/skill/clawhub/${skill.name}`)}>
+          <Text style={styles.installBtnText}>Install</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   )
