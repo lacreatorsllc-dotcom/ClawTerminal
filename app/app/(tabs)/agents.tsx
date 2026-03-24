@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform } from 'react-native'
+import { useEffect, useRef } from 'react'
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, Animated } from 'react-native'
 import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { useAgentsStore } from '../../stores/agentsStore'
@@ -23,6 +23,50 @@ const STATUS_LABEL: Record<AgentStatus, string> = {
   error: 'Error',
   disconnected: 'Offline',
 }
+
+const SKELETON_MIN_MS = 1200
+
+// ── Shimmer skeleton ──────────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  const shimmer = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    ).start()
+  }, [])
+
+  const opacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.7] })
+
+  return (
+    <Animated.View style={[styles.card, styles.skeletonCard, { opacity }]}>
+      <View style={styles.cardLeft}>
+        <View style={styles.skeletonAvatar} />
+        <View style={{ gap: 8 }}>
+          <View style={styles.skeletonNameBar} />
+          <View style={styles.skeletonMetaBar} />
+        </View>
+      </View>
+      <View style={styles.skeletonBadge} />
+    </Animated.View>
+  )
+}
+
+function SkeletonList() {
+  return (
+    <View style={styles.list}>
+      {[0, 1, 2].map((i) => (
+        <SkeletonCard key={i} />
+      ))}
+    </View>
+  )
+}
+
+// ── Agent card ────────────────────────────────────────────────────────────────
 
 function AgentCard({ agent }: { agent: Agent }) {
   const getConnectionStatus = useAgentsStore((s) => s.getConnectionStatus)
@@ -58,20 +102,30 @@ function AgentCard({ agent }: { agent: Agent }) {
   )
 }
 
+// ── Screen ────────────────────────────────────────────────────────────────────
+
 export default function AgentsScreen() {
-  const { agents, setAgents, upsertAgent } = useAgentsStore()
+  const { agents, setAgents, upsertAgent, loading, setLoading } = useAgentsStore()
   const { user } = useAuthStore()
   const setConnectModalVisible = useUIStore((s) => s.setConnectModalVisible)
 
   useEffect(() => {
     if (!user) return
 
-    const fetchAgents = () =>
-      supabase
+    const fetchAgents = async () => {
+      const start = Date.now()
+      const { data } = await supabase
         .from('agents')
         .select('*')
         .eq('user_id', user.id)
-        .then(({ data }) => { if (data) setAgents(data) })
+      if (data) {
+        setAgents(data)
+        // enforce minimum skeleton display time on first load
+        const elapsed = Date.now() - start
+        const delay = Math.max(0, SKELETON_MIN_MS - elapsed)
+        setTimeout(() => setLoading(false), delay)
+      }
+    }
 
     fetchAgents()
     const poll = setInterval(fetchAgents, 15_000)
@@ -110,7 +164,9 @@ export default function AgentsScreen() {
         </TouchableOpacity>
       </View>
 
-      {agents.length === 0 ? (
+      {loading ? (
+        <SkeletonList />
+      ) : agents.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyIcon}>◈</Text>
           <Text style={styles.emptyTitle}>No agents connected</Text>
@@ -131,6 +187,8 @@ export default function AgentsScreen() {
     </View>
   )
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
@@ -188,4 +246,31 @@ const styles = StyleSheet.create({
   emptySubtitle: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
   emptyBtn: { backgroundColor: Colors.accentCrimson, borderRadius: 24, paddingHorizontal: 28, paddingVertical: 14, marginTop: 8 },
   emptyBtnText: { color: Colors.bgPrimary, fontSize: 15, fontWeight: '600' },
+
+  // Skeleton
+  skeletonCard: { opacity: 0.5 },
+  skeletonAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.bgElevated,
+  },
+  skeletonNameBar: {
+    width: 120,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.bgElevated,
+  },
+  skeletonMetaBar: {
+    width: 80,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.bgElevated,
+  },
+  skeletonBadge: {
+    width: 56,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.bgElevated,
+  },
 })
