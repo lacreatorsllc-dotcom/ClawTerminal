@@ -86,14 +86,23 @@ export async function getOrCreateSkill(params: {
   if (existing) return existing.id
 
   // Insert new skill
-  const { data: created, error } = await supabase
+  const { data: created, error: insertError } = await supabase
     .from('skills')
     .insert({ ...params, config_schema: { fields: [] } })
     .select('id')
     .single()
 
-  if (error || !created) return null
-  return created.id
+  if (created) return created.id
+
+  // Insert failed (e.g. unique conflict from race) — try select again
+  console.warn('[getOrCreateSkill] insert failed:', insertError?.message)
+  const { data: retry } = await supabase
+    .from('skills')
+    .select('id')
+    .eq('name', params.name)
+    .maybeSingle()
+
+  return retry?.id ?? null
 }
 
 // ─────────────────────────────────────────────

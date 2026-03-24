@@ -228,8 +228,9 @@ export default function SkillsScreen() {
         direction: 'outbound',
         content: `Skill installed: ${skillName} v${version}`,
       })
-    } catch {
-      showToast('Install failed — try again')
+    } catch (err: any) {
+      console.error('[install]', err?.message)
+      showToast(`Install failed: ${err?.message ?? 'unknown error'}`)
     }
     setInstallingSlug(null)
   }, [agents, selectedAgentId, user, showToast])

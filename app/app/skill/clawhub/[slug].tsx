@@ -98,8 +98,9 @@ export default function ClawHubSkillDetailScreen() {
           direction: 'outbound',
           content: `Skill installed: ${skillName} v${version}`,
         })
-      } catch {
-        showToast('Install failed — try again')
+      } catch (err: any) {
+        console.error('[install]', err?.message)
+        showToast(`Install failed: ${err?.message ?? 'unknown error'}`)
       }
       setInstalling(false)
     }
