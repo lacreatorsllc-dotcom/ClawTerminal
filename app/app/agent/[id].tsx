@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
-  StyleSheet, KeyboardAvoidingView, Platform
+  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator
 } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import { supabase, subscribeToAgent, sendMessage } from '../../lib/supabase'
