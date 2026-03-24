@@ -24,6 +24,7 @@ const STATUS_COLOR: Record<AgentStatus, string> = {
 export default function AgentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const [tab, setTab] = useState<Tab>('chat')
+  const [tokenStats, setTokenStats] = useState<{ input: number; output: number; messageCount: number } | null>(null)
   const [input, setInput] = useState('')
   const flatListRef = useRef<FlatList>(null)
   const channelRef = useRef<any>(null)
@@ -35,6 +36,23 @@ export default function AgentDetailScreen() {
   const agent = agents.find((a) => a.id === id)
   const messages = messagesByAgent[id] ?? []
   const status = id ? getConnectionStatus(id) : 'disconnected'
+
+  useEffect(() => {
+    if (!id || tab !== 'vitals') return
+    supabase
+      .from('messages')
+      .select('input_tokens, output_tokens')
+      .eq('agent_id', id)
+      .then(({ data }) => {
+        if (!data) return
+        let input = 0, output = 0, messageCount = data.length
+        for (const row of data) {
+          input += row.input_tokens ?? 0
+          output += row.output_tokens ?? 0
+        }
+        setTokenStats({ input, output, messageCount })
+      })
+  }, [id, tab])
 
   // Load message history
   useEffect(() => {
@@ -73,7 +91,7 @@ export default function AgentDetailScreen() {
     if (!input.trim() || !user || !id) return
     const content = input.trim()
     setInput('')
-    await sendMessage(null, id, user.id, content)
+    await sendMessage(channelRef.current, id, user.id, content)
   }
 
   if (!agent) return (
@@ -83,7 +101,7 @@ export default function AgentDetailScreen() {
   )
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -163,21 +181,69 @@ export default function AgentDetailScreen() {
       {/* Vitals Tab */}
       {tab === 'vitals' && (
         <View style={styles.tabContent}>
-          <View style={styles.statusCard}>
-            <Row label="Neural Load" value="—" />
-            <Row label="Memory Usage" value="—" />
-            <Row label="Uptime" value={agent.last_seen ? '—' : '—'} />
-            <Row label="Tasks Completed" value="—" />
-            <Row label="Streak" value="—" />
+          {tokenStats ? (
+            <>
+              <View style={styles.statusCard}>
+                <Row label="Messages" value={String(tokenStats.messageCount)} />
+                <Row label="Input tokens" value={tokenStats.input.toLocaleString()} />
+                <Row label="Output tokens" value={tokenStats.output.toLocaleString()} />
+                <Row label="Total tokens" value={(tokenStats.input + tokenStats.output).toLocaleString()} />
+                <Row
+                  label="Est. cost"
+                  value={`$${((tokenStats.input / 1_000_000) * 0.80 + (tokenStats.output / 1_000_000) * 4.00).toFixed(4)}`}
+                  valueColor={Colors.accentTeal}
+                />
+              </View>
+              <Text style={styles.vitalsNote}>Cost based on Claude Haiku pricing ($0.80/M input · $4.00/M output)</Text>
+            </>
+          ) : (
+            <View style={styles.statusCard}>
+              <Row label="Messages" value="—" />
+              <Row label="Input tokens" value="—" />
+              <Row label="Output tokens" value="—" />
+              <Row label="Total tokens" value="—" />
+              <Row label="Est. cost" value="—" />
+            </View>
+          )}
+          <View style={[styles.statusCard, { marginTop: 12 }]}>
+            <Row label="Status" value={status} valueColor={STATUS_COLOR[status]} />
+            <Row label="Connected since" value={agent.created_at ? new Date(agent.created_at).toLocaleDateString() : '—'} />
+            {agent.metadata?.bot_username ? (
+              <Row label="Bot username" value={`@${agent.metadata.bot_username as string}`} mono />
+            ) : null}
+            {agent.metadata?.powered_by ? (
+              <Row label="Powered by" value={String(agent.metadata.powered_by)} />
+            ) : null}
           </View>
-          <Text style={styles.activityEmpty}>Agent vitals coming soon</Text>
         </View>
       )}
 
       {/* Activity Tab */}
       {tab === 'activity' && (
-        <View style={styles.tabContent}>
-          <Text style={styles.activityEmpty}>Activity feed coming soon</Text>
+        <View style={{ flex: 1 }}>
+          {messages.length === 0 ? (
+            <View style={styles.tabContent}>
+              <Text style={styles.activityEmpty}>No activity yet — send a message to get started</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={[...messages].reverse()}
+              keyExtractor={(m) => m.id + '-activity'}
+              contentContainerStyle={styles.activityList}
+              renderItem={({ item }) => (
+                <View style={styles.activityRow}>
+                  <View style={[styles.activityDot, { backgroundColor: item.direction === 'inbound' ? Colors.accentCrimson : Colors.accentTeal }]} />
+                  <View style={styles.activityContent}>
+                    <Text style={styles.activityLabel}>{item.direction === 'inbound' ? 'You' : agent.name}</Text>
+                    <Text style={styles.activityText} numberOfLines={2}>{item.content}</Text>
+                  </View>
+                  <Text style={styles.activityTime}>
+                    {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+              )}
+            />
+          )}
         </View>
       )}
     </KeyboardAvoidingView>
@@ -257,4 +323,19 @@ const styles = StyleSheet.create({
   reconnectLabel: { color: Colors.accentAmber, fontSize: 13 },
   reconnectCmd: { color: Colors.accentTeal, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12 },
   activityEmpty: { color: Colors.textSecondary, textAlign: 'center', marginTop: 48 },
+  vitalsNote: { color: Colors.textMuted, fontSize: 11, textAlign: 'center', marginTop: 10 },
+  activityList: { padding: 16, gap: 2 },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.bgBorder,
+  },
+  activityDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
+  activityContent: { flex: 1, gap: 2 },
+  activityLabel: { fontSize: 11, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  activityText: { fontSize: 14, color: Colors.textPrimary, lineHeight: 19 },
+  activityTime: { fontSize: 11, color: Colors.textMuted, marginTop: 4 },
 })

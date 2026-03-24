@@ -10,8 +10,6 @@ import * as SecureStore from 'expo-secure-store'
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
 
-// NOTE: Replace `any` with generated Database type once `supabase gen types` is run
-// against the real project: `supabase gen types typescript --project-id <id> > lib/database.types.ts`
 const ExpoSecureStoreAdapter = {
   getItem: (key: string) => SecureStore.getItemAsync(key),
   setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
@@ -42,7 +40,8 @@ export const signOut = () => supabase.auth.signOut()
 export const getSession = () => supabase.auth.getSession()
 
 // ─────────────────────────────────────────────
-// Agent channel — call on Agent Detail open, unsubscribe on close
+// Agent channel — broadcast-based real-time chat
+// Call on Agent Detail open, unsubscribe on close
 // ─────────────────────────────────────────────
 
 export function subscribeToAgent(
@@ -52,19 +51,13 @@ export function subscribeToAgent(
   }
 ) {
   const channel = supabase
-    .channel(`agent:${agentId}:messages`)
-    .on('postgres_changes', {
-      event: 'INSERT',
-      schema: 'public',
-      table: 'messages',
-      filter: `agent_id=eq.${agentId}`,
-    }, (payload) => {
+    .channel(`agent:${agentId}`, { config: { broadcast: { self: true } } })
+    .on('broadcast', { event: 'message' }, ({ payload }) => {
       if (handlers.onMessage) {
-        const row = payload.new as any
         handlers.onMessage({
-          direction: row.direction,
-          content: row.content,
-          ts: new Date(row.created_at).getTime(),
+          direction: payload.direction,
+          content: payload.content,
+          ts: payload.ts ?? Date.now(),
         })
       }
     })
@@ -74,16 +67,26 @@ export function subscribeToAgent(
 }
 
 // ─────────────────────────────────────────────
-// Send outbound message (app → agent)
+// Send message (app → agent)
 // Broadcasts for real-time delivery AND persists for history
 // ─────────────────────────────────────────────
 
 export async function sendMessage(
-  _channel: unknown,
+  channel: ReturnType<typeof supabase.channel> | null,
   agentId: string,
   userId: string,
   content: string
 ) {
+  // Broadcast for real-time delivery
+  if (channel) {
+    await channel.send({
+      type: 'broadcast',
+      event: 'message',
+      payload: { direction: 'inbound', content, ts: Date.now() },
+    })
+  }
+
+  // Persist to DB for history
   return supabase.from('messages').insert({
     agent_id: agentId,
     user_id: userId,

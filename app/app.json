@@ -13,7 +13,8 @@
       "backgroundColor": "#080A0E"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mememarketer.clawterminal"
     },
     "android": {
       "adaptiveIcon": {

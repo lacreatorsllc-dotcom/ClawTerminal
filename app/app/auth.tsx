@@ -48,8 +48,8 @@ export default function AuthScreen() {
       <View style={styles.inner}>
         {/* Logo */}
         <View style={styles.logoRow}>
-          <Text style={styles.logo}>⌖</Text>
-          <Text style={styles.logoText}>ClawTerminal</Text>
+          <View style={styles.logoMark} />
+          <Text style={styles.logoText}>CLAW_TERMINAL</Text>
         </View>
         <Text style={styles.tagline}>Mobile command center for AI agents</Text>
 
@@ -119,16 +119,18 @@ const styles = StyleSheet.create({
   logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     marginBottom: 8,
   },
-  logo: {
-    fontSize: 32,
-    color: Colors.accentCrimson,
-    marginRight: 10,
+  logoMark: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    backgroundColor: Colors.accentCrimson,
   },
   logoText: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     color: Colors.textPrimary,
     letterSpacing: -0.5,
   },

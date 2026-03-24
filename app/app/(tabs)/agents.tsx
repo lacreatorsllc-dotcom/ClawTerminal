@@ -39,7 +39,15 @@ function AgentCard({ agent }: { agent: Agent }) {
         </View>
         <View>
           <Text style={styles.agentName}>{agent.name}</Text>
-          <Text style={styles.agentMeta}>Last seen: {agent.last_seen ? new Date(agent.last_seen).toLocaleTimeString() : '—'}</Text>
+          <Text style={styles.agentMeta}>
+            {agent.metadata?.bot_username
+              ? `@${agent.metadata.bot_username as string}`
+              : agent.metadata?.current_task
+              ? String(agent.metadata.current_task)
+              : agent.last_seen
+              ? `Last seen ${new Date(agent.last_seen).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : 'Never connected'}
+          </Text>
         </View>
       </View>
       <View style={styles.statusBadge}>
@@ -58,11 +66,15 @@ export default function AgentsScreen() {
   useEffect(() => {
     if (!user) return
 
-    supabase
-      .from('agents')
-      .select('*')
-      .eq('user_id', user.id)
-      .then(({ data }) => { if (data) setAgents(data) })
+    const fetchAgents = () =>
+      supabase
+        .from('agents')
+        .select('*')
+        .eq('user_id', user.id)
+        .then(({ data }) => { if (data) setAgents(data) })
+
+    fetchAgents()
+    const poll = setInterval(fetchAgents, 15_000)
 
     const channel = supabase
       .channel(`user:${user.id}:agents`)
@@ -77,14 +89,17 @@ export default function AgentsScreen() {
       })
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    return () => { supabase.removeChannel(channel); clearInterval(poll) }
   }, [user])
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.title}>Clawτerminal</Text>
+          <View style={styles.logoRow}>
+            <View style={styles.logoMark} />
+            <Text style={styles.title}>CLAW_TERMINAL</Text>
+          </View>
           <View style={styles.systemStatus}>
             <View style={styles.systemStatusDot} />
             <Text style={styles.systemStatusText}>System Online</Text>
@@ -128,7 +143,9 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   headerLeft: { gap: 4 },
-  title: { fontSize: 24, fontWeight: '700', color: Colors.textPrimary, letterSpacing: 2, textTransform: 'uppercase' },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoMark: { width: 18, height: 18, borderRadius: 3, backgroundColor: Colors.accentCrimson },
+  title: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary, letterSpacing: -0.3 },
   systemStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   systemStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accentTeal },
   systemStatusText: { color: Colors.accentTeal, fontSize: 9, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
@@ -154,6 +171,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
+    borderWidth: 1.5,
     backgroundColor: 'rgba(193, 18, 31, 0.08)',
     justifyContent: 'center',
     alignItems: 'center',

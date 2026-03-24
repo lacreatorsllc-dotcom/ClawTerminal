@@ -26,6 +26,8 @@ export interface Message {
   direction: MessageDirection
   content: string
   created_at: string
+  input_tokens?: number | null
+  output_tokens?: number | null
 }
 
 export interface Skill {
