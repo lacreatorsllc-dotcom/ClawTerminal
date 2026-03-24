@@ -207,6 +207,19 @@ export default function SkillsScreen() {
 
       setInstalledSlugs((prev) => new Set([...prev, skill.name]))
       showToast(`${skillName} installed on ${agent.name}`)
+
+      const msg = `Skill installed: ${skillName} v${version}`
+      await supabase.from('messages').insert({
+        agent_id: selectedAgentId,
+        user_id: user.id,
+        direction: 'outbound',
+        content: msg,
+      })
+      await supabase.channel(`agent:${selectedAgentId}`).send({
+        type: 'broadcast',
+        event: 'message',
+        payload: { direction: 'outbound', content: msg, ts: Date.now() },
+      })
     } catch {
       showToast('Install failed — try again')
     }
