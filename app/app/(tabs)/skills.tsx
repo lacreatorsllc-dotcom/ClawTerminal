@@ -64,13 +64,21 @@ export default function SkillsScreen() {
         })}
       </ScrollView>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={(s) => s.id}
-        renderItem={({ item }) => <SkillCard skill={item} />}
-        contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-      />
+      {filtered.length === 0 ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyIcon}>◈</Text>
+          <Text style={styles.emptyTitle}>No skills found</Text>
+          <Text style={styles.emptySubtitle}>Try a different category</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(s) => s.id}
+          renderItem={({ item }) => <SkillCard skill={item} />}
+          contentContainerStyle={styles.list}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
     </View>
   )
 }
@@ -112,4 +120,8 @@ const styles = StyleSheet.create({
   version: { color: Colors.textMuted, fontSize: 12 },
   assignBtn: { backgroundColor: Colors.accentCrimson, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 6 },
   assignBtnText: { color: Colors.bgPrimary, fontSize: 13, fontWeight: '600' },
+  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 },
+  emptyIcon: { fontSize: 40, color: Colors.textMuted },
+  emptyTitle: { fontSize: 18, fontWeight: '600', color: Colors.textPrimary },
+  emptySubtitle: { fontSize: 13, color: Colors.textSecondary },
 })
