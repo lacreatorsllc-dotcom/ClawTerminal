@@ -194,20 +194,23 @@ export default function SkillsScreen() {
       const skillName = skill.displayName ?? skill.name
       const version = skill.latestVersion ?? '1.0.0'
 
-      await supabase.from('agent_skills').upsert({
+      const { error: upsertError } = await supabase.from('agent_skills').upsert({
         agent_id: selectedAgentId,
         skill_slug: skill.name,
         config: { displayName: skillName, version },
         status: 'active',
       }, { onConflict: 'agent_id,skill_slug' })
 
-      await supabase.channel(`agent:${selectedAgentId}:events`).send({
-        type: 'broadcast',
-        event: 'skill-assigned',
-        payload: { skillName, slug: skill.name, version },
-      })
+      if (upsertError) throw new Error(upsertError.message)
 
-      setInstalledSlugs((prev) => new Set([...prev, skill.name]))
+      // Reload installed slugs from DB to keep state in sync
+      const { data: freshSlugs } = await supabase
+        .from('agent_skills')
+        .select('skill_slug')
+        .eq('agent_id', selectedAgentId)
+        .eq('status', 'active')
+      if (freshSlugs) setInstalledSlugs(new Set(freshSlugs.map((r: any) => r.skill_slug)))
+
       showToast(`${skillName} installed on ${agent.name}`)
 
       await supabase.from('messages').insert({

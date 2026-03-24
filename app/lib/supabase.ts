@@ -47,7 +47,7 @@ export const getSession = () => supabase.auth.getSession()
 export function subscribeToAgent(
   agentId: string,
   handlers: {
-    onMessage?: (payload: { direction: string; content: string; ts: number }) => void
+    onMessage?: (payload: { direction: string; content: string; ts: number; id?: string }) => void
   }
 ) {
   const channel = supabase
@@ -61,6 +61,21 @@ export function subscribeToAgent(
         })
       }
     })
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'messages', filter: `agent_id=eq.${agentId}` },
+      (event) => {
+        const row = event.new as { id: string; direction: string; content: string; created_at: string }
+        if (handlers.onMessage) {
+          handlers.onMessage({
+            id: row.id,
+            direction: row.direction,
+            content: row.content,
+            ts: new Date(row.created_at).getTime(),
+          })
+        }
+      }
+    )
 
   channel.subscribe()
   return channel

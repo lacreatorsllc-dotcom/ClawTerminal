@@ -103,8 +103,9 @@ export default function AgentDetailScreen() {
     if (!id) return
     channelRef.current = subscribeToAgent(id, {
       onMessage: (payload) => {
+        const msgId = (payload as any).id ?? String(payload.ts)
         const msg: Message = {
-          id: String(Date.now()),
+          id: msgId,
           agent_id: id,
           user_id: user?.id ?? '',
           direction: payload.direction as 'inbound' | 'outbound',
