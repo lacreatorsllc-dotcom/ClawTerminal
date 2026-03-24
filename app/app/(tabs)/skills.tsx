@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator } from 'react-native'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { useSkillsStore } from '../../stores/skillsStore'
 import { useAgentsStore } from '../../stores/agentsStore'
@@ -137,19 +137,22 @@ export default function SkillsScreen() {
   const [installingSlug, setInstallingSlug] = useState<string | null>(null)
   const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(new Set())
 
-  // Load installed slugs for selected agent from DB
-  useEffect(() => {
-    if (!selectedAgentId) return
+  // Reload installed slugs whenever screen comes into focus (e.g. returning from detail page)
+  const selectedAgentIdRef = useRef(selectedAgentId)
+  selectedAgentIdRef.current = selectedAgentId
+
+  useFocusEffect(useCallback(() => {
+    const agentId = selectedAgentIdRef.current
+    if (!agentId) return
     supabase
       .from('agent_skills')
       .select('skill_slug')
-      .eq('agent_id', selectedAgentId)
+      .eq('agent_id', agentId)
       .eq('status', 'active')
       .then(({ data }) => {
-        if (!data) return
-        setInstalledSlugs(new Set(data.map((row: any) => row.skill_slug as string)))
+        if (data) setInstalledSlugs(new Set(data.map((r: any) => r.skill_slug as string)))
       })
-  }, [selectedAgentId])
+  }, []))
 
   // Load local skills + ClawHub top skills
   useEffect(() => {
