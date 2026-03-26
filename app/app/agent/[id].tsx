@@ -248,9 +248,9 @@ export default function AgentDetailScreen() {
           />
           {attachments.length > 0 && (
             <View style={styles.attachmentPreview}>
-              {attachments.map((url, i) => (
+              {attachments.map((att, i) => (
                 <View key={i} style={styles.attachmentThumbWrap}>
-                  <Image source={{ uri: url }} style={styles.attachmentThumb} />
+                  <Image source={{ uri: att.local }} style={styles.attachmentThumb} />
                   <TouchableOpacity style={styles.attachmentRemove} onPress={() => setAttachments((p) => p.filter((_, j) => j !== i))}>
                     <Text style={styles.attachmentRemoveText}>×</Text>
                   </TouchableOpacity>
