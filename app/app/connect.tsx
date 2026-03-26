@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Ionicons } from '@expo/vector-icons'
-import { View, Text, TouchableOpacity, StyleSheet, Platform, Linking, ActivityIndicator, TextInput } from 'react-native'
+import { View, Text, TouchableOpacity, StyleSheet, Platform, Linking, ActivityIndicator, TextInput, ScrollView } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import { router } from 'expo-router'
 import { supabase } from '../lib/supabase'
@@ -142,7 +142,7 @@ export default function ConnectScreen() {
         <Text style={styles.title}>Connect an agent</Text>
       </View>
 
-      <View style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} keyboardShouldPersistTaps="handled">
 
         {/* ── Step 1: Method picker ── */}
         {step === 'method' && (
@@ -327,7 +327,7 @@ export default function ConnectScreen() {
           </>
         )}
 
-      </View>
+      </ScrollView>
     </View>
   )
 }
@@ -345,7 +345,8 @@ const styles = StyleSheet.create({
   closeBtn: { padding: 4 },
   closeBtnText: { color: Colors.textSecondary, fontSize: 18 },
   title: { fontSize: 20, fontWeight: '600', color: Colors.textPrimary },
-  content: { flex: 1, paddingHorizontal: 24, paddingTop: 24, gap: 14 },
+  content: { flex: 1 },
+  contentInner: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 40, gap: 14 },
 
   // Connect to Claude card
   claudeCard: {
