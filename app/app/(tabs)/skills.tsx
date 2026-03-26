@@ -114,6 +114,83 @@ interface ClawHubSkill {
   originalDisplayName?: string
 }
 
+// ── Skills.sh ─────────────────────────────────────────────────────────────────
+
+const SKILLSSH_CATEGORIES = [
+  'All', 'Developer', 'AI & Agents', 'Database', 'Design', 'Web3',
+  'Marketing', 'Data & Analytics', 'Scraping', 'Media', 'Cloud',
+]
+
+interface SkillsShSkill {
+  slug: string         // "owner/repo" — used as unique key
+  displayName: string
+  summary: string
+  category: string
+  owner: string
+  isOfficial: boolean
+}
+
+const SKILLSSH_SKILLS: SkillsShSkill[] = [
+  // Developer
+  { slug: 'github/git-commit', owner: 'github', displayName: 'Git Commit', summary: 'Generates structured, meaningful commit messages from your staged changes.', category: 'Developer', isOfficial: true },
+  { slug: 'github/gh-cli', owner: 'github', displayName: 'GitHub CLI', summary: 'Full GitHub CLI integration — PRs, issues, repos, actions from your agent.', category: 'Developer', isOfficial: true },
+  { slug: 'github/refactor', owner: 'github', displayName: 'Refactor', summary: 'Identifies and applies code refactoring patterns to improve readability and maintainability.', category: 'Developer', isOfficial: true },
+  { slug: 'github/documentation-writer', owner: 'github', displayName: 'Documentation Writer', summary: 'Auto-generates inline docs, README files, and API references from your code.', category: 'Developer', isOfficial: true },
+  { slug: 'cloudflare/wrangler', owner: 'cloudflare', displayName: 'Cloudflare Wrangler', summary: 'Deploy and manage Cloudflare Workers, Pages, and D1 databases with ease.', category: 'Developer', isOfficial: true },
+  { slug: 'expo/expo-deployment', owner: 'expo', displayName: 'Expo Deployment', summary: 'Build, submit, and deploy React Native apps to the App Store and Google Play.', category: 'Developer', isOfficial: true },
+  { slug: 'vercel-labs/vercel-react-best-practices', owner: 'vercel-labs', displayName: 'React Best Practices', summary: 'Enforces Vercel and React performance patterns — memoization, server components, lazy loading.', category: 'Developer', isOfficial: false },
+  { slug: 'firebase/firebase-basics', owner: 'firebase', displayName: 'Firebase Basics', summary: 'Firebase setup, auth, Firestore, and Storage integration patterns for web and mobile.', category: 'Developer', isOfficial: true },
+  // AI & Agents
+  { slug: 'anthropics/mcp-builder', owner: 'anthropics', displayName: 'MCP Builder', summary: 'Build and deploy Model Context Protocol servers. Add tools, resources, and prompts to any MCP host.', category: 'AI & Agents', isOfficial: true },
+  { slug: 'anthropics/skill-creator', owner: 'anthropics', displayName: 'Skill Creator', summary: 'Generate new agent skills from a description — handles packaging, metadata, and publishing.', category: 'AI & Agents', isOfficial: true },
+  { slug: 'anthropics/claude-api', owner: 'anthropics', displayName: 'Claude API', summary: 'Best practices for integrating the Claude API — streaming, tool use, prompt caching, vision.', category: 'AI & Agents', isOfficial: true },
+  { slug: 'browser-use/browser-use', owner: 'browser-use', displayName: 'Browser Use', summary: 'Give your agent a real browser — navigate pages, fill forms, extract data, and interact with web UIs.', category: 'AI & Agents', isOfficial: false },
+  { slug: 'mastra/skills', owner: 'mastra', displayName: 'Mastra', summary: 'TypeScript AI agent framework — build, test, and deploy agents with memory, tools, and workflows.', category: 'AI & Agents', isOfficial: false },
+  { slug: 'langchain/langchain-skills', owner: 'langchain', displayName: 'LangChain', summary: 'LLM orchestration patterns — chains, agents, memory, and retrieval-augmented generation.', category: 'AI & Agents', isOfficial: true },
+  { slug: 'vercel-labs/agent-browser', owner: 'vercel-labs', displayName: 'Agent Browser', summary: 'Headless browser automation built for AI agents — scrape, screenshot, and interact with any site.', category: 'AI & Agents', isOfficial: false },
+  // Database
+  { slug: 'supabase/agent-skills', owner: 'supabase', displayName: 'Supabase', summary: 'Postgres database best practices, row-level security, real-time subscriptions, and Edge Functions.', category: 'Database', isOfficial: true },
+  { slug: 'neon/agent-skills', owner: 'neon', displayName: 'Neon Postgres', summary: 'Serverless Postgres on Neon — branching, autoscaling, and connection pooling patterns.', category: 'Database', isOfficial: true },
+  { slug: 'prisma/skills', owner: 'prisma', displayName: 'Prisma ORM', summary: 'Type-safe database access with Prisma — schema design, migrations, and query optimization.', category: 'Database', isOfficial: true },
+  { slug: 'redis/agent-skills', owner: 'redis', displayName: 'Redis', summary: 'In-memory caching, pub/sub messaging, and session management with Redis.', category: 'Database', isOfficial: true },
+  { slug: 'planetscale/database-skills', owner: 'planetscale', displayName: 'PlanetScale', summary: 'MySQL-compatible serverless database — branching workflow and zero-downtime schema changes.', category: 'Database', isOfficial: true },
+  // Design
+  { slug: 'figma/implement-design', owner: 'figma', displayName: 'Figma to Code', summary: 'Convert Figma designs to production-ready React, HTML, or CSS with pixel-perfect accuracy.', category: 'Design', isOfficial: true },
+  { slug: 'shadcn/ui', owner: 'shadcn', displayName: 'shadcn/ui', summary: 'Build beautiful UIs with shadcn components — accessible, customizable, and Tailwind-powered.', category: 'Design', isOfficial: false },
+  { slug: 'anthropics/canvas-design', owner: 'anthropics', displayName: 'Canvas Design', summary: 'Interactive visual design and rendering on HTML Canvas — charts, diagrams, and custom graphics.', category: 'Design', isOfficial: true },
+  { slug: 'anthropics/theme-factory', owner: 'anthropics', displayName: 'Theme Factory', summary: 'Generate and apply consistent color themes, typography scales, and spacing systems.', category: 'Design', isOfficial: true },
+  { slug: 'figma/create-design-system-rules', owner: 'figma', displayName: 'Design System Rules', summary: 'Define and enforce design system tokens, components, and patterns across your codebase.', category: 'Design', isOfficial: true },
+  // Web3
+  { slug: 'coinbase/trade', owner: 'coinbase', displayName: 'Coinbase Trade', summary: 'Execute cryptocurrency trades via Coinbase — market orders, limit orders, and portfolio management.', category: 'Web3', isOfficial: true },
+  { slug: 'coinbase/send-usdc', owner: 'coinbase', displayName: 'Send USDC', summary: 'Programmatically send USDC stablecoin transfers on Base and other EVM chains.', category: 'Web3', isOfficial: true },
+  { slug: 'coinbase/authenticate-wallet', owner: 'coinbase', displayName: 'Wallet Auth', summary: 'Authenticate users with their crypto wallet — Sign-In with Ethereum and Base account patterns.', category: 'Web3', isOfficial: true },
+  { slug: 'base/deploying-contracts-on-base', owner: 'base', displayName: 'Deploy Contracts', summary: 'Deploy and verify smart contracts on Base — Foundry/Hardhat patterns and gas optimization.', category: 'Web3', isOfficial: true },
+  { slug: 'base/building-with-base-account', owner: 'base', displayName: 'Base Account', summary: 'Build apps on Base with smart wallets, account abstraction, and gasless transactions.', category: 'Web3', isOfficial: true },
+  // Marketing
+  { slug: 'coreyhaines31/seo-audit', owner: 'coreyhaines31', displayName: 'SEO Audit', summary: 'Comprehensive SEO analysis — technical issues, keyword gaps, backlink opportunities, and fixes.', category: 'Marketing', isOfficial: false },
+  { slug: 'apify/apify-market-research', owner: 'apify', displayName: 'Market Research', summary: 'Automated market research — competitor analysis, pricing intelligence, and trend detection.', category: 'Marketing', isOfficial: true },
+  { slug: 'apify/apify-lead-generation', owner: 'apify', displayName: 'Lead Generation', summary: 'Find and qualify B2B leads from LinkedIn, company websites, and public directories.', category: 'Marketing', isOfficial: true },
+  // Data & Analytics
+  { slug: 'datadog/dd-pup', owner: 'datadog', displayName: 'Datadog Monitor', summary: 'Query metrics, create monitors, and manage alerts. Full observability from your agent.', category: 'Data & Analytics', isOfficial: true },
+  { slug: 'posthog/posthog', owner: 'posthog', displayName: 'PostHog Analytics', summary: 'Query user events, manage feature flags, and analyze funnels with PostHog.', category: 'Data & Analytics', isOfficial: true },
+  { slug: 'tinybird/tinybird-agent-skills', owner: 'tinybird', displayName: 'Tinybird', summary: 'Real-time analytics at scale — ingest events, build APIs, and query billions of rows instantly.', category: 'Data & Analytics', isOfficial: true },
+  { slug: 'dagster/dagster-expert', owner: 'dagster', displayName: 'Dagster', summary: 'Build and orchestrate data pipelines — assets, jobs, schedules, and sensors in one place.', category: 'Data & Analytics', isOfficial: true },
+  // Scraping
+  { slug: 'firecrawl/firecrawl', owner: 'firecrawl', displayName: 'Firecrawl', summary: 'Turn any website into clean LLM-ready data — crawl, scrape, and extract structured content.', category: 'Scraping', isOfficial: true },
+  { slug: 'apify/apify-ultimate-scraper', owner: 'apify', displayName: 'Apify Scraper', summary: 'Enterprise web scraping — handle anti-bot measures, proxies, and large-scale extraction.', category: 'Scraping', isOfficial: true },
+  { slug: 'brave/web-search', owner: 'brave', displayName: 'Brave Search', summary: 'Privacy-first web, news, and image search with clean JSON results and no tracking.', category: 'Scraping', isOfficial: true },
+  { slug: 'browserbase/browser', owner: 'browserbase', displayName: 'Browserbase', summary: 'Scalable cloud browsers for agents — run headless Chromium with stealth and residential proxies.', category: 'Scraping', isOfficial: true },
+  // Media
+  { slug: 'elevenlabs/text-to-speech', owner: 'elevenlabs', displayName: 'ElevenLabs TTS', summary: 'Ultra-realistic voice generation — clone voices, generate audio, and create multilingual speech.', category: 'Media', isOfficial: true },
+  { slug: 'elevenlabs/speech-to-text', owner: 'elevenlabs', displayName: 'Speech to Text', summary: 'Accurate transcription with speaker diarization, timestamps, and multi-language support.', category: 'Media', isOfficial: true },
+  { slug: 'remotion/skills', owner: 'remotion', displayName: 'Remotion Video', summary: 'Programmatically create and render videos with React — animations, captions, and dynamic content.', category: 'Media', isOfficial: true },
+  // Cloud
+  { slug: 'vercel/ai', owner: 'vercel', displayName: 'Vercel AI SDK', summary: 'Build AI-powered Next.js apps — streaming UIs, model switching, and edge-ready deployments.', category: 'Cloud', isOfficial: true },
+  { slug: 'cloudflare/cloudflare', owner: 'cloudflare', displayName: 'Cloudflare Workers', summary: 'Deploy serverless functions globally — edge computing, caching, and KV storage at scale.', category: 'Cloud', isOfficial: true },
+  { slug: 'microsoft/azure-skills', owner: 'microsoft', displayName: 'Azure', summary: 'Full Azure cloud stack — compute, storage, AI services, and infrastructure as code.', category: 'Cloud', isOfficial: true },
+  { slug: 'firebase/firebase-auth-basics', owner: 'firebase', displayName: 'Firebase Auth', summary: 'Add authentication to any app — email/password, OAuth, phone, and anonymous sign-in.', category: 'Cloud', isOfficial: true },
+]
+
 // ── Local skill card ─────────────────────────────────────────────────────────
 function LocalSkillCard({ skill }: { skill: Skill }) {
   return (
@@ -191,6 +268,52 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed, activeCateg
   )
 }
 
+// ── Skills.sh skill card ─────────────────────────────────────────────────────
+interface SkillsShSkillCardProps {
+  skill: SkillsShSkill
+  onInstall: (skill: SkillsShSkill) => void
+  installing: boolean
+  installed: boolean
+}
+
+function SkillsShSkillCard({ skill, onInstall, installing, installed }: SkillsShSkillCardProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.card, installed && styles.cardInstalled]}
+      activeOpacity={0.8}
+      onPress={() => router.push(`/skill/skillssh/${encodeURIComponent(skill.slug)}`)}
+    >
+      <View style={styles.cardHeader}>
+        <Text style={[styles.skillName, { flex: 1 }]} numberOfLines={2}>{skill.displayName}</Text>
+        {installed ? (
+          <View style={styles.installedBadge}><Text style={styles.installedBadgeText}>Installed ✓</Text></View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.installBtn, installing && styles.installBtnLoading]}
+            onPress={(e) => { e.stopPropagation?.(); onInstall(skill) }}
+            disabled={installing}
+          >
+            {installing
+              ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
+              : <Text style={styles.installBtnText}>Install</Text>
+            }
+          </TouchableOpacity>
+        )}
+      </View>
+      <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary}</Text>
+      <View style={styles.cardFooter}>
+        <Text style={styles.sourceLabelSkillssh}>Skills.sh</Text>
+        {skill.isOfficial && (
+          <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Official</Text></View>
+        )}
+        <View style={styles.categoryBadgeSkillssh}>
+          <Text style={styles.categoryBadgeSkillsshText}>{skill.category}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
 // ── Main screen ──────────────────────────────────────────────────────────────
 export default function SkillsScreen() {
   const { skills, setSkills } = useSkillsStore()
@@ -200,7 +323,7 @@ export default function SkillsScreen() {
 
   const [query, setQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string>('All')
-  const [activeSource, setActiveSource] = useState<'all' | 'anthropic' | 'clawhub'>('all')
+  const [activeSource, setActiveSource] = useState<'all' | 'anthropic' | 'clawhub' | 'skillssh'>('all')
   const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [clawHubSkills, setClawHubSkills] = useState<ClawHubSkill[]>([])
   const [searchResults, setSearchResults] = useState<ClawHubSkill[]>([])
@@ -339,13 +462,37 @@ export default function SkillsScreen() {
       if (freshSlugs) setInstalledSlugs(new Set(freshSlugs.map((r: any) => r.skill_slug)))
 
       showToast(`${skillName} installed on ${agent.name}`)
+    } catch (err: any) {
+      showToast(`Install failed: ${err?.message ?? 'unknown error'}`)
+    }
+    setInstallingSlug(null)
+  }, [agents, selectedAgentId, user, showToast])
 
-      await supabase.from('messages').insert({
+  const handleInstallSkillsSh = useCallback(async (skill: SkillsShSkill) => {
+    if (!user) { showToast('Not logged in'); return }
+    if (!selectedAgentId) { showToast('No agent selected'); return }
+    const agent = agents.find((a) => a.id === selectedAgentId)
+    if (!agent) return
+
+    setInstallingSlug(skill.slug)
+    try {
+      const { error: upsertError } = await supabase.from('agent_skills').upsert({
         agent_id: selectedAgentId,
-        user_id: user.id,
-        direction: 'outbound',
-        content: `Skill installed: ${skillName} v${version}`,
-      })
+        skill_slug: skill.slug,
+        config: { displayName: skill.displayName, source: 'skillssh', owner: skill.owner },
+        status: 'active',
+      }, { onConflict: 'agent_id,skill_slug' })
+
+      if (upsertError) throw new Error(upsertError.message)
+
+      const { data: freshSlugs } = await supabase
+        .from('agent_skills')
+        .select('skill_slug')
+        .eq('agent_id', selectedAgentId)
+        .eq('status', 'active')
+      if (freshSlugs) setInstalledSlugs(new Set(freshSlugs.map((r: any) => r.skill_slug)))
+
+      showToast(`${skill.displayName} installed on ${agent.name}`)
     } catch (err: any) {
       showToast(`Install failed: ${err?.message ?? 'unknown error'}`)
     }
@@ -355,20 +502,30 @@ export default function SkillsScreen() {
   const displayedClawHub = query.trim() ? searchResults : clawHubSkills
 
   const anthropicCategories = ['All', ...Array.from(new Set(skills.map((s) => s.category).filter(Boolean) as string[]))]
-  const activeCategoryList = activeSource === 'anthropic' ? anthropicCategories : CLAWHUB_CATEGORIES
+  const activeCategoryList =
+    activeSource === 'anthropic' ? anthropicCategories :
+    activeSource === 'skillssh' ? SKILLSSH_CATEGORIES :
+    CLAWHUB_CATEGORIES
 
   const filteredLocalSkills = skills.filter((s) =>
     (activeCategory === 'All' || s.category === activeCategory) &&
     (!query.trim() || s.name.toLowerCase().includes(query.toLowerCase()) || s.description.toLowerCase().includes(query.toLowerCase()))
   )
 
-  const filteredClawHub = activeSource === 'anthropic'
+  const filteredClawHub = (activeSource === 'anthropic' || activeSource === 'skillssh')
     ? []
     : verifiedOnly
       ? displayedClawHub.filter((s) => !!s.verificationTier)
       : displayedClawHub
 
-  const localSkillsToShow = activeSource === 'clawhub' ? [] : filteredLocalSkills
+  const localSkillsToShow = (activeSource === 'clawhub' || activeSource === 'skillssh') ? [] : filteredLocalSkills
+
+  const filteredSkillsSh = activeSource !== 'skillssh' ? [] : SKILLSSH_SKILLS.filter((s) => {
+    const matchesCat = activeCategory === 'All' || s.category === activeCategory
+    const matchesQuery = !query.trim() || s.displayName.toLowerCase().includes(query.toLowerCase()) || s.summary.toLowerCase().includes(query.toLowerCase())
+    const matchesVerified = !verifiedOnly || s.isOfficial
+    return matchesCat && matchesQuery && matchesVerified
+  })
 
   const sectionLabel = activeCategory !== 'All'
     ? (CATEGORY_CONFIG[activeCategory]?.label ?? activeCategory)
@@ -400,6 +557,12 @@ export default function SkillsScreen() {
             onPress={() => { setActiveSource((s) => s === 'clawhub' ? 'all' : 'clawhub'); setActiveCategory('All') }}
           >
             <Text style={[styles.sourceChipText, activeSource === 'clawhub' && styles.sourceChipClawhubTextActive]}>ClawHub</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sourceChip, activeSource === 'skillssh' && styles.sourceChipSkillsshActive]}
+            onPress={() => { setActiveSource((s) => s === 'skillssh' ? 'all' : 'skillssh'); setActiveCategory('All') }}
+          >
+            <Text style={[styles.sourceChipText, activeSource === 'skillssh' && styles.sourceChipSkillsshTextActive]}>Skills.sh</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.sourceChip, activeSource === 'anthropic' && styles.sourceChipAnthropicActive]}
@@ -503,6 +666,27 @@ export default function SkillsScreen() {
                 ))}
               </>
             )}
+            {filteredSkillsSh.length > 0 && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionLabel}>
+                    {activeCategory !== 'All' ? activeCategory : 'Featured on Skills.sh'}
+                  </Text>
+                </View>
+                {filteredSkillsSh.map((s) => (
+                  <SkillsShSkillCard
+                    key={s.slug}
+                    skill={s}
+                    onInstall={handleInstallSkillsSh}
+                    installing={installingSlug === s.slug}
+                    installed={installedSlugs.has(s.slug)}
+                  />
+                ))}
+              </>
+            )}
+            {activeSource === 'skillssh' && filteredSkillsSh.length === 0 && (
+              <Text style={styles.emptyText}>No skills found</Text>
+            )}
             {localSkillsToShow.length > 0 && (
               <>
                 <View style={styles.sectionHeader}>
@@ -549,6 +733,8 @@ const styles = StyleSheet.create({
   sourceChipAnthropicTextActive: { color: '#a5b4fc' },
   sourceChipClawhubActive: { backgroundColor: 'rgba(0,200,150,0.1)', borderColor: Colors.accentTeal },
   sourceChipClawhubTextActive: { color: Colors.accentTeal },
+  sourceChipSkillsshActive: { backgroundColor: 'rgba(251,146,60,0.12)', borderColor: '#fb923c' },
+  sourceChipSkillsshTextActive: { color: '#fb923c' },
   verifiedFilterChip: { borderColor: 'rgba(96,165,250,0.3)' },
   verifiedFilterChipActive: { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: '#60a5fa' },
   verifiedFilterTextActive: { color: '#60a5fa' },
@@ -611,6 +797,9 @@ const styles = StyleSheet.create({
   anthropicBadge: { backgroundColor: 'rgba(99,102,241,0.12)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   anthropicBadgeText: { color: '#a5b4fc', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   sourceLabelClawhub: { fontSize: 11, fontWeight: '700', color: Colors.accentTeal, letterSpacing: 0.3 },
+  sourceLabelSkillssh: { fontSize: 11, fontWeight: '700', color: '#fb923c', letterSpacing: 0.3 },
+  categoryBadgeSkillssh: { backgroundColor: 'rgba(251,146,60,0.1)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
+  categoryBadgeSkillsshText: { color: '#fb923c', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   categoryBadge: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   categoryBadgeText: { color: Colors.accentGreen, fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   verifiedBadge: { backgroundColor: 'rgba(59,130,246,0.15)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
