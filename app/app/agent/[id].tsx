@@ -55,7 +55,7 @@ export default function AgentDetailScreen() {
   const [agentSkills, setAgentSkills] = useState<InstalledSkill[]>([])
   const [loadingSkills, setLoadingSkills] = useState(false)
   const [input, setInput] = useState('')
-  const [attachments, setAttachments] = useState<string[]>([])
+  const [attachments, setAttachments] = useState<{ local: string; remote?: string }[]>([])
   const [uploading, setUploading] = useState(false)
   const flatListRef = useRef<FlatList>(null)
   const channelRef = useRef<any>(null)
@@ -150,10 +150,15 @@ export default function AgentDetailScreen() {
       allowsMultipleSelection: true,
     })
     if (result.canceled) return
+
+    // Show local previews immediately
+    const newItems = result.assets.map((a) => ({ local: a.uri }))
+    setAttachments((prev) => [...prev, ...newItems])
+
+    // Upload in background
     setUploading(true)
-    try {
-      const urls: string[] = []
-      for (const asset of result.assets) {
+    for (const asset of result.assets) {
+      try {
         const ext = asset.uri.split('.').pop() ?? 'jpg'
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
         const response = await fetch(asset.uri)
@@ -163,12 +168,9 @@ export default function AgentDetailScreen() {
           .upload(fileName, blob, { contentType: asset.mimeType ?? 'image/jpeg' })
         if (!error && data) {
           const { data: { publicUrl } } = supabase.storage.from('message-attachments').getPublicUrl(data.path)
-          urls.push(publicUrl)
+          setAttachments((prev) => prev.map((a) => a.local === asset.uri ? { local: a.local, remote: publicUrl } : a))
         }
-      }
-      setAttachments((prev) => [...prev, ...urls])
-    } catch (err: any) {
-      Alert.alert('Upload failed', err.message)
+      } catch {}
     }
     setUploading(false)
   }
@@ -177,7 +179,8 @@ export default function AgentDetailScreen() {
     if ((!input.trim() && attachments.length === 0) || !user || !id) return
     const content = input.trim() || (attachments.length > 0 ? '[image]' : '')
     setInput('')
-    const meta = attachments.length > 0 ? { attachments } : undefined
+    const urls = attachments.map((a) => a.remote ?? a.local)
+    const meta = urls.length > 0 ? { attachments: urls } : undefined
     setAttachments([])
     await sendMessage(channelRef.current, id, user.id, content, meta)
 
