@@ -296,6 +296,7 @@ export default function SkillsScreen() {
       </View>
 
       {/* Top filter row: agent + source + verified */}
+      <View style={styles.topFilterWrapper}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -352,6 +353,7 @@ export default function SkillsScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </View>
 
       {/* Agent dropdown modal */}
       <Modal visible={dropdownOpen} transparent animationType="fade" onRequestClose={() => setDropdownOpen(false)}>
@@ -464,7 +466,8 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
 
   // Top filter row
-  topFilterRow: { paddingHorizontal: 16, paddingVertical: 8, gap: 8, alignItems: 'center' },
+  topFilterWrapper: { height: 52 },
+  topFilterRow: { paddingHorizontal: 16, gap: 8, alignItems: 'center', height: 52 },
 
   // Agent chip (crimson tint)
   agentChip: {
@@ -476,7 +479,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.accentCrimson,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 9,
+    flexShrink: 0,
   },
   agentChipText: { fontSize: 13, fontWeight: '600', color: Colors.accentCrimson },
   agentDot: { width: 7, height: 7, borderRadius: 4 },
@@ -485,14 +489,15 @@ const styles = StyleSheet.create({
   sourceChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
     borderRadius: 20,
     backgroundColor: Colors.bgElevated,
     borderWidth: 1,
     borderColor: Colors.bgBorder,
+    flexShrink: 0,
   },
-  sourceChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  sourceChipText: { fontSize: 13, fontWeight: '600', color: Colors.textPrimary },
   sourceChipAnthropicActive: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: '#a5b4fc' },
   sourceChipAnthropicTextActive: { color: '#a5b4fc' },
   sourceChipClawhubActive: { backgroundColor: 'rgba(0,200,150,0.1)', borderColor: Colors.accentTeal },
