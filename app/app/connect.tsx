@@ -211,7 +211,7 @@ export default function ConnectScreen() {
               </View>
             </View>
             <TouchableOpacity
-              style={styles.primaryBtn}
+              style={[styles.primaryBtn, styles.cliBluBtn]}
               onPress={() => setCliWaiting(true)}
             >
               <Text style={styles.primaryBtnText}>
@@ -467,5 +467,6 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: Colors.bgPrimary, fontSize: 16, fontWeight: '600' },
   primaryBtnDisabled: { opacity: 0.4 },
+  cliBluBtn: { backgroundColor: '#4a9fd4' },
   backLink: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
 })
