@@ -160,18 +160,25 @@ export default function AgentDetailScreen() {
     setUploading(true)
     for (const asset of result.assets) {
       try {
-        const ext = asset.uri.split('.').pop() ?? 'jpg'
+        const ext = (asset.mimeType?.split('/')[1]) ?? asset.uri.split('.').pop() ?? 'jpg'
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-        const response = await fetch(asset.uri)
-        const blob = await response.blob()
+        const formData = new FormData()
+        formData.append('file', { uri: asset.uri, name: fileName, type: asset.mimeType ?? 'image/jpeg' } as any)
         const { data, error } = await supabase.storage
           .from('message-attachments')
-          .upload(fileName, blob, { contentType: asset.mimeType ?? 'image/jpeg' })
-        if (!error && data) {
+          .upload(fileName, formData, { contentType: asset.mimeType ?? 'image/jpeg', upsert: false })
+        if (error) {
+          console.error('[upload] storage error:', error.message)
+          Alert.alert('Upload failed', error.message)
+        } else if (data) {
           const { data: { publicUrl } } = supabase.storage.from('message-attachments').getPublicUrl(data.path)
+          console.log('[upload] success:', publicUrl)
           setAttachments((prev) => prev.map((a) => a.local === asset.uri ? { local: a.local, remote: publicUrl } : a))
         }
-      } catch {}
+      } catch (e: any) {
+        console.error('[upload] exception:', e?.message)
+        Alert.alert('Upload error', e?.message ?? 'Unknown error')
+      }
     }
     setUploading(false)
   }
