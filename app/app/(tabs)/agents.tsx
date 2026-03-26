@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, Animated } from 'react-native'
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, Animated, Image } from 'react-native'
 import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { useAgentsStore } from '../../stores/agentsStore'
@@ -150,8 +150,11 @@ export default function AgentsScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <View style={styles.logoRow}>
-            <View style={styles.logoMark} />
-            <Text style={styles.title}>CLAW_TERMINAL</Text>
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
           <View style={styles.systemStatus}>
             <View style={styles.systemStatusDot} />
@@ -200,9 +203,8 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   headerLeft: { gap: 4 },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logoMark: { width: 18, height: 18, borderRadius: 3, backgroundColor: Colors.accentCrimson },
-  title: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary, letterSpacing: -0.3 },
+  logoRow: { flexDirection: 'row', alignItems: 'center' },
+  logoImage: { width: 120, height: 36 },
   systemStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   systemStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accentTeal },
   systemStatusText: { color: Colors.accentTeal, fontSize: 9, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
