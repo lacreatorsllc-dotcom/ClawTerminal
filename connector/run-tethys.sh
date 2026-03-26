@@ -19,4 +19,9 @@ $SOUL
 --- MEMORY ---
 $MEMORY"
 
-npx ts-node src/index.ts agent --token 56bb5608-c85d-4066-b3eb-e7c1cd6bdd6f --name tethys --system "$SYSTEM" --api-key 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
+if [ -z "$ANTHROPIC_API_KEY" ]; then
+  echo "[error] ANTHROPIC_API_KEY is not set. Run: export ANTHROPIC_API_KEY=sk-ant-..."
+  exit 1
+fi
+
+npx ts-node src/index.ts agent --token 56bb5608-c85d-4066-b3eb-e7c1cd6bdd6f --name tethys --system "$SYSTEM" --api-key "$ANTHROPIC_API_KEY"
