@@ -197,10 +197,18 @@ export default function ConnectScreen() {
             <Text style={styles.stepTitle}>Run this command</Text>
             <Text style={styles.stepDesc}>In your agent's environment, run the connector command below.</Text>
             <View style={styles.commandBox}>
-              <Text style={styles.command}>{installCmd}</Text>
-              <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
-                <Text style={styles.copyBtnText}>{copied ? '✓ Copied' : 'Copy'}</Text>
-              </TouchableOpacity>
+              <View style={styles.commandHeader}>
+                <View style={styles.commandHeaderIcon}>
+                  <Text style={styles.commandHeaderIconText}>{'>'}_</Text>
+                </View>
+                <Text style={styles.commandHeaderLabel}>INSTALL COMMAND</Text>
+                <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
+                  <Text style={styles.copyBtnText}>{copied ? '✓  Copied' : '⧉  Copy'}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.commandBody}>
+                <Text style={styles.command}>{installCmd}</Text>
+              </View>
             </View>
             <TouchableOpacity
               style={styles.primaryBtn}
@@ -370,22 +378,40 @@ const styles = StyleSheet.create({
   stepTitle: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary },
   stepDesc: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
   commandBox: {
-    backgroundColor: '#0a0a0a',
-    borderRadius: 12,
-    borderLeftWidth: 2,
-    borderLeftColor: Colors.accentCrimson,
-    padding: 16,
-    gap: 12,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    overflow: 'hidden',
   },
-  command: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: Colors.accentTeal, lineHeight: 18 },
+  commandHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.bgBorder,
+  },
+  commandHeaderIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: '#3d3bff22',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  commandHeaderIconText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 10, color: '#6366f1' },
+  commandHeaderLabel: { flex: 1, fontSize: 11, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 1.2 },
+  commandBody: { padding: 14 },
+  command: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: Colors.accentCrimson, lineHeight: 18 },
   copyBtn: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(193,18,31,0.1)',
+    backgroundColor: '#6366f1',
     borderRadius: 8,
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 7,
   },
-  copyBtnText: { color: Colors.accentCrimson, fontSize: 13, fontWeight: '600' },
+  copyBtnText: { color: '#ffffff', fontSize: 13, fontWeight: '600' },
 
   // Instructions
   instructionsList: { gap: 16 },
