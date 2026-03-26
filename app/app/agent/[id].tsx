@@ -62,7 +62,7 @@ export default function AgentDetailScreen() {
   const channelRef = useRef<any>(null)
 
   const { agents, getConnectionStatus } = useAgentsStore()
-  const { user } = useAuthStore()
+  const { user, session } = useAuthStore()
   const { messagesByAgent, setMessages, addMessage } = useChatStore()
 
   const agent = agents.find((a) => a.id === id)
@@ -159,8 +159,7 @@ export default function AgentDetailScreen() {
 
     // Upload via FileSystem.uploadAsync (most reliable in Expo/RN)
     setUploading(true)
-    const { data: sessionData } = await supabase.auth.getSession()
-    const token = sessionData.session?.access_token
+    const token = session?.access_token
     for (const asset of result.assets) {
       try {
         const ext = (asset.mimeType?.split('/')[1]) ?? asset.uri.split('.').pop() ?? 'jpg'
