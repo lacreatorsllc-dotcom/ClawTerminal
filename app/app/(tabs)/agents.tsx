@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, Animated, Image } from 'react-native'
 
-const AGENT_AVATAR = require('../../assets/slug-pfp.png')
+const AGENT_AVATAR = require('../../assets/agent-avatar.png')
 import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { useAgentsStore } from '../../stores/agentsStore'
