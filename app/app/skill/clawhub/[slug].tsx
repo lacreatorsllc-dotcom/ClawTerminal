@@ -148,9 +148,6 @@ export default function ClawHubSkillDetailScreen() {
             {skill.verificationTier && (
               <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
             )}
-            {skill.channel && (
-              <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{skill.channel}</Text></View>
-            )}
           </View>
           <View style={styles.metaRow}>
             {owner && <Text style={styles.meta}>by @{owner.handle}</Text>}

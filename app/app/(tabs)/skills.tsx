@@ -145,7 +145,7 @@ interface ClawHubSkillCardProps {
 }
 
 function ClawHubSkillCard({ skill, onInstall, installing, installed, activeCategory }: ClawHubSkillCardProps) {
-  const catLabel = activeCategory !== 'All' ? (CATEGORY_CONFIG[activeCategory]?.label ?? activeCategory) : null
+  const catLabel = activeCategory !== 'All' ? activeCategory : null
 
   return (
     <TouchableOpacity
