@@ -5,7 +5,7 @@ import {
   Image, Linking, Alert
 } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
-import * as FileSystem from 'expo-file-system'
+import * as FileSystem from 'expo-file-system/legacy'
 import { useLocalSearchParams, router } from 'expo-router'
 import { supabase, subscribeToAgent, sendMessage } from '../../lib/supabase'
 import { useAgentsStore } from '../../stores/agentsStore'
