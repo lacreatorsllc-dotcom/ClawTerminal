@@ -238,6 +238,13 @@ export default function SkillsScreen() {
 
   const displayedClawHub = query.trim() ? searchResults : clawHubSkills
 
+  const categories = ['All', ...Array.from(new Set(skills.map((s) => s.category).filter(Boolean)))]
+
+  const filteredLocalSkills = skills.filter((s) =>
+    (activeCategory === 'All' || s.category === activeCategory) &&
+    (!query.trim() || s.name.toLowerCase().includes(query.toLowerCase()) || s.description.toLowerCase().includes(query.toLowerCase()))
+  )
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -282,6 +289,27 @@ export default function SkillsScreen() {
         {searching && <ActivityIndicator size="small" color={Colors.accentTeal} style={styles.searchSpinner} />}
       </View>
 
+      {/* Category filter */}
+      {!query.trim() && categories.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryRow}
+        >
+          {categories.map((cat) => (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.categoryChip, activeCategory === cat && styles.categoryChipActive]}
+              onPress={() => setActiveCategory(cat)}
+            >
+              <Text style={[styles.categoryChipText, activeCategory === cat && styles.categoryChipTextActive]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
       <FlatList
         data={[]}
         keyExtractor={() => ''}
@@ -291,24 +319,40 @@ export default function SkillsScreen() {
         ListHeaderComponent={
           <>
             {/* ClawHub skills — featured first */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>{query.trim() ? 'Search results' : 'Featured'}</Text>
-              {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
-            </View>
+            {(activeCategory === 'All') && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionLabel}>{query.trim() ? 'Search results' : 'Featured'}</Text>
+                  {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
+                </View>
 
-            {!loading && displayedClawHub.length === 0 && (
-              <Text style={styles.emptyText}>{query.trim() ? 'No results' : 'No skills available'}</Text>
+                {!loading && displayedClawHub.length === 0 && (
+                  <Text style={styles.emptyText}>{query.trim() ? 'No results' : 'No skills available'}</Text>
+                )}
+
+                {displayedClawHub.map((s) => (
+                  <ClawHubSkillCard
+                    key={s.name}
+                    skill={s}
+                    onInstall={handleInstall}
+                    installing={installingSlug === s.name}
+                    installed={installedSlugs.has(s.name)}
+                  />
+                ))}
+              </>
             )}
 
-            {displayedClawHub.map((s) => (
-              <ClawHubSkillCard
-                key={s.name}
-                skill={s}
-                onInstall={handleInstall}
-                installing={installingSlug === s.name}
-                installed={installedSlugs.has(s.name)}
-              />
-            ))}
+            {/* Local / Supabase skills */}
+            {filteredLocalSkills.length > 0 && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionLabel}>Library</Text>
+                </View>
+                {filteredLocalSkills.map((s) => (
+                  <LocalSkillCard key={s.id} skill={s} />
+                ))}
+              </>
+            )}
           </>
         }
       />
@@ -359,6 +403,21 @@ const styles = StyleSheet.create({
   },
   searchSpinner: { marginLeft: 8 },
   list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
+  categoryRow: { paddingHorizontal: 16, paddingBottom: 10, gap: 8 },
+  categoryChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+  },
+  categoryChipActive: {
+    borderColor: Colors.accentTeal,
+    backgroundColor: 'rgba(0,236,196,0.08)',
+  },
+  categoryChipText: { fontSize: 12, fontWeight: '500', color: Colors.textSecondary },
+  categoryChipTextActive: { color: Colors.accentTeal, fontWeight: '700' },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 4 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase' },
   emptyText: { color: Colors.textSecondary, textAlign: 'center', paddingVertical: 24 },
