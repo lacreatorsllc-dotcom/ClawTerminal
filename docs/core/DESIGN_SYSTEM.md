@@ -5,29 +5,32 @@ Premium dark-mode-first command center. Apple-quality spacing, futuristic aesthe
 
 ## Color Palette
 
+> Anthropic brand palette. Reference: brand-guidelines skill.
+
 ### Base
 | Token | Hex | Usage |
 |-------|-----|-------|
-| `bg-primary` | `#080A0E` | App background |
-| `bg-surface` | `#0F1117` | Cards, panels |
-| `bg-elevated` | `#161B24` | Modals, drawers, inputs |
-| `bg-border` | `#1E2533` | Dividers, subtle borders |
+| `bgPrimary` | `#141413` | App background |
+| `bgSurface` | `#1C1B19` | Cards, panels |
+| `bgElevated` | `#242320` | Modals, drawers, inputs |
+| `bgBorder` | `#2E2C28` | Dividers, subtle borders |
 
 ### Accent
 | Token | Hex | Usage |
 |-------|-----|-------|
-| `accent-cyan` | `#00E5FF` | Primary CTA, active agent, glow |
-| `accent-violet` | `#7C3AED` | Secondary accent, skill badges |
-| `accent-green` | `#10F07A` | Online/active status |
-| `accent-amber` | `#F59E0B` | Warning, busy status |
-| `accent-red` | `#EF4444` | Error, disconnected |
+| `accentCrimson` | `#D97757` | Primary CTA, active tab, brand orange |
+| `accentCrimsonHot` | `#E8885A` | Gradient end, hover/press |
+| `accentTeal` | `#6A9BCC` | Secondary accent, Anthropic blue |
+| `accentGreen` | `#788C5D` | Online/active status, Anthropic green |
+| `accentAmber` | `#D97757` | Warning, busy (reuses brand orange) |
+| `accentRed` | `#EF4444` | Error, disconnected |
 
 ### Text
 | Token | Hex | Usage |
 |-------|-----|-------|
-| `text-primary` | `#F1F5F9` | Primary labels |
-| `text-secondary` | `#64748B` | Supporting text, timestamps |
-| `text-muted` | `#334155` | Placeholders, disabled |
+| `textPrimary` | `#FAF9F5` | Primary labels — Anthropic light |
+| `textSecondary` | `#B0AEA5` | Supporting text, timestamps — Anthropic mid gray |
+| `textMuted` | `#6B6A63` | Placeholders, disabled |
 
 ## Typography
 
@@ -57,18 +60,18 @@ Monospace font: `JetBrains Mono` or `Fira Code` for all code/command display.
 | Node circles | 50% |
 
 ## Elevation / Glow
-- Active agent nodes: `0 0 12px #00E5FF40` (cyan glow, 25% opacity)
-- Primary CTA buttons: `0 0 8px #00E5FF30`
+- Active agent nodes: `0 0 12px #D9775740` (orange glow, 25% opacity)
+- Primary CTA buttons: `0 0 8px #D9775730`
 - No heavy shadows — prefer glow over drop shadow
 
 ## Agent Status Colors
-| Status | Color |
-|--------|-------|
-| Active | `accent-green` |
-| Busy | `accent-amber` |
-| Idle | `text-secondary` |
-| Error | `accent-red` |
-| Disconnected | `bg-border` |
+| Status | Color | Hex |
+|--------|-------|-----|
+| Active | `accentGreen` | `#788C5D` |
+| Busy | `accentAmber` | `#D97757` |
+| Idle | `textSecondary` | `#B0AEA5` |
+| Error | `accentRed` | `#EF4444` |
+| Disconnected | `bgBorder` | `#2E2C28` |
 
 ## Component Patterns
 
@@ -96,10 +99,10 @@ Monospace font: `JetBrains Mono` or `Fira Code` for all code/command display.
 ### Buttons
 | Type | Background | Text |
 |------|-----------|------|
-| Primary | `accent-cyan` | `#080A0E` |
-| Secondary | `bg-elevated` | `text-primary` |
-| Destructive | `accent-red` | `#F1F5F9` |
-| Ghost | Transparent | `accent-cyan` |
+| Primary | `accentCrimson` `#D97757` | `bgPrimary` `#141413` |
+| Secondary | `bgElevated` | `textPrimary` |
+| Destructive | `accentRed` | `#FAF9F5` |
+| Ghost | Transparent | `accentCrimson` |
 
 ## Motion
 - Screen transitions: slide (Expo Router default) + subtle fade
