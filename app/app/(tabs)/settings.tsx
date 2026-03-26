@@ -47,7 +47,7 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.version}>ClawTerminal v1.0.0</Text>
+      <Text style={styles.version}>SLUGS v1.0.0</Text>
     </View>
   )
 }

@@ -7,7 +7,7 @@ const STEPS = [
   {
     icon: '⌖',
     title: 'Your agents,\nin your pocket.',
-    body: 'ClawTerminal connects to your AI agents wherever they run — locally, in the cloud, or anywhere in between.',
+    body: 'SLUGS connects to your AI agents wherever they run — locally, in the cloud, or anywhere in between.',
   },
   {
     icon: '◈',
