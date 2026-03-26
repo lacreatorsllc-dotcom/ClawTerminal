@@ -215,7 +215,7 @@ export default function ConnectScreen() {
               style={[styles.primaryBtn, styles.cliBluBtn]}
               onPress={() => setCliWaiting(true)}
             >
-              <Text style={styles.primaryBtnText}>
+              <Text style={[styles.primaryBtnText, styles.cliBluBtnText]}>
                 {cliWaiting ? 'Waiting for agent...' : 'I ran it — connect'}
               </Text>
             </TouchableOpacity>
@@ -452,6 +452,7 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: Colors.bgPrimary, fontSize: 16, fontWeight: '600' },
   primaryBtnDisabled: { opacity: 0.4 },
-  cliBluBtn: { backgroundColor: '#c1121f' },
+  cliBluBtn: { backgroundColor: 'rgba(255, 69, 58, 0.08)' },
+  cliBluBtnText: { color: Colors.accentRed },
   backLink: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
 })
