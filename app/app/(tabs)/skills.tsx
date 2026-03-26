@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Modal } from 'react-native'
+import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet, TextInput, ActivityIndicator, Modal, RefreshControl } from 'react-native'
 import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../../lib/supabase'
@@ -205,6 +205,7 @@ export default function SkillsScreen() {
   const [clawHubSkills, setClawHubSkills] = useState<ClawHubSkill[]>([])
   const [searchResults, setSearchResults] = useState<ClawHubSkill[]>([])
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [searching, setSearching] = useState(false)
 
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
@@ -248,27 +249,25 @@ export default function SkillsScreen() {
   }, [])
 
   // Fetch ClawHub skills for active category
-  useEffect(() => {
-    setLoading(true)
-    const fetchSkills = async () => {
-      try {
-        let items: ClawHubSkill[] = []
-        if (activeCategory === 'All') {
-          const data = await fetch(`${CLAWHUB}/packages?family=skill&limit=30`).then((r) => r.json())
-          items = (data.items ?? []).map((s: any) => ({ ...s, name: s.slug ?? s.name }))
-        } else {
-          const config = CATEGORY_CONFIG[activeCategory]
-          if (config) {
-            const seen = new Set<string>()
-            const responses = await Promise.allSettled(
-              config.queries.map((q) =>
-                fetch(`${CLAWHUB}/search?q=${encodeURIComponent(q)}&limit=30`).then((r) => r.json())
-              )
+  const fetchSkills = useCallback(async () => {
+    try {
+      let items: ClawHubSkill[] = []
+      if (activeCategory === 'All') {
+        const data = await fetch(`${CLAWHUB}/packages?family=skill&limit=30`).then((r) => r.json())
+        items = (data.items ?? []).map((s: any) => ({ ...s, name: s.slug ?? s.name }))
+      } else {
+        const config = CATEGORY_CONFIG[activeCategory]
+        if (config) {
+          const seen = new Set<string>()
+          const responses = await Promise.allSettled(
+            config.queries.map((q) =>
+              fetch(`${CLAWHUB}/search?q=${encodeURIComponent(q)}&limit=30`).then((r) => r.json())
             )
-            for (const res of responses) {
-              if (res.status !== 'fulfilled') continue
-              for (const s of (res.value.results ?? res.value.items ?? [])) {
-                const skill: ClawHubSkill = { ...s, name: s.slug ?? s.name }
+          )
+          for (const res of responses) {
+            if (res.status !== 'fulfilled') continue
+            for (const s of (res.value.results ?? res.value.items ?? [])) {
+              const skill: ClawHubSkill = { ...s, name: s.slug ?? s.name }
                 if (!seen.has(skill.name)) { seen.add(skill.name); items.push(skill) }
               }
             }
@@ -280,8 +279,18 @@ export default function SkillsScreen() {
       } catch {}
       setLoading(false)
     }
-    fetchSkills()
   }, [activeCategory])
+
+  useEffect(() => {
+    setLoading(true)
+    fetchSkills()
+  }, [fetchSkills])
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    await fetchSkills()
+    setRefreshing(false)
+  }, [fetchSkills])
 
   // Search — filtered by active category keywords when one is selected
   useEffect(() => {
@@ -469,6 +478,9 @@ export default function SkillsScreen() {
         renderItem={() => null}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accentCrimson} />
+        }
         ListHeaderComponent={
           <>
             {activeSource !== 'anthropic' && (
