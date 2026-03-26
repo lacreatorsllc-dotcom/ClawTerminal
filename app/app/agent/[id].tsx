@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
-  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator
+  StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
+  Image, Linking, Alert
 } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, router } from 'expo-router'
 import { supabase, subscribeToAgent, sendMessage } from '../../lib/supabase'
 import { useAgentsStore } from '../../stores/agentsStore'
@@ -21,6 +23,23 @@ interface InstalledSkill {
   category: string | null
 }
 
+const URL_REGEX = /(https?:\/\/[^\s]+)/g
+
+function MessageText({ content, outbound }: { content: string; outbound: boolean }) {
+  const parts = content.split(URL_REGEX)
+  return (
+    <Text style={[styles.bubbleText, outbound && styles.bubbleTextOut]}>
+      {parts.map((part, i) =>
+        URL_REGEX.test(part) ? (
+          <Text key={i} style={styles.bubbleLink} onPress={() => Linking.openURL(part)}>{part}</Text>
+        ) : (
+          <Text key={i}>{part}</Text>
+        )
+      )}
+    </Text>
+  )
+}
+
 const STATUS_COLOR: Record<AgentStatus, string> = {
   connected: Colors.accentGreen,
   connecting: Colors.accentTeal,
@@ -36,6 +55,8 @@ export default function AgentDetailScreen() {
   const [agentSkills, setAgentSkills] = useState<InstalledSkill[]>([])
   const [loadingSkills, setLoadingSkills] = useState(false)
   const [input, setInput] = useState('')
+  const [attachments, setAttachments] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
   const flatListRef = useRef<FlatList>(null)
   const channelRef = useRef<any>(null)
 
@@ -120,11 +141,45 @@ export default function AgentDetailScreen() {
     }
   }, [id])
 
+  async function handlePickImage() {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') { Alert.alert('Permission needed', 'Allow photo access to send images.'); return }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsMultipleSelection: true,
+    })
+    if (result.canceled) return
+    setUploading(true)
+    try {
+      const urls: string[] = []
+      for (const asset of result.assets) {
+        const ext = asset.uri.split('.').pop() ?? 'jpg'
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+        const response = await fetch(asset.uri)
+        const blob = await response.blob()
+        const { data, error } = await supabase.storage
+          .from('message-attachments')
+          .upload(fileName, blob, { contentType: asset.mimeType ?? 'image/jpeg' })
+        if (!error && data) {
+          const { data: { publicUrl } } = supabase.storage.from('message-attachments').getPublicUrl(data.path)
+          urls.push(publicUrl)
+        }
+      }
+      setAttachments((prev) => [...prev, ...urls])
+    } catch (err: any) {
+      Alert.alert('Upload failed', err.message)
+    }
+    setUploading(false)
+  }
+
   async function handleSend() {
-    if (!input.trim() || !user || !id) return
-    const content = input.trim()
+    if ((!input.trim() && attachments.length === 0) || !user || !id) return
+    const content = input.trim() || (attachments.length > 0 ? '[image]' : '')
     setInput('')
-    await sendMessage(channelRef.current, id, user.id, content)
+    const meta = attachments.length > 0 ? { attachments } : undefined
+    setAttachments([])
+    await sendMessage(channelRef.current, id, user.id, content, meta)
 
     // If this is a Telegram agent, forward the message via Edge Function
     if (agent?.metadata?.type === 'telegram') {
@@ -176,16 +231,37 @@ export default function AgentDetailScreen() {
             keyExtractor={(m) => m.id}
             renderItem={({ item }) => (
               <View style={[styles.bubble, item.direction === 'inbound' && styles.bubbleOut]}>
-                <Text style={[styles.bubbleText, item.direction === 'inbound' && styles.bubbleTextOut]}>
-                  {item.content}
-                </Text>
+                {item.metadata?.attachments?.map((url, i) => (
+                  <Image key={i} source={{ uri: url }} style={styles.bubbleImage} resizeMode="cover" />
+                ))}
+                {item.content && item.content !== '[image]' && (
+                  <MessageText content={item.content} outbound={item.direction === 'inbound'} />
+                )}
                 <Text style={styles.bubbleTime}>{new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
               </View>
             )}
             contentContainerStyle={styles.chatList}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           />
+          {attachments.length > 0 && (
+            <View style={styles.attachmentPreview}>
+              {attachments.map((url, i) => (
+                <View key={i} style={styles.attachmentThumbWrap}>
+                  <Image source={{ uri: url }} style={styles.attachmentThumb} />
+                  <TouchableOpacity style={styles.attachmentRemove} onPress={() => setAttachments((p) => p.filter((_, j) => j !== i))}>
+                    <Text style={styles.attachmentRemoveText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
           <View style={styles.inputRow}>
+            <TouchableOpacity style={styles.attachBtn} onPress={handlePickImage} disabled={uploading}>
+              {uploading
+                ? <ActivityIndicator size="small" color={Colors.textMuted} />
+                : <Text style={styles.attachBtnText}>⊕</Text>
+              }
+            </TouchableOpacity>
             <TextInput
               style={styles.chatInput}
               value={input}
@@ -196,7 +272,7 @@ export default function AgentDetailScreen() {
               returnKeyType="send"
               onSubmitEditing={handleSend}
             />
-            <TouchableOpacity style={styles.sendBtn} onPress={handleSend}>
+            <TouchableOpacity style={[styles.sendBtn, (!input.trim() && attachments.length === 0) && styles.sendBtnDisabled]} onPress={handleSend}>
               <Text style={styles.sendBtnText}>↑</Text>
             </TouchableOpacity>
           </View>
@@ -359,15 +435,44 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   bubbleOut: { alignSelf: 'flex-end', backgroundColor: '#1a0608' },
+  bubbleImage: { width: '100%', height: 180, borderRadius: 10, marginBottom: 6 },
   bubbleText: { color: Colors.textPrimary, fontSize: 15, lineHeight: 20 },
   bubbleTextOut: { color: '#fff' },
+  bubbleLink: { color: Colors.accentTeal, textDecorationLine: 'underline' },
   bubbleTime: { color: Colors.textSecondary, fontSize: 11, marginTop: 4, alignSelf: 'flex-end' },
+  sendBtnDisabled: { opacity: 0.4 },
+  attachmentPreview: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+  },
+  attachmentThumbWrap: { position: 'relative' },
+  attachmentThumb: { width: 64, height: 64, borderRadius: 8 },
+  attachmentRemove: {
+    position: 'absolute', top: -6, right: -6,
+    width: 18, height: 18, borderRadius: 9,
+    backgroundColor: Colors.accentCrimson,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  attachmentRemoveText: { color: '#fff', fontSize: 12, fontWeight: '700', lineHeight: 14 },
   inputRow: {
     flexDirection: 'row',
     padding: 12,
     gap: 8,
     backgroundColor: 'rgba(0,0,0,0.9)',
   },
+  attachBtn: {
+    width: 44, height: 44,
+    justifyContent: 'center', alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+  },
+  attachBtnText: { color: Colors.textSecondary, fontSize: 22 },
   chatInput: {
     flex: 1,
     backgroundColor: '#0a0a0a',

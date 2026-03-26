@@ -28,6 +28,7 @@ export interface Message {
   created_at: string
   input_tokens?: number | null
   output_tokens?: number | null
+  metadata?: { attachments?: string[] } | null
 }
 
 export interface Skill {

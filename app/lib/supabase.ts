@@ -120,12 +120,14 @@ export async function sendMessage(
   _channel: ReturnType<typeof supabase.channel> | null,
   agentId: string,
   userId: string,
-  content: string
+  content: string,
+  metadata?: { attachments?: string[] }
 ) {
   return supabase.from('messages').insert({
     agent_id: agentId,
     user_id: userId,
     direction: 'inbound' as const,
     content,
+    ...(metadata ? { metadata } : {}),
   })
 }
