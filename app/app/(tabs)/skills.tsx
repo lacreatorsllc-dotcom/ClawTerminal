@@ -14,8 +14,8 @@ import type { Skill } from '../../lib/types'
 const CLAWHUB = 'https://clawhub.ai/api/v1'
 
 const CLAWHUB_CATEGORIES = [
-  'All', 'AI/ML', 'Utility', 'Development', 'Productivity',
-  'Web', 'Science', 'Media', 'Social', 'Finance', 'Trading', 'Location', 'Business',
+  'All', 'AI/ML', 'Development', 'Productivity', 'Utility',
+  'Business', 'Finance', 'Trading', 'Social', 'Web', 'Media', 'Science', 'Location',
 ]
 
 // Maps display label → API channel param
@@ -559,22 +559,24 @@ const styles = StyleSheet.create({
   searchSpinner: { marginLeft: 8 },
 
   // Category chips
-  chipRow: { height: 46, justifyContent: 'center' },
-  categoryRow: { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
+  chipRow: { height: 52 },
+  categoryRow: { paddingHorizontal: 16, alignItems: 'center', gap: 8, height: 52 },
   categoryChip: {
-    paddingHorizontal: 14,
-    height: 34,
-    justifyContent: 'center',
-    borderRadius: 17,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
     backgroundColor: Colors.bgElevated,
     borderWidth: 1,
     borderColor: Colors.bgBorder,
+    flexShrink: 0,
   },
   categoryChipActive: {
     borderColor: Colors.accentGreen,
     backgroundColor: 'rgba(0,200,150,0.08)',
   },
-  categoryChipText: { fontSize: 12, fontWeight: '500', color: Colors.textSecondary },
+  categoryChipText: { fontSize: 13, fontWeight: '600', color: Colors.textPrimary },
   categoryChipTextActive: { color: Colors.accentGreen, fontWeight: '700' },
   // List
   list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
