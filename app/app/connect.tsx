@@ -404,7 +404,7 @@ const styles = StyleSheet.create({
   commandHeaderIconText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 10, color: '#6366f1' },
   commandHeaderLabel: { flex: 1, fontSize: 11, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 1.2 },
   commandBody: { padding: 14 },
-  command: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: Colors.accentCrimson, lineHeight: 18 },
+  command: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: '#d4846a', lineHeight: 18 },
   copyBtn: {
     backgroundColor: '#6366f1',
     borderRadius: 8,
