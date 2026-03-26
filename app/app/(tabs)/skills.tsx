@@ -13,6 +13,20 @@ import type { Skill } from '../../lib/types'
 
 const CLAWHUB = 'https://clawhub.ai/api/v1'
 
+const TRADING_KEYWORDS = [
+  'crypto', 'bitcoin', 'ethereum', 'btc', 'eth', 'blockchain', 'defi', 'nft',
+  'stock', 'stocks', 'equity', 'market', 'markets', 'trading', 'trader', 'trade',
+  'forex', 'currency', 'exchange', 'binance', 'coinbase', 'coinmarketcap',
+  'portfolio', 'investment', 'invest', 'price', 'chart', 'technical analysis',
+  'candlestick', 'arbitrage', 'futures', 'options', 'derivatives', 'wallet',
+  'token', 'coin', 'dex', 'yield', 'staking', 'automated trading', 'bot',
+]
+
+function isTradingRelated(skill: ClawHubSkill): boolean {
+  const haystack = `${skill.displayName} ${skill.summary} ${skill.originalSummary ?? ''}`.toLowerCase()
+  return TRADING_KEYWORDS.some((kw) => haystack.includes(kw))
+}
+
 const CLAWHUB_CATEGORIES = [
   'All', 'Trading', 'Productivity', 'AI/ML', 'Development', 'Utility',
   'Business', 'Finance', 'Social', 'Web', 'Media', 'Science', 'Community', 'Location',
@@ -199,20 +213,48 @@ export default function SkillsScreen() {
   // Fetch ClawHub skills — refetch when category changes
   useEffect(() => {
     setLoading(true)
-    const channel = activeCategory !== 'All' ? CATEGORY_CHANNEL[activeCategory] : null
-    const url = channel
-      ? `${CLAWHUB}/packages?family=skill&channel=${channel}&limit=30`
-      : `${CLAWHUB}/packages?family=skill&limit=30`
 
-    fetch(url)
-      .then((r) => r.json())
-      .then(async (data) => {
-        const items: ClawHubSkill[] = data.items ?? []
+    const fetchSkills = async () => {
+      try {
+        let items: ClawHubSkill[] = []
+
+        if (activeCategory === 'Trading') {
+          // Fetch broadly across trading-adjacent channels + keyword search, then filter client-side
+          const [financeRes, tradingSearchRes, cryptoSearchRes] = await Promise.allSettled([
+            fetch(`${CLAWHUB}/packages?family=skill&channel=finance&limit=50`).then((r) => r.json()),
+            fetch(`${CLAWHUB}/search?q=trading&limit=30`).then((r) => r.json()),
+            fetch(`${CLAWHUB}/search?q=crypto&limit=30`).then((r) => r.json()),
+          ])
+
+          const seen = new Set<string>()
+          const addItems = (raw: any[]) => {
+            for (const r of raw) {
+              const skill: ClawHubSkill = { ...r, name: r.slug ?? r.name }
+              if (!seen.has(skill.name)) { seen.add(skill.name); items.push(skill) }
+            }
+          }
+
+          if (financeRes.status === 'fulfilled') addItems(financeRes.value.items ?? [])
+          if (tradingSearchRes.status === 'fulfilled') addItems(tradingSearchRes.value.results ?? [])
+          if (cryptoSearchRes.status === 'fulfilled') addItems(cryptoSearchRes.value.results ?? [])
+
+          items = items.filter(isTradingRelated)
+        } else {
+          const channel = activeCategory !== 'All' ? CATEGORY_CHANNEL[activeCategory] : null
+          const url = channel
+            ? `${CLAWHUB}/packages?family=skill&channel=${channel}&limit=30`
+            : `${CLAWHUB}/packages?family=skill&limit=30`
+          const data = await fetch(url).then((r) => r.json())
+          items = data.items ?? []
+        }
+
         const translated = await Promise.all(items.map(translateSkill))
         setClawHubSkills(translated)
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      } catch {}
+      setLoading(false)
+    }
+
+    fetchSkills()
   }, [activeCategory])
 
   // Search ClawHub
