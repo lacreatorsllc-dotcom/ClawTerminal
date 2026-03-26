@@ -14,8 +14,8 @@ import type { Skill } from '../../lib/types'
 const CLAWHUB = 'https://clawhub.ai/api/v1'
 
 const CLAWHUB_CATEGORIES = [
-  'All', 'AI/ML', 'Development', 'Productivity', 'Utility',
-  'Business', 'Finance', 'Trading', 'Social', 'Web', 'Media', 'Science', 'Location',
+  'All', 'Trading', 'Productivity', 'AI/ML', 'Development', 'Utility',
+  'Business', 'Finance', 'Social', 'Web', 'Media', 'Science', 'Community', 'Location',
 ]
 
 // Maps display label → API channel param
@@ -32,6 +32,7 @@ const CATEGORY_CHANNEL: Record<string, string> = {
   'Trading': 'trading',
   'Location': 'location',
   'Business': 'business',
+  'Community': 'community',
 }
 
 async function translateSkill(skill: ClawHubSkill): Promise<ClawHubSkill> {
@@ -71,8 +72,8 @@ function LocalSkillCard({ skill }: { skill: Skill }) {
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
       <View style={styles.cardFooter}>
-        <View style={styles.verifiedBadge}>
-          <Text style={styles.verifiedBadgeText}>Anthropic</Text>
+        <View style={styles.anthropicBadge}>
+          <Text style={styles.anthropicBadgeText}>Anthropic</Text>
         </View>
         {skill.category && (
           <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{skill.category}</Text></View>
@@ -119,14 +120,14 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSk
         <Text style={styles.skillDescOriginal} numberOfLines={1}>{skill.originalSummary}</Text>
       ) : null}
       <View style={styles.cardFooter}>
-        {skill.verificationTier
-          ? <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
-          : <Text style={styles.sourceLabelClawhub}>ClawHub</Text>
-        }
+        <Text style={styles.sourceLabelClawhub}>ClawHub</Text>
+        {skill.verificationTier && (
+          <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
+        )}
         {skill.channel && (
           <View style={styles.categoryBadge}>
             <Text style={styles.categoryBadgeText}>
-              {Object.entries(CATEGORY_CHANNEL).find(([, v]) => v === skill.channel)?.[0] ?? skill.channel}
+              {Object.entries(CATEGORY_CHANNEL).find(([, v]) => v === skill.channel)?.[0] ?? skill.channel.charAt(0).toUpperCase() + skill.channel.slice(1)}
             </Text>
           </View>
         )}
@@ -598,6 +599,8 @@ const styles = StyleSheet.create({
   skillName: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
   skillDesc: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
   skillDescOriginal: { color: Colors.textMuted, fontSize: 11, lineHeight: 16, fontStyle: 'italic' },
+  anthropicBadge: { backgroundColor: 'rgba(99,102,241,0.12)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
+  anthropicBadgeText: { color: '#a5b4fc', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   sourceLabelClawhub: { fontSize: 11, fontWeight: '700', color: Colors.accentTeal, letterSpacing: 0.3 },
   categoryBadge: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   categoryBadgeText: { color: Colors.accentGreen, fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
