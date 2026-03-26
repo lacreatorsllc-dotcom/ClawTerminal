@@ -274,6 +274,12 @@ export default function SkillsScreen() {
 
   const displayedClawHub = query.trim() ? searchResults : clawHubSkills
 
+  // Derive Anthropic categories from local skills
+  const anthropicCategories = ['All', ...Array.from(new Set(skills.map((s) => s.category).filter(Boolean) as string[]))]
+
+  // Active category list based on selected source
+  const activeCategoryList = activeSource === 'anthropic' ? anthropicCategories : CLAWHUB_CATEGORIES
+
   const filteredLocalSkills = skills.filter((s) =>
     (activeCategory === 'All' || s.category === activeCategory) &&
     (!query.trim() || s.name.toLowerCase().includes(query.toLowerCase()) || s.description.toLowerCase().includes(query.toLowerCase()))
@@ -322,7 +328,7 @@ export default function SkillsScreen() {
 
         <TouchableOpacity
           style={[styles.sourceChip, activeSource === 'anthropic' && styles.sourceChipAnthropicActive]}
-          onPress={() => setActiveSource((s) => s === 'anthropic' ? 'all' : 'anthropic')}
+          onPress={() => { setActiveSource((s) => s === 'anthropic' ? 'all' : 'anthropic'); setActiveCategory('All') }}
         >
           <Text style={[styles.sourceChipText, activeSource === 'anthropic' && styles.sourceChipAnthropicTextActive]}>
             Anthropic
@@ -331,7 +337,7 @@ export default function SkillsScreen() {
 
         <TouchableOpacity
           style={[styles.sourceChip, activeSource === 'clawhub' && styles.sourceChipClawhubActive]}
-          onPress={() => setActiveSource((s) => s === 'clawhub' ? 'all' : 'clawhub')}
+          onPress={() => { setActiveSource((s) => s === 'clawhub' ? 'all' : 'clawhub'); setActiveCategory('All') }}
         >
           <Text style={[styles.sourceChipText, activeSource === 'clawhub' && styles.sourceChipClawhubTextActive]}>
             ClawHub
@@ -392,11 +398,11 @@ export default function SkillsScreen() {
         {searching && <ActivityIndicator size="small" color={Colors.accentTeal} style={styles.searchSpinner} />}
       </View>
 
-      {/* Category filters */}
-      {!query.trim() && activeSource !== 'anthropic' && (
+      {/* Category filters — only shown when a source is selected */}
+      {!query.trim() && activeSource !== 'all' && (
         <View style={styles.chipRow}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
-            {CLAWHUB_CATEGORIES.map((cat) => (
+            {activeCategoryList.map((cat) => (
               <TouchableOpacity
                 key={cat}
                 style={[styles.categoryChip, activeCategory === cat && styles.categoryChipActive]}
