@@ -132,6 +132,7 @@ export default function AgentDetailScreen() {
           direction: payload.direction as 'inbound' | 'outbound',
           content: payload.content,
           created_at: new Date(payload.ts).toISOString(),
+          metadata: payload.metadata ?? null,
         }
         addMessage(id, msg)
       },

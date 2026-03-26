@@ -2,13 +2,13 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "Write|Edit|NotebookEdit|Bash",
         "hooks": [
           {
-            "command": "/Users/mememarketer/.pentagon/hooks/scope-guard.sh",
-            "type": "command"
+            "type": "command",
+            "command": "/Users/mememarketer/.pentagon/hooks/scope-guard.sh"
           }
-        ],
-        "matcher": "Write|Edit|NotebookEdit|Bash"
+        ]
       }
     ],
     "Stop": [
@@ -22,6 +22,11 @@
           }
         ]
       }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/mememarketer/Pentagon/ClawTerminal log --oneline -10)"
     ]
   }
 }
