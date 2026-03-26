@@ -15,7 +15,7 @@ const CLAWHUB = 'https://clawhub.ai/api/v1'
 
 const CLAWHUB_CATEGORIES = [
   'All', 'AI/ML', 'Utility', 'Development', 'Productivity',
-  'Web', 'Science', 'Media', 'Social', 'Finance', 'Location', 'Business',
+  'Web', 'Science', 'Media', 'Social', 'Finance', 'Trading', 'Location', 'Business',
 ]
 
 // Maps display label → API channel param
@@ -29,6 +29,7 @@ const CATEGORY_CHANNEL: Record<string, string> = {
   'Media': 'media',
   'Social': 'social',
   'Finance': 'finance',
+  'Trading': 'trading',
   'Location': 'location',
   'Business': 'business',
 }
