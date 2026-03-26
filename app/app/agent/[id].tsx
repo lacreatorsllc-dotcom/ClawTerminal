@@ -17,7 +17,9 @@ import type { Message, AgentStatus } from '../../lib/types'
 type Tab = 'chat' | 'status' | 'vitals' | 'activity' | 'skills'
 
 interface InstalledSkill {
-  id: string
+  id: string           // used as key
+  skillId?: string     // local skills UUID → /skill/[id]
+  skillSlug?: string   // ClawHub slug → /skill/clawhub/[slug]
   name: string
   description: string
   version: string
@@ -72,23 +74,27 @@ export default function AgentDetailScreen() {
   useEffect(() => {
     if (!id || tab !== 'skills') return
     setLoadingSkills(true)
-    supabase
-      .from('agent_skills')
-      .select('skill_slug, config, status')
-      .eq('agent_id', id)
-      .eq('status', 'active')
-      .then(({ data }) => {
-        setAgentSkills(
-          (data ?? []).map((row: any) => ({
-            id: row.skill_slug,
-            name: row.config?.displayName ?? row.skill_slug,
-            description: '',
-            version: row.config?.version ?? '1.0.0',
-            category: 'Registry',
-          }))
-        )
-        setLoadingSkills(false)
-      })
+    Promise.all([
+      supabase.from('agent_skills').select('skill_id, skill_slug, config, status').eq('agent_id', id).eq('status', 'active'),
+      supabase.from('skills').select('id, name, description, category, version'),
+    ]).then(([{ data: rows }, { data: localSkills }]) => {
+      const localMap = new Map((localSkills ?? []).map((s: any) => [s.id, s]))
+      setAgentSkills(
+        (rows ?? []).map((row: any) => {
+          const local = row.skill_id ? localMap.get(row.skill_id) : null
+          return {
+            id: row.skill_id ?? row.skill_slug ?? String(Math.random()),
+            skillId: row.skill_id ?? undefined,
+            skillSlug: row.skill_slug ?? undefined,
+            name: local?.name ?? row.config?.displayName ?? row.skill_slug ?? 'Unknown',
+            description: local?.description ?? '',
+            version: local?.version ?? row.config?.version ?? '1.0.0',
+            category: local?.category ?? null,
+          }
+        })
+      )
+      setLoadingSkills(false)
+    })
   }, [id, tab])
 
   useEffect(() => {
@@ -401,9 +407,21 @@ export default function AgentDetailScreen() {
               keyExtractor={(s) => s.id}
               contentContainerStyle={styles.activityList}
               renderItem={({ item }) => (
-                <View style={styles.skillRow}>
+                <TouchableOpacity
+                  style={styles.skillRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (item.skillId) router.push(`/skill/${item.skillId}`)
+                    else if (item.skillSlug) router.push(`/skill/clawhub/${item.skillSlug}`)
+                  }}
+                >
                   <View style={styles.skillRowContent}>
-                    <Text style={styles.skillRowName}>{item.name}</Text>
+                    <View style={styles.skillRowNameRow}>
+                      <Text style={styles.skillRowName}>{item.name}</Text>
+                      <View style={styles.installedBadge}>
+                        <Text style={styles.installedBadgeText}>Installed</Text>
+                      </View>
+                    </View>
                     {item.description ? (
                       <Text style={styles.skillRowDesc} numberOfLines={2}>{item.description}</Text>
                     ) : null}
@@ -411,8 +429,9 @@ export default function AgentDetailScreen() {
                   <View style={styles.skillRowMeta}>
                     {item.category ? <Text style={styles.skillRowCategory}>{item.category}</Text> : null}
                     <Text style={styles.skillRowVersion}>v{item.version}</Text>
+                    <Text style={styles.skillRowChevron}>›</Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               )}
             />
           )}
@@ -549,9 +568,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   skillRowContent: { flex: 1, gap: 3 },
+  skillRowNameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   skillRowName: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
   skillRowDesc: { fontSize: 12, color: Colors.textSecondary, lineHeight: 16 },
   skillRowMeta: { alignItems: 'flex-end', gap: 4 },
   skillRowCategory: { fontSize: 10, fontWeight: '700', color: Colors.accentTeal, textTransform: 'uppercase', letterSpacing: 0.5 },
   skillRowVersion: { fontSize: 11, color: Colors.textMuted },
+  skillRowChevron: { fontSize: 18, color: Colors.textMuted, lineHeight: 18 },
+  installedBadge: { backgroundColor: 'rgba(34,197,94,0.12)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 },
+  installedBadgeText: { color: Colors.accentGreen, fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
 })
