@@ -248,7 +248,6 @@ export async function runAgent({ userId, agentName, systemPrompt, apiKey }: Agen
         responding = false;
       }
     })
-    )
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         await supabase
