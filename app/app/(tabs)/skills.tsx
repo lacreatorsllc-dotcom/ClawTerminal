@@ -144,6 +144,7 @@ export default function SkillsScreen() {
 
   const [query, setQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string>('All')
+  const [activeSource, setActiveSource] = useState<'all' | 'anthropic' | 'clawhub'>('all')
   const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [clawHubSkills, setClawHubSkills] = useState<ClawHubSkill[]>([])
   const [searchResults, setSearchResults] = useState<ClawHubSkill[]>([])
@@ -278,11 +279,13 @@ export default function SkillsScreen() {
     (!query.trim() || s.name.toLowerCase().includes(query.toLowerCase()) || s.description.toLowerCase().includes(query.toLowerCase()))
   )
 
-  const filteredClawHub = verifiedOnly
-    ? displayedClawHub.filter((s) => !!s.verificationTier)
-    : displayedClawHub
+  const filteredClawHub = (activeSource === 'anthropic')
+    ? []
+    : verifiedOnly
+      ? displayedClawHub.filter((s) => !!s.verificationTier)
+      : displayedClawHub
 
-  const localSkillsToShow = verifiedOnly ? filteredLocalSkills : filteredLocalSkills // local = always Anthropic = always verified
+  const localSkillsToShow = activeSource === 'clawhub' ? [] : filteredLocalSkills
 
   return (
     <View style={styles.container}>
@@ -292,11 +295,15 @@ export default function SkillsScreen() {
         <Text style={styles.subtitle}>{clawHubSkills.length + skills.length} available</Text>
       </View>
 
-      {/* Agent dropdown */}
-      {agents.length > 0 && (
-        <View style={styles.dropdownWrapper}>
+      {/* Top filter row: agent + source + verified */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.topFilterRow}
+      >
+        {agents.length > 0 && (
           <TouchableOpacity
-            style={styles.dropdownTrigger}
+            style={styles.agentChip}
             onPress={() => setDropdownOpen(true)}
             activeOpacity={0.8}
           >
@@ -305,13 +312,46 @@ export default function SkillsScreen() {
                 ? (getConnectionStatus(selectedAgent.id) === 'connected' ? Colors.accentGreen : Colors.textMuted)
                 : Colors.textMuted
             }]} />
-            <Text style={styles.dropdownTriggerText}>
+            <Text style={styles.agentChipText}>
               {selectedAgent ? selectedAgent.name : 'Select agent'}
             </Text>
-            <Ionicons name="chevron-down" size={14} color={Colors.textSecondary} />
+            <Ionicons name="chevron-down" size={12} color={Colors.accentCrimson} />
           </TouchableOpacity>
-        </View>
-      )}
+        )}
+
+        <TouchableOpacity
+          style={[styles.sourceChip, activeSource === 'anthropic' && styles.sourceChipAnthropicActive]}
+          onPress={() => setActiveSource((s) => s === 'anthropic' ? 'all' : 'anthropic')}
+        >
+          <Text style={[styles.sourceChipText, activeSource === 'anthropic' && styles.sourceChipAnthropicTextActive]}>
+            Anthropic
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.sourceChip, activeSource === 'clawhub' && styles.sourceChipClawhubActive]}
+          onPress={() => setActiveSource((s) => s === 'clawhub' ? 'all' : 'clawhub')}
+        >
+          <Text style={[styles.sourceChipText, activeSource === 'clawhub' && styles.sourceChipClawhubTextActive]}>
+            ClawHub
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.sourceChip, styles.verifiedFilterChip, verifiedOnly && styles.verifiedFilterChipActive]}
+          onPress={() => setVerifiedOnly((v) => !v)}
+        >
+          <Ionicons
+            name="shield-checkmark"
+            size={12}
+            color={verifiedOnly ? '#60a5fa' : Colors.textSecondary}
+            style={{ marginRight: 4 }}
+          />
+          <Text style={[styles.sourceChipText, verifiedOnly && styles.verifiedFilterTextActive]}>
+            Verified
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
 
       {/* Agent dropdown modal */}
       <Modal visible={dropdownOpen} transparent animationType="fade" onRequestClose={() => setDropdownOpen(false)}>
@@ -350,8 +390,8 @@ export default function SkillsScreen() {
         {searching && <ActivityIndicator size="small" color={Colors.accentTeal} style={styles.searchSpinner} />}
       </View>
 
-      {/* Category + Verified filters */}
-      {!query.trim() && (
+      {/* Category filters */}
+      {!query.trim() && activeSource !== 'anthropic' && (
         <View style={styles.chipRow}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
             {CLAWHUB_CATEGORIES.map((cat) => (
@@ -365,20 +405,6 @@ export default function SkillsScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity
-              style={[styles.categoryChip, styles.verifiedChip, verifiedOnly && styles.verifiedChipActive]}
-              onPress={() => setVerifiedOnly((v) => !v)}
-            >
-              <Ionicons
-                name="shield-checkmark"
-                size={12}
-                color={verifiedOnly ? '#60a5fa' : Colors.textSecondary}
-                style={{ marginRight: 4 }}
-              />
-              <Text style={[styles.categoryChipText, verifiedOnly && styles.verifiedChipTextActive]}>
-                Verified
-              </Text>
-            </TouchableOpacity>
           </ScrollView>
         </View>
       )}
@@ -437,22 +463,43 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
 
-  // Agent dropdown
-  dropdownWrapper: { paddingHorizontal: 16, marginBottom: 6 },
-  dropdownTrigger: {
+  // Top filter row
+  topFilterRow: { paddingHorizontal: 16, paddingVertical: 8, gap: 8, alignItems: 'center' },
+
+  // Agent chip (crimson tint)
+  agentChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
+    backgroundColor: 'rgba(255,69,58,0.08)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.accentCrimson,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  agentChipText: { fontSize: 13, fontWeight: '600', color: Colors.accentCrimson },
+  agentDot: { width: 7, height: 7, borderRadius: 4 },
+
+  // Source filter chips
+  sourceChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
     backgroundColor: Colors.bgElevated,
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: Colors.bgBorder,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    alignSelf: 'flex-start',
   },
-  dropdownTriggerText: { fontSize: 14, fontWeight: '500', color: Colors.textPrimary },
-  agentDot: { width: 7, height: 7, borderRadius: 4 },
+  sourceChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  sourceChipAnthropicActive: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: '#a5b4fc' },
+  sourceChipAnthropicTextActive: { color: '#a5b4fc' },
+  sourceChipClawhubActive: { backgroundColor: 'rgba(0,200,150,0.1)', borderColor: Colors.accentTeal },
+  sourceChipClawhubTextActive: { color: Colors.accentTeal },
+  verifiedFilterChip: { borderColor: 'rgba(96,165,250,0.3)' },
+  verifiedFilterChipActive: { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: '#60a5fa' },
+  verifiedFilterTextActive: { color: '#60a5fa' },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -524,17 +571,6 @@ const styles = StyleSheet.create({
   },
   categoryChipText: { fontSize: 12, fontWeight: '500', color: Colors.textSecondary },
   categoryChipTextActive: { color: Colors.accentGreen, fontWeight: '700' },
-  verifiedChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderColor: 'rgba(96,165,250,0.3)',
-  },
-  verifiedChipActive: {
-    backgroundColor: 'rgba(59,130,246,0.1)',
-    borderColor: '#60a5fa',
-  },
-  verifiedChipTextActive: { color: '#60a5fa', fontWeight: '700' },
-
   // List
   list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 4 },
