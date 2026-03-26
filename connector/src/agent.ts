@@ -145,12 +145,15 @@ export async function runAgent({ userId, agentName, systemPrompt, apiKey }: Agen
 
   const channel: RealtimeChannel = supabase
     .channel(`agent:${agentId}`)
-    .on('broadcast', { event: 'message' }, async (event) => {
-      const payload = event.payload as { direction: string; content: string; ts: number };
-      if (payload.direction !== 'inbound') return;
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'messages', filter: `agent_id=eq.${agentId}` },
+      async (event) => {
+      const row = event.new as { direction: string; content: string; id: string };
+      if (row.direction !== 'inbound') return;
       if (responding) return;
 
-      const userMessage = payload.content;
+      const userMessage = row.content;
       console.log(`[user] ${userMessage}`);
       responding = true;
 
@@ -245,6 +248,7 @@ export async function runAgent({ userId, agentName, systemPrompt, apiKey }: Agen
         responding = false;
       }
     })
+    )
     .subscribe(async (status) => {
       if (status === 'SUBSCRIBED') {
         await supabase
