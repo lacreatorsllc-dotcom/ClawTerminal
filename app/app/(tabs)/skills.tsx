@@ -71,7 +71,7 @@ function LocalSkillCard({ skill }: { skill: Skill }) {
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
       <View style={styles.cardFooter}>
         <View style={styles.verifiedBadge}>
-          <Text style={styles.verifiedBadgeText}>✓ Anthropic</Text>
+          <Text style={styles.verifiedBadgeText}>Anthropic</Text>
         </View>
         {skill.category && (
           <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{skill.category}</Text></View>
