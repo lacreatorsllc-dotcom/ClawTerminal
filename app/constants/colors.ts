@@ -12,6 +12,7 @@ export const Colors = {
   // Semantic — status & signal
   accentGreen: '#00c896',   // connected, active — vibrant emerald
   accentTeal: '#6a9bcc',    // live process, syncing — Anthropic blue
+  accentPurple: '#a855f7',  // skills categories, badges
   accentAmber: '#d97757',   // warning, stale, reconnecting — reuses brand orange
   accentRed: '#ef4444',     // error, disconnected
 
