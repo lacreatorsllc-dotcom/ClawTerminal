@@ -157,7 +157,9 @@ export default function AgentDetailScreen() {
     const newItems = result.assets.map((a) => ({ local: a.uri }))
     setAttachments((prev) => [...prev, ...newItems])
 
-    // Upload via base64 read → Uint8Array → Supabase Storage (avoids iOS background session issues)
+    // Upload via base64 → ArrayBuffer → direct fetch with explicit auth token
+    const token = session?.access_token
+    if (!token) { Alert.alert('Not logged in', 'Please sign out and back in.'); setUploading(false); return }
     setUploading(true)
     for (const asset of result.assets) {
       try {
@@ -168,18 +170,26 @@ export default function AgentDetailScreen() {
         const binary = atob(base64)
         const bytes = new Uint8Array(binary.length)
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-        const { data, error } = await supabase.storage
-          .from('message-attachments')
-          .upload(fileName, bytes, { contentType, upsert: false })
-        if (error) {
-          Alert.alert('Upload failed', error.message)
-        } else if (data) {
-          const { data: { publicUrl } } = supabase.storage.from('message-attachments').getPublicUrl(data.path)
+        const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/message-attachments/${fileName}`
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+            'Content-Type': contentType,
+          },
+          body: bytes.buffer,
+        })
+        if (res.ok) {
+          const publicUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/message-attachments/${fileName}`
           setAttachments((prev) => prev.map((a) => a.local === asset.uri ? { local: a.local, remote: publicUrl } : a))
+        } else {
+          const err = await res.text()
+          Alert.alert('Upload failed', err)
+          setAttachments((prev) => prev.filter((a) => a.local !== asset.uri))
         }
       } catch (e: any) {
         Alert.alert('Upload error', e?.message ?? 'Unknown error')
-        // Remove the failed attachment so it doesn't block sending
         setAttachments((prev) => prev.filter((a) => a.local !== asset.uri))
       }
     }
