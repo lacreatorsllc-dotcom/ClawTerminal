@@ -169,7 +169,7 @@ export default function AgentDetailScreen() {
         const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/message-attachments/${fileName}`
         const res = await FileSystem.uploadAsync(uploadUrl, asset.uri, {
           httpMethod: 'POST',
-          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+          uploadType: 0, // BINARY_CONTENT
           headers: {
             'Authorization': `Bearer ${token}`,
             'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
