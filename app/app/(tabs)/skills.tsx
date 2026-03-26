@@ -17,7 +17,7 @@ const CLAWHUB = 'https://clawhub.ai/api/v1'
 // Categories use targeted search queries + client-side keyword filtering.
 
 const CLAWHUB_CATEGORIES = [
-  'All', 'Crypto', 'Trading', 'Finance', 'Developer', 'Productivity',
+  'All', 'Crypto', 'Stocks', 'Finance', 'Developer', 'Productivity',
   'Marketing', 'Business', 'Media', 'AI Agents', 'Lifestyle',
 ]
 
@@ -33,10 +33,10 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
     keywords: ['crypto', 'bitcoin', 'btc', 'ethereum', 'eth', 'blockchain', 'defi', 'nft', 'token', 'coin', 'wallet', 'binance', 'coinbase', 'web3', 'dex', 'staking', 'yield', 'solana', 'polymarket'],
     label: 'Crypto & Blockchain',
   },
-  'Trading': {
-    queries: ['trading stocks market', 'quant trading bot'],
-    keywords: ['trading', 'trade', 'stock', 'stocks', 'market', 'forex', 'quant', 'backtest', 'arbitrage', 'futures', 'options', 'candlestick', 'macd', 'chart', 'equity', 'ticker', 'automated trading', 'grid trading', 'day trading'],
-    label: 'Trading & Markets',
+  'Stocks': {
+    queries: ['stocks market trading', 'quant trading bot'],
+    keywords: ['stock', 'stocks', 'trading', 'trade', 'market', 'forex', 'quant', 'backtest', 'arbitrage', 'futures', 'options', 'candlestick', 'macd', 'chart', 'equity', 'ticker', 'automated trading', 'grid trading', 'day trading'],
+    label: 'Stocks & Markets',
   },
   'Finance': {
     queries: ['finance investment', 'tax invoice budget'],
