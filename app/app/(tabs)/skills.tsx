@@ -229,7 +229,11 @@ export default function SkillsScreen() {
     const timer = setTimeout(async () => {
       setSearching(true)
       try {
-        const r = await fetch(`${CLAWHUB}/search?q=${encodeURIComponent(query)}&limit=20`)
+        const channel = activeCategory !== 'All' ? CATEGORY_CHANNEL[activeCategory] : null
+        const url = channel
+          ? `${CLAWHUB}/search?q=${encodeURIComponent(query)}&channel=${channel}&limit=30`
+          : `${CLAWHUB}/search?q=${encodeURIComponent(query)}&limit=20`
+        const r = await fetch(url)
         const data = await r.json()
         const results: ClawHubSkill[] = (data.results ?? []).map((r: any) => ({ ...r, name: r.slug ?? r.name }))
         const translated = await Promise.all(results.map(translateSkill))
@@ -238,7 +242,7 @@ export default function SkillsScreen() {
       setSearching(false)
     }, 350)
     return () => clearTimeout(timer)
-  }, [query])
+  }, [query, activeCategory])
 
   const handleInstall = useCallback(async (skill: ClawHubSkill) => {
     if (!user) { showToast('Not logged in'); return }
