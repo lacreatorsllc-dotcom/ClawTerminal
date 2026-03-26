@@ -44,16 +44,14 @@ function LocalSkillCard({ skill }: { skill: Skill }) {
     <TouchableOpacity style={styles.card} onPress={() => router.push(`/skill/${skill.id}`)}>
       <View style={styles.cardHeader}>
         <Text style={styles.skillName}>{skill.name}</Text>
-        {skill.category && (
-          <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{skill.category}</Text></View>
-        )}
+        <View style={styles.installBtn}><Text style={styles.installBtnText}>Install</Text></View>
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
       <View style={styles.cardFooter}>
         <Text style={styles.sourceLabelAnthropic}>Anthropic</Text>
-        <View style={styles.installBtn}>
-          <Text style={styles.installBtnText}>Install</Text>
-        </View>
+        {skill.category && (
+          <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{skill.category}</Text></View>
+        )}
       </View>
     </TouchableOpacity>
   )
@@ -76,10 +74,19 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSk
     >
       <View style={styles.cardHeader}>
         <Text style={styles.skillName}>{skill.displayName}</Text>
-        {skill.channel && (
-          <View style={styles.categoryBadge}>
-            <Text style={styles.categoryBadgeText}>{skill.channel === 'official' ? 'Official' : skill.channel.charAt(0).toUpperCase() + skill.channel.slice(1)}</Text>
-          </View>
+        {installed ? (
+          <View style={styles.installedBadge}><Text style={styles.installedBadgeText}>Installed ✓</Text></View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.installBtn, installing && styles.installBtnLoading]}
+            onPress={(e) => { e.stopPropagation?.(); onInstall(skill) }}
+            disabled={installing}
+          >
+            {installing
+              ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
+              : <Text style={styles.installBtnText}>Install</Text>
+            }
+          </TouchableOpacity>
         )}
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
@@ -91,25 +98,10 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSk
           ? <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
           : <Text style={styles.sourceLabelClawhub}>ClawHub</Text>
         }
-        {installed ? (
-          <View style={styles.installedBadge}>
-            <Text style={styles.installedBadgeText}>Installed ✓</Text>
+        {skill.channel && (
+          <View style={styles.categoryBadge}>
+            <Text style={styles.categoryBadgeText}>{skill.channel === 'official' ? 'Official' : skill.channel.charAt(0).toUpperCase() + skill.channel.slice(1)}</Text>
           </View>
-        ) : (
-          <TouchableOpacity
-            style={[styles.installBtn, installing && styles.installBtnLoading]}
-            onPress={(e) => {
-              // @ts-ignore
-              e.stopPropagation?.()
-              onInstall(skill)
-            }}
-            disabled={installing}
-          >
-            {installing
-              ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
-              : <Text style={styles.installBtnText}>Install</Text>
-            }
-          </TouchableOpacity>
         )}
       </View>
     </TouchableOpacity>
