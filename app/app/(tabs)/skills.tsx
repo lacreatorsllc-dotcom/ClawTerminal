@@ -7,6 +7,8 @@ import { useSkillsStore } from '../../stores/skillsStore'
 import { useAgentsStore } from '../../stores/agentsStore'
 import { useAuthStore } from '../../stores/authStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useSavedSkillsStore } from '../../stores/savedSkillsStore'
+import type { SavedSkill } from '../../stores/savedSkillsStore'
 import { Colors } from '../../constants/colors'
 import { translateToEnglish } from '../../lib/translate'
 import type { Skill } from '../../lib/types'
@@ -314,6 +316,46 @@ function SkillsShSkillCard({ skill, onInstall, installing, installed }: SkillsSh
   )
 }
 
+// ── Saved skill card ─────────────────────────────────────────────────────────
+function SavedSkillCard({ skill }: { skill: SavedSkill }) {
+  const { unsave } = useSavedSkillsStore()
+
+  const route =
+    skill.source === 'clawhub' ? `/skill/clawhub/${skill.id}` :
+    skill.source === 'skillssh' ? `/skill/skillssh/${encodeURIComponent(skill.id)}` :
+    `/skill/${skill.id}`
+
+  const sourceLabel =
+    skill.source === 'clawhub' ? 'ClawHub' :
+    skill.source === 'skillssh' ? 'Skills.sh' :
+    'Anthropic'
+
+  const sourceLabelStyle =
+    skill.source === 'clawhub' ? styles.sourceLabelClawhub :
+    skill.source === 'skillssh' ? styles.sourceLabelSkillssh :
+    styles.sourceLabelAnthropic
+
+  return (
+    <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => router.push(route as any)}>
+      <View style={styles.cardHeader}>
+        <Text style={[styles.skillName, { flex: 1 }]} numberOfLines={2}>{skill.name}</Text>
+        <TouchableOpacity onPress={() => unsave(skill.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="bookmark" size={18} color={Colors.accentCrimson} />
+        </TouchableOpacity>
+      </View>
+      <View style={styles.cardFooter}>
+        <Text style={sourceLabelStyle}>{sourceLabel}</Text>
+        {skill.category ? (
+          <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{skill.category}</Text></View>
+        ) : null}
+        <Text style={styles.savedDate}>
+          Saved {new Date(skill.savedAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
 // ── Main screen ──────────────────────────────────────────────────────────────
 export default function SkillsScreen() {
   const { skills, setSkills } = useSkillsStore()
@@ -323,7 +365,8 @@ export default function SkillsScreen() {
 
   const [query, setQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState<string>('All')
-  const [activeSource, setActiveSource] = useState<'all' | 'anthropic' | 'clawhub' | 'skillssh'>('all')
+  const [activeSource, setActiveSource] = useState<'all' | 'anthropic' | 'clawhub' | 'skillssh' | 'saved'>('all')
+  const { saved: savedSkills } = useSavedSkillsStore()
   const [verifiedOnly, setVerifiedOnly] = useState(false)
   const [clawHubSkills, setClawHubSkills] = useState<ClawHubSkill[]>([])
   const [searchResults, setSearchResults] = useState<ClawHubSkill[]>([])
@@ -512,15 +555,15 @@ export default function SkillsScreen() {
     (!query.trim() || s.name.toLowerCase().includes(query.toLowerCase()) || s.description.toLowerCase().includes(query.toLowerCase()))
   )
 
-  const filteredClawHub = (activeSource === 'anthropic' || activeSource === 'skillssh')
+  const filteredClawHub = (activeSource === 'anthropic' || activeSource === 'skillssh' || activeSource === 'saved')
     ? []
     : verifiedOnly
       ? displayedClawHub.filter((s) => !!s.verificationTier)
       : displayedClawHub
 
-  const localSkillsToShow = (activeSource === 'clawhub' || activeSource === 'skillssh') ? [] : filteredLocalSkills
+  const localSkillsToShow = (activeSource === 'clawhub' || activeSource === 'skillssh' || activeSource === 'saved') ? [] : filteredLocalSkills
 
-  const filteredSkillsSh = activeSource !== 'skillssh' ? [] : SKILLSSH_SKILLS.filter((s) => {
+  const filteredSkillsSh = (activeSource !== 'skillssh') ? [] : SKILLSSH_SKILLS.filter((s) => {
     const matchesCat = activeCategory === 'All' || s.category === activeCategory
     const matchesQuery = !query.trim() || s.displayName.toLowerCase().includes(query.toLowerCase()) || s.summary.toLowerCase().includes(query.toLowerCase())
     const matchesVerified = !verifiedOnly || s.isOfficial
@@ -576,6 +619,15 @@ export default function SkillsScreen() {
           >
             <Ionicons name="shield-checkmark" size={12} color={verifiedOnly ? '#60a5fa' : Colors.textSecondary} style={{ marginRight: 4 }} />
             <Text style={[styles.sourceChipText, verifiedOnly && styles.verifiedFilterTextActive]}>Verified</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sourceChip, activeSource === 'saved' && styles.sourceChipSavedActive]}
+            onPress={() => { setActiveSource((s) => s === 'saved' ? 'all' : 'saved'); setActiveCategory('All') }}
+          >
+            <Ionicons name="bookmark" size={12} color={activeSource === 'saved' ? Colors.accentCrimson : Colors.textSecondary} style={{ marginRight: 4 }} />
+            <Text style={[styles.sourceChipText, activeSource === 'saved' && styles.sourceChipSavedTextActive]}>
+              Saved{savedSkills.length > 0 ? ` (${savedSkills.length})` : ''}
+            </Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -645,7 +697,19 @@ export default function SkillsScreen() {
         }
         ListHeaderComponent={
           <>
-            {activeSource !== 'anthropic' && activeSource !== 'skillssh' && (
+            {activeSource === 'saved' && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionLabel}>Saved Skills</Text>
+                </View>
+                {savedSkills.length === 0 ? (
+                  <Text style={styles.emptyText}>No saved skills yet. Tap ⊕ on any skill detail to save it.</Text>
+                ) : (
+                  savedSkills.map((s) => <SavedSkillCard key={s.id} skill={s} />)
+                )}
+              </>
+            )}
+            {activeSource !== 'anthropic' && activeSource !== 'skillssh' && activeSource !== 'saved' && (
               <>
                 {activeCategory !== 'All' && (
                   <View style={styles.sectionHeader}>
@@ -691,7 +755,7 @@ export default function SkillsScreen() {
                 ))}
               </>
             )}
-            {activeSource === 'skillssh' && filteredSkillsSh.length === 0 && (
+            {activeSource === 'skillssh' && filteredSkillsSh.length === 0 && activeSource !== 'saved' && (
               <Text style={styles.emptyText}>No skills found</Text>
             )}
             {localSkillsToShow.length > 0 && (
@@ -745,6 +809,9 @@ const styles = StyleSheet.create({
   verifiedFilterChip: { borderColor: 'rgba(96,165,250,0.3)' },
   verifiedFilterChipActive: { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: '#60a5fa' },
   verifiedFilterTextActive: { color: '#60a5fa' },
+  sourceChipSavedActive: { backgroundColor: 'rgba(255,69,58,0.08)', borderColor: Colors.accentCrimson },
+  sourceChipSavedTextActive: { color: Colors.accentCrimson },
+  savedDate: { fontSize: 11, color: Colors.textMuted, marginLeft: 'auto' as any },
 
   modalOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
@@ -805,6 +872,7 @@ const styles = StyleSheet.create({
   anthropicBadgeText: { color: '#a5b4fc', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   sourceLabelClawhub: { fontSize: 11, fontWeight: '700', color: Colors.accentTeal, letterSpacing: 0.3 },
   sourceLabelSkillssh: { fontSize: 11, fontWeight: '700', color: '#fb923c', letterSpacing: 0.3 },
+  sourceLabelAnthropic: { fontSize: 11, fontWeight: '700', color: '#a5b4fc', letterSpacing: 0.3 },
   categoryBadgeSkillssh: { backgroundColor: 'rgba(251,146,60,0.1)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   categoryBadgeSkillsshText: { color: '#fb923c', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   categoryBadge: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },

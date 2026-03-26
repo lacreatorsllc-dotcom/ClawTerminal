@@ -1,10 +1,12 @@
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
+import { Ionicons } from '@expo/vector-icons'
 import { supabase } from '../../lib/supabase'
 import { useSkillsStore } from '../../stores/skillsStore'
 import { useAgentsStore } from '../../stores/agentsStore'
 import { useAuthStore } from '../../stores/authStore'
 import { useUIStore } from '../../stores/uiStore'
+import { useSavedSkillsStore } from '../../stores/savedSkillsStore'
 import { Colors } from '../../constants/colors'
 
 export default function SkillDetailScreen() {
@@ -15,6 +17,18 @@ export default function SkillDetailScreen() {
   const showToast = useUIStore((s) => s.showToast)
 
   const skill = skills.find((s) => s.id === id)
+  const { save, unsave, isSaved } = useSavedSkillsStore()
+  const saved = id ? isSaved(id) : false
+
+  const toggleSave = () => {
+    if (!skill) return
+    if (saved) {
+      unsave(skill.id)
+    } else {
+      save({ id: skill.id, name: skill.name, source: 'anthropic', category: skill.category, savedAt: Date.now() })
+    }
+  }
+
   const connectedAgents = agents.filter((a) => {
     const delta = a.last_seen ? Date.now() - new Date(a.last_seen).getTime() : Infinity
     return delta < 300_000
@@ -64,9 +78,14 @@ export default function SkillDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backBtnText}>‹ Skills</Text>
-      </TouchableOpacity>
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>‹ Skills</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={toggleSave} style={styles.bookmarkBtn}>
+          <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={22} color={saved ? Colors.accentCrimson : Colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <Text style={styles.skillName}>{skill.name}</Text>
@@ -137,8 +156,10 @@ export default function SkillDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
-  backBtn: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 8 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 60, paddingBottom: 8, paddingHorizontal: 24 },
+  backBtn: {},
   backBtnText: { color: Colors.accentCrimson, fontSize: 16 },
+  bookmarkBtn: { padding: 4 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 24, paddingTop: 8, paddingBottom: 60 },
   skillName: { fontSize: 26, fontWeight: '700', color: Colors.textPrimary, marginBottom: 12 },

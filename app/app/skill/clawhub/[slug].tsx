@@ -6,6 +6,7 @@ import { supabase } from '../../../lib/supabase'
 import { useAgentsStore } from '../../../stores/agentsStore'
 import { useAuthStore } from '../../../stores/authStore'
 import { useUIStore } from '../../../stores/uiStore'
+import { useSavedSkillsStore } from '../../../stores/savedSkillsStore'
 import { Colors } from '../../../constants/colors'
 import { translateToEnglish } from '../../../lib/translate'
 
@@ -21,6 +22,17 @@ export default function ClawHubSkillDetailScreen() {
   const [loading, setLoading] = useState(true)
   const [installing, setInstalling] = useState(false)
   const [installed, setInstalled] = useState(false)
+  const { save, unsave, isSaved } = useSavedSkillsStore()
+  const saved = slug ? isSaved(slug) : false
+
+  const toggleSave = () => {
+    if (!slug) return
+    if (saved) {
+      unsave(slug)
+    } else {
+      save({ id: slug, name: detail?.pkg?.displayName ?? slug, source: 'clawhub', savedAt: Date.now() })
+    }
+  }
 
   useEffect(() => {
     if (!slug || !agents.length) return
@@ -122,9 +134,14 @@ export default function ClawHubSkillDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <Text style={styles.backBtnText}>‹ Skills</Text>
-      </TouchableOpacity>
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>‹ Skills</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={toggleSave} style={styles.bookmarkBtn}>
+          <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={22} color={saved ? Colors.accentCrimson : Colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
 
       {loading ? (
         <View style={styles.centered}>
@@ -240,8 +257,10 @@ export default function ClawHubSkillDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
-  backBtn: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 8 },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 60, paddingBottom: 8, paddingHorizontal: 24 },
+  backBtn: {},
   backBtnText: { color: Colors.accentCrimson, fontSize: 16 },
+  bookmarkBtn: { padding: 4 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 24, paddingTop: 8, paddingBottom: 60 },
   skillName: { fontSize: 26, fontWeight: '700', color: Colors.textPrimary, marginBottom: 12 },
