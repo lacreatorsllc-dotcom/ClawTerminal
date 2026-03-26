@@ -255,24 +255,26 @@ export default function SkillsScreen() {
 
       {/* Agent picker */}
       {agents.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.agentPicker}
-        >
-          {agents.map((a) => (
-            <TouchableOpacity
-              key={a.id}
-              style={[styles.agentChip, selectedAgentId === a.id && styles.agentChipSelected]}
-              onPress={() => setSelectedAgentId(a.id)}
-            >
-              <View style={[styles.agentDot, { backgroundColor: a.status === 'connected' ? Colors.accentGreen : Colors.textMuted }]} />
-              <Text style={[styles.agentChipText, selectedAgentId === a.id && styles.agentChipTextSelected]}>
-                {a.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <View style={styles.chipRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.agentPicker}
+          >
+            {agents.map((a) => (
+              <TouchableOpacity
+                key={a.id}
+                style={[styles.agentChip, selectedAgentId === a.id && styles.agentChipSelected]}
+                onPress={() => setSelectedAgentId(a.id)}
+              >
+                <View style={[styles.agentDot, { backgroundColor: a.status === 'connected' ? Colors.accentGreen : Colors.textMuted }]} />
+                <Text style={[styles.agentChipText, selectedAgentId === a.id && styles.agentChipTextSelected]}>
+                  {a.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       {/* Search */}
@@ -291,23 +293,25 @@ export default function SkillsScreen() {
 
       {/* Category filter */}
       {!query.trim() && categories.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryRow}
-        >
-          {categories.map((cat) => (
-            <TouchableOpacity
-              key={cat}
-              style={[styles.categoryChip, activeCategory === cat && styles.categoryChipActive]}
-              onPress={() => setActiveCategory(cat)}
-            >
-              <Text style={[styles.categoryChipText, activeCategory === cat && styles.categoryChipTextActive]}>
-                {cat}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <View style={styles.chipRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryRow}
+          >
+            {categories.map((cat) => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.categoryChip, activeCategory === cat && styles.categoryChipActive]}
+                onPress={() => setActiveCategory(cat)}
+              >
+                <Text style={[styles.categoryChipText, activeCategory === cat && styles.categoryChipTextActive]}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       <FlatList
@@ -365,7 +369,8 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 12 },
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
-  agentPicker: { paddingHorizontal: 16, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  chipRow: { height: 46, justifyContent: 'center' },
+  agentPicker: { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
   agentChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -388,7 +393,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginHorizontal: 16,
-    marginBottom: 8,
+    marginTop: 4,
+    marginBottom: 4,
     backgroundColor: Colors.bgElevated,
     borderRadius: 12,
     borderWidth: 1,
@@ -403,7 +409,7 @@ const styles = StyleSheet.create({
   },
   searchSpinner: { marginLeft: 8 },
   list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
-  categoryRow: { paddingHorizontal: 16, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  categoryRow: { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
   categoryChip: {
     paddingHorizontal: 14,
     height: 32,
