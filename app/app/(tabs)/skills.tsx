@@ -412,9 +412,9 @@ const styles = StyleSheet.create({
   categoryRow: { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
   categoryChip: {
     paddingHorizontal: 14,
-    height: 32,
+    height: 36,
     justifyContent: 'center',
-    borderRadius: 16,
+    borderRadius: 18,
     backgroundColor: Colors.bgElevated,
     borderWidth: 1,
     borderColor: Colors.bgBorder,
