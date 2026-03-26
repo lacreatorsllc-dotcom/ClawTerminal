@@ -197,15 +197,6 @@ export default function ConnectScreen() {
             <Text style={styles.stepTitle}>Run this command</Text>
             <Text style={styles.stepDesc}>In your agent's environment, run the connector command below.</Text>
             <View style={styles.commandBox}>
-              <View style={styles.commandHeader}>
-                <View style={styles.commandHeaderIcon}>
-                  <Text style={styles.commandHeaderIconText}>{'>'}_</Text>
-                </View>
-                <Text style={styles.commandHeaderLabel}>INSTALL COMMAND</Text>
-                <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
-                  <Text style={styles.copyBtnText}>{copied ? '✓  Copied' : '⧉  Copy'}</Text>
-                </TouchableOpacity>
-              </View>
               <View style={styles.commandBody}>
                 <Text style={styles.command}>{installCmd}</Text>
               </View>
@@ -404,7 +395,7 @@ const styles = StyleSheet.create({
   commandHeaderIconText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 10, color: '#6366f1' },
   commandHeaderLabel: { flex: 1, fontSize: 11, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 1.2 },
   commandBody: { padding: 14 },
-  command: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: '#d4846a', lineHeight: 18 },
+  command: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: Colors.accentGreen, lineHeight: 18 },
   copyBtn: {
     backgroundColor: '#6366f1',
     borderRadius: 8,
@@ -467,6 +458,6 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: Colors.bgPrimary, fontSize: 16, fontWeight: '600' },
   primaryBtnDisabled: { opacity: 0.4 },
-  cliBluBtn: { backgroundColor: '#4a9fd4' },
+  cliBluBtn: { backgroundColor: '#c1121f' },
   backLink: { color: Colors.textSecondary, fontSize: 14, textAlign: 'center' },
 })
