@@ -245,7 +245,8 @@ export default function SkillsScreen() {
 
   const displayedClawHub = query.trim() ? searchResults : clawHubSkills
 
-  const categories = ['All', ...Array.from(new Set(skills.map((s) => s.category).filter(Boolean)))]
+  const clawHubChannels = Array.from(new Set(clawHubSkills.map((s) => s.channel).filter(Boolean))).map((c) => c.charAt(0).toUpperCase() + c.slice(1))
+  const categories = ['All', ...Array.from(new Set(skills.map((s) => s.category).filter(Boolean))), ...clawHubChannels]
 
   const filteredLocalSkills = skills.filter((s) =>
     (activeCategory === 'All' || s.category === activeCategory) &&
@@ -341,20 +342,22 @@ export default function SkillsScreen() {
               <Text style={styles.emptyText}>No skills in this category</Text>
             )}
 
-            {/* ClawHub skills — only shown on All */}
-            {activeCategory === 'All' && (
+            {/* ClawHub skills — shown on All or when a ClawHub channel category is selected */}
+            {(activeCategory === 'All' || clawHubChannels.includes(activeCategory)) && (
               <>
                 {loading
                   ? <ActivityIndicator size="small" color={Colors.accentTeal} style={{ marginTop: 16 }} />
-                  : displayedClawHub.map((s) => (
-                    <ClawHubSkillCard
-                      key={s.name}
-                      skill={s}
-                      onInstall={handleInstall}
-                      installing={installingSlug === s.name}
-                      installed={installedSlugs.has(s.name)}
-                    />
-                  ))
+                  : displayedClawHub
+                      .filter((s) => activeCategory === 'All' || s.channel.charAt(0).toUpperCase() + s.channel.slice(1) === activeCategory)
+                      .map((s) => (
+                        <ClawHubSkillCard
+                          key={s.name}
+                          skill={s}
+                          onInstall={handleInstall}
+                          installing={installingSlug === s.name}
+                          installed={installedSlugs.has(s.name)}
+                        />
+                      ))
                 }
               </>
             )}
