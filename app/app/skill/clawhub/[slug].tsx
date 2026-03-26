@@ -10,6 +10,12 @@ import { translateToEnglish } from '../../../lib/translate'
 
 const CLAWHUB = 'https://clawhub.ai/api/v1'
 
+function formatDate(ts: string): string {
+  try {
+    return new Date(ts).toLocaleDateString([], { month: 'short', year: 'numeric' })
+  } catch { return '' }
+}
+
 export default function ClawHubSkillDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>()
   const { agents, getConnectionStatus } = useAgentsStore()
@@ -17,8 +23,6 @@ export default function ClawHubSkillDetailScreen() {
   const showToast = useUIStore((s) => s.showToast)
 
   const [detail, setDetail] = useState<any>(null)
-  const [changelog, setChangelog] = useState<string | null>(null)
-  const [originalChangelog, setOriginalChangelog] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [installing, setInstalling] = useState(false)
   const [installed, setInstalled] = useState(false)
@@ -44,10 +48,12 @@ export default function ClawHubSkillDetailScreen() {
         const pkg = data?.package
         const rawDisplayName: string = pkg?.displayName ?? ''
         const rawSummary: string = pkg?.summary ?? ''
+        const rawReadme: string = pkg?.readme ?? pkg?.description ?? ''
 
-        const [translatedDisplayName, translatedSummary] = await Promise.all([
+        const [translatedDisplayName, translatedSummary, translatedReadme] = await Promise.all([
           translateToEnglish(rawDisplayName),
           translateToEnglish(rawSummary),
+          rawReadme ? translateToEnglish(rawReadme) : Promise.resolve(''),
         ])
 
         setDetail({
@@ -58,6 +64,7 @@ export default function ClawHubSkillDetailScreen() {
             originalDisplayName: translatedDisplayName !== rawDisplayName ? rawDisplayName : undefined,
             summary: translatedSummary,
             originalSummary: translatedSummary !== rawSummary ? rawSummary : undefined,
+            readmeTranslated: translatedReadme || null,
           },
         })
       })
@@ -116,6 +123,7 @@ export default function ClawHubSkillDetailScreen() {
   const skill = detail?.skill
   const version = skill?.latestVersion
   const owner = detail?.owner
+  const stats = detail?.stats ?? detail?.package?.stats
 
   return (
     <View style={styles.container}>
@@ -141,22 +149,66 @@ export default function ClawHubSkillDetailScreen() {
             {skill.verificationTier && (
               <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
             )}
+            {skill.isOfficial && !skill.verificationTier && (
+              <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Official</Text></View>
+            )}
           </View>
+
           <View style={styles.metaRow}>
-            {owner && <Text style={styles.meta}>by @{owner.handle}</Text>}
+            {owner && <Text style={styles.meta}>by @{owner.handle ?? owner.username ?? owner.name}</Text>}
             {version && <><Text style={styles.metaDot}>·</Text><Text style={styles.meta}>v{version}</Text></>}
+            {skill.updatedAt && <><Text style={styles.metaDot}>·</Text><Text style={styles.meta}>Updated {formatDate(skill.updatedAt)}</Text></>}
           </View>
 
           {skill.summary ? <Text style={styles.summary}>{skill.summary}</Text> : null}
           {skill.originalSummary ? <Text style={styles.original}>{skill.originalSummary}</Text> : null}
 
-          {changelog ? (
+          {skill.readmeTranslated ? (
             <View style={styles.section}>
-              <Text style={styles.sectionLabel}>What's included</Text>
-              <Text style={styles.changelogText}>{changelog}</Text>
-              {originalChangelog ? <Text style={styles.original}>{originalChangelog}</Text> : null}
+              <Text style={styles.sectionLabel}>About this skill</Text>
+              <Text style={styles.bodyText}>{skill.readmeTranslated}</Text>
             </View>
           ) : null}
+
+          {(skill.tags?.length > 0 || skill.categories?.length > 0) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Tags</Text>
+              <View style={styles.tagRow}>
+                {(skill.tags ?? skill.categories ?? []).map((tag: string, i: number) => (
+                  <View key={i} style={styles.tag}>
+                    <Text style={styles.tagText}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.infoGrid}>
+            {owner?.handle && (
+              <View style={styles.infoCell}>
+                <Text style={styles.infoCellLabel}>Publisher</Text>
+                <Text style={styles.infoCellValue}>@{owner.handle ?? owner.username ?? owner.name}</Text>
+              </View>
+            )}
+            {version && (
+              <View style={styles.infoCell}>
+                <Text style={styles.infoCellLabel}>Version</Text>
+                <Text style={styles.infoCellValue}>{version}</Text>
+              </View>
+            )}
+            {(stats?.totalInstalls ?? stats?.installs ?? skill.totalInstalls) != null && (
+              <View style={styles.infoCell}>
+                <Text style={styles.infoCellLabel}>Installs</Text>
+                <Text style={styles.infoCellValue}>{Number(stats?.totalInstalls ?? stats?.installs ?? skill.totalInstalls).toLocaleString()}</Text>
+              </View>
+            )}
+            {skill.license && (
+              <View style={styles.infoCell}>
+                <Text style={styles.infoCellLabel}>License</Text>
+                <Text style={styles.infoCellValue}>{skill.license}</Text>
+              </View>
+            )}
+          </View>
 
           {installed ? (
             <View style={styles.installedBtn}>
@@ -170,7 +222,7 @@ export default function ClawHubSkillDetailScreen() {
             >
               {installing
                 ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
-                : <Text style={styles.installBtnText}>Install</Text>
+                : <Text style={styles.installBtnText}>Install on Agent</Text>
               }
             </TouchableOpacity>
           )}
@@ -185,39 +237,37 @@ const styles = StyleSheet.create({
   backBtn: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 8 },
   backBtnText: { color: Colors.accentCrimson, fontSize: 16 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { padding: 24, paddingTop: 8, gap: 20, paddingBottom: 48 },
-  skillName: { fontSize: 26, fontWeight: '700', color: Colors.textPrimary },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  content: { padding: 24, paddingTop: 8, paddingBottom: 60 },
+  skillName: { fontSize: 26, fontWeight: '700', color: Colors.textPrimary, marginBottom: 12 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8 },
   providerBadge: { backgroundColor: 'rgba(0,200,150,0.1)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   providerBadgeText: { color: Colors.accentTeal, fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   verifiedBadge: { backgroundColor: 'rgba(59,130,246,0.15)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   verifiedBadgeText: { color: '#60a5fa', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
-  categoryBadge: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
-  categoryBadgeText: { color: Colors.accentGreen, fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   meta: { fontSize: 13, color: Colors.textSecondary },
-  metaDot: { color: Colors.textMuted },
-  summary: { fontSize: 15, color: Colors.textSecondary, lineHeight: 22 },
-  section: { gap: 8 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1, textTransform: 'uppercase' },
-  changelogText: { fontSize: 14, color: Colors.textSecondary, lineHeight: 21 },
-  original: { fontSize: 12, color: Colors.textMuted, lineHeight: 18, fontStyle: 'italic' },
+  metaDot: { color: Colors.textMuted, marginHorizontal: 2 },
+  summary: { fontSize: 15, color: Colors.textSecondary, lineHeight: 23, marginBottom: 24, marginTop: 8 },
+  original: { fontSize: 12, color: Colors.textMuted, lineHeight: 18, fontStyle: 'italic', marginTop: -16, marginBottom: 8 },
+  section: { marginBottom: 28, gap: 8 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4 },
+  bodyText: { fontSize: 14, color: Colors.textSecondary, lineHeight: 22 },
+  tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  tag: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  tagText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '500' },
+  infoGrid: { gap: 14, marginBottom: 28, backgroundColor: '#0f0f0f', borderRadius: 14, padding: 16 },
+  infoCell: { gap: 4 },
+  infoCellLabel: { fontSize: 10, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1, textTransform: 'uppercase' },
+  infoCellValue: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
   installBtn: {
-    backgroundColor: Colors.accentCrimson,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
+    backgroundColor: Colors.accentCrimson, borderRadius: 12,
+    paddingVertical: 16, alignItems: 'center',
   },
   installBtnLoading: { opacity: 0.7 },
   installBtnText: { color: Colors.bgPrimary, fontSize: 16, fontWeight: '600' },
   installedBtn: {
-    backgroundColor: 'rgba(34,197,94,0.1)',
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(34,197,94,0.3)',
+    backgroundColor: 'rgba(34,197,94,0.1)', borderRadius: 12,
+    paddingVertical: 16, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(34,197,94,0.3)',
   },
   installedBtnText: { color: Colors.accentGreen, fontSize: 16, fontWeight: '600' },
 })
