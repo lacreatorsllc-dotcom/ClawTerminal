@@ -95,9 +95,17 @@ interface ClawHubSkillCardProps {
   onInstall: (skill: ClawHubSkill) => void
   installing: boolean
   installed: boolean
+  activeCategory: string
 }
 
-function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSkillCardProps) {
+function ClawHubSkillCard({ skill, onInstall, installing, installed, activeCategory }: ClawHubSkillCardProps) {
+  // Only show the channel badge when browsing All — when a category is selected
+  // the badge would show the skill's own metadata channel which may differ from the filter
+  const showChannelBadge = activeCategory === 'All' && !!skill.channel
+  const channelLabel = skill.channel
+    ? (Object.entries(CATEGORY_CHANNEL).find(([, v]) => v === skill.channel)?.[0] ?? skill.channel.charAt(0).toUpperCase() + skill.channel.slice(1))
+    : null
+
   return (
     <TouchableOpacity
       style={[styles.card, installed && styles.cardInstalled]}
@@ -105,7 +113,7 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSk
       onPress={() => router.push(`/skill/clawhub/${skill.name}`)}
     >
       <View style={styles.cardHeader}>
-        <Text style={[styles.skillName, { flex: 1 }]}>{skill.displayName}</Text>
+        <Text style={[styles.skillName, { flex: 1 }]} numberOfLines={2}>{skill.displayName}</Text>
         {installed ? (
           <View style={styles.installedBadge}><Text style={styles.installedBadgeText}>Installed ✓</Text></View>
         ) : (
@@ -130,11 +138,9 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSk
         {skill.verificationTier && (
           <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
         )}
-        {skill.channel && (
+        {showChannelBadge && (
           <View style={styles.categoryBadge}>
-            <Text style={styles.categoryBadgeText}>
-              {Object.entries(CATEGORY_CHANNEL).find(([, v]) => v === skill.channel)?.[0] ?? skill.channel.charAt(0).toUpperCase() + skill.channel.slice(1)}
-            </Text>
+            <Text style={styles.categoryBadgeText}>{channelLabel}</Text>
           </View>
         )}
       </View>
@@ -459,6 +465,7 @@ export default function SkillsScreen() {
                     onInstall={handleInstall}
                     installing={installingSlug === s.name}
                     installed={installedSlugs.has(s.name)}
+                    activeCategory={activeCategory}
                   />
                 ))}
               </>
