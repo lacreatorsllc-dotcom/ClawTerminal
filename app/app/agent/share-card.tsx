@@ -326,7 +326,6 @@ const card = StyleSheet.create({
   logo: {
     width: 80,
     height: 24,
-    tintColor: Colors.accentCrimson,
   },
   pairRow: {
     flexDirection: 'row',
@@ -400,7 +399,6 @@ const card = StyleSheet.create({
   ctaLogo: {
     width: 58,
     height: 17,
-    tintColor: Colors.accentCrimson,
   },
 })
 

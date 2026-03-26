@@ -17,7 +17,7 @@ export default function TabsLayout() {
           borderTopLeftRadius: 24,
           borderTopRightRadius: 24,
         },
-        tabBarActiveTintColor: Colors.accentCrimson,
+        tabBarActiveTintColor: Colors.accentAmber,
         tabBarInactiveTintColor: Colors.textMuted,
       }}
     >
