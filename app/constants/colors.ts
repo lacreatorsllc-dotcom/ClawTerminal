@@ -6,8 +6,8 @@ export const Colors = {
   bgBorder: '#2e2c28',     // warm dividers — use sparingly
 
   // Brand — Anthropic Orange
-  accentCrimson: '#ff6600',    // primary CTA, brand, active tab indicator
-  accentCrimsonHot: '#ff8533', // gradient end, hover/press states
+  accentCrimson: '#ff453a',    // primary CTA, brand, active tab indicator
+  accentCrimsonHot: '#ff6b6b', // gradient end, hover/press states
 
   // Semantic — status & signal
   accentGreen: '#00c896',   // connected, active — vibrant emerald

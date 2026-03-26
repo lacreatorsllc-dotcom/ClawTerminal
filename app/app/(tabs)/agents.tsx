@@ -209,7 +209,7 @@ const styles = StyleSheet.create({
   systemStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accentTeal },
   systemStatusText: { color: Colors.accentTeal, fontSize: 9, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
   connectBtn: {
-    backgroundColor: 'rgba(193, 18, 31, 0.1)',
+    backgroundColor: 'rgba(255, 69, 58, 0.08)',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     borderWidth: 1.5,
-    backgroundColor: 'rgba(193, 18, 31, 0.08)',
+    backgroundColor: 'rgba(255, 69, 58, 0.08)',
     justifyContent: 'center',
     alignItems: 'center',
   },
