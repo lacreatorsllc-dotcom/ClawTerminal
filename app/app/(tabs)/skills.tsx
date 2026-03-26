@@ -42,17 +42,17 @@ interface ClawHubSkill {
 function LocalSkillCard({ skill }: { skill: Skill }) {
   return (
     <TouchableOpacity style={styles.card} onPress={() => router.push(`/skill/${skill.id}`)}>
-      <Text style={styles.skillName}>{skill.name}</Text>
+      <View style={styles.cardHeader}>
+        <Text style={styles.skillName}>{skill.name}</Text>
+        {skill.category && (
+          <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{skill.category}</Text></View>
+        )}
+      </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
       <View style={styles.cardFooter}>
-        <Text style={styles.sourceLabel}>Anthropic</Text>
-        <View style={styles.cardActions}>
-          {skill.category && (
-            <View style={styles.categoryBadge}><Text style={styles.categoryBadgeText}>{skill.category}</Text></View>
-          )}
-          <View style={styles.installBtn}>
-            <Text style={styles.installBtnText}>Install</Text>
-          </View>
+        <Text style={styles.sourceLabelAnthropic}>Anthropic</Text>
+        <View style={styles.installBtn}>
+          <Text style={styles.installBtnText}>Install</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -75,44 +75,42 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSk
       onPress={() => router.push(`/skill/clawhub/${skill.name}`)}
     >
       <View style={styles.cardHeader}>
-        <View style={styles.nameRow}>
-          <Text style={styles.skillName}>{skill.displayName}</Text>
-          {skill.isOfficial && <View style={styles.officialBadge}><Text style={styles.officialBadgeText}>Official</Text></View>}
-        </View>
+        <Text style={styles.skillName}>{skill.displayName}</Text>
+        {skill.channel && (
+          <View style={styles.categoryBadge}>
+            <Text style={styles.categoryBadgeText}>{skill.channel === 'official' ? 'Official' : skill.channel.charAt(0).toUpperCase() + skill.channel.slice(1)}</Text>
+          </View>
+        )}
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
       {skill.originalSummary ? (
         <Text style={styles.skillDescOriginal} numberOfLines={2}>{skill.originalSummary}</Text>
       ) : null}
       <View style={styles.cardFooter}>
-        <View style={styles.sourceCol}>
-          {skill.verificationTier
-            ? <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
-            : <Text style={styles.sourceLabel}>ClawHub</Text>
-          }
-        </View>
-        <View style={styles.cardActions}>
-          {installed ? (
-            <View style={styles.installedBadge}>
-              <Text style={styles.installedBadgeText}>Installed ✓</Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={[styles.installBtn, installing && styles.installBtnLoading]}
-              onPress={(e) => {
-                // @ts-ignore
-                e.stopPropagation?.()
-                onInstall(skill)
-              }}
-              disabled={installing}
-            >
-              {installing
-                ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
-                : <Text style={styles.installBtnText}>Install</Text>
-              }
-            </TouchableOpacity>
-          )}
-        </View>
+        {skill.verificationTier
+          ? <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
+          : <Text style={styles.sourceLabelClawhub}>ClawHub</Text>
+        }
+        {installed ? (
+          <View style={styles.installedBadge}>
+            <Text style={styles.installedBadgeText}>Installed ✓</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.installBtn, installing && styles.installBtnLoading]}
+            onPress={(e) => {
+              // @ts-ignore
+              e.stopPropagation?.()
+              onInstall(skill)
+            }}
+            disabled={installing}
+          >
+            {installing
+              ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
+              : <Text style={styles.installBtnText}>Install</Text>
+            }
+          </TouchableOpacity>
+        )}
       </View>
     </TouchableOpacity>
   )
@@ -447,11 +445,11 @@ const styles = StyleSheet.create({
   officialBadgeText: { color: Colors.accentAmber, fontSize: 10, fontWeight: '700' },
   skillDesc: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
   skillDescOriginal: { color: Colors.textMuted, fontSize: 11, lineHeight: 16, fontStyle: 'italic' },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 8 },
-  sourceCol: { justifyContent: 'flex-end' },
-  sourceLabel: { color: Colors.textMuted, fontSize: 11, fontWeight: '500' },
-  cardActions: { alignItems: 'flex-end', gap: 6 },
-  categoryBadge: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  sourceLabelAnthropic: { fontSize: 11, fontWeight: '700', color: '#a5b4fc', letterSpacing: 0.3 },
+  sourceLabelClawhub: { fontSize: 11, fontWeight: '700', color: Colors.accentTeal, letterSpacing: 0.3 },
+  categoryBadge: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   categoryBadgeText: { color: Colors.accentGreen, fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   verifiedBadge: { backgroundColor: 'rgba(59,130,246,0.15)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
   verifiedBadgeText: { color: '#60a5fa', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
