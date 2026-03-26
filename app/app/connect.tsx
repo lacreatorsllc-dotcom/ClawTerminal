@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Ionicons } from '@expo/vector-icons'
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Linking, ActivityIndicator, TextInput } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import { router } from 'expo-router'
@@ -200,7 +201,10 @@ export default function ConnectScreen() {
               <View style={styles.commandHeader}>
                 <Text style={styles.commandHeaderLabel}>bash</Text>
                 <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
-                  <Text style={styles.copyBtnText}>{copied ? '✓' : '⧉'}</Text>
+                  {copied
+                    ? <Ionicons name="checkmark" size={18} color={Colors.accentGreen} />
+                    : <Ionicons name="copy-outline" size={18} color={Colors.textSecondary} />
+                  }
                 </TouchableOpacity>
               </View>
               <View style={styles.commandBody}>
@@ -393,7 +397,6 @@ const styles = StyleSheet.create({
   commandBody: { paddingHorizontal: 14, paddingBottom: 14 },
   command: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: Colors.accentGreen, lineHeight: 18 },
   copyBtn: { padding: 4 },
-  copyBtnText: { color: Colors.textSecondary, fontSize: 20 },
 
   // Instructions
   instructionsList: { gap: 16 },
