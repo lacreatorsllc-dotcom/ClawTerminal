@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/mememarketer/Pentagon/ClawTerminal log --oneline -10)",
+      "Bash(ls /Users/mememarketer/Pentagon/ClawTerminal/app/app/\\\\\\(tabs\\\\\\)/)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -22,11 +28,6 @@
           }
         ]
       }
-    ]
-  },
-  "permissions": {
-    "allow": [
-      "Bash(git -C /Users/mememarketer/Pentagon/ClawTerminal log --oneline -10)"
     ]
   }
 }
