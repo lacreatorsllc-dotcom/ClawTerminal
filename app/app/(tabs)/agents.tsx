@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   },
   headerLeft: { gap: 4 },
   logoRow: { flexDirection: 'row', alignItems: 'center' },
-  logoImage: { width: 120, height: 36 },
+  logoImage: { width: 90, height: 27 },
   systemStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   systemStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accentTeal },
   systemStatusText: { color: Colors.accentTeal, fontSize: 9, fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' },
