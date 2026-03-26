@@ -147,6 +147,21 @@ export default function ConnectScreen() {
         {/* ── Step 1: Method picker ── */}
         {step === 'method' && (
           <>
+            {/* Connect to Claude — hero */}
+            <TouchableOpacity style={styles.claudeCard} activeOpacity={0.85}>
+              <View style={styles.claudeCardGlow} />
+              <View style={styles.claudeCardInner}>
+                <View style={styles.claudeCardIcon}>
+                  <Text style={styles.claudeCardIconText}>✦</Text>
+                </View>
+                <View style={styles.claudeCardText}>
+                  <Text style={styles.claudeCardTitle}>Connect to Claude</Text>
+                  <Text style={styles.claudeCardSubtitle}>Sign in with your Claude account</Text>
+                </View>
+                <Text style={styles.claudeCardChevron}>›</Text>
+              </View>
+            </TouchableOpacity>
+
             {/* Telegram — primary */}
             <TouchableOpacity
               style={styles.primaryCard}
@@ -331,6 +346,40 @@ const styles = StyleSheet.create({
   closeBtnText: { color: Colors.textSecondary, fontSize: 18 },
   title: { fontSize: 20, fontWeight: '600', color: Colors.textPrimary },
   content: { flex: 1, paddingHorizontal: 24, paddingTop: 24, gap: 14 },
+
+  // Connect to Claude card
+  claudeCard: {
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 69, 58, 0.35)',
+    overflow: 'hidden',
+    backgroundColor: Colors.bgSurface,
+  },
+  claudeCardGlow: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: 60,
+    backgroundColor: 'rgba(255, 69, 58, 0.06)',
+  },
+  claudeCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    padding: 18,
+  },
+  claudeCardIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 69, 58, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  claudeCardIconText: { fontSize: 22, color: Colors.accentCrimson },
+  claudeCardText: { flex: 1, gap: 3 },
+  claudeCardTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary, letterSpacing: -0.2 },
+  claudeCardSubtitle: { fontSize: 13, color: Colors.textSecondary },
+  claudeCardChevron: { fontSize: 22, color: Colors.accentCrimson },
 
   // Primary card (Telegram)
   primaryCard: {
