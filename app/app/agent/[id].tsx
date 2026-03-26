@@ -166,26 +166,22 @@ export default function AgentDetailScreen() {
         const ext = (asset.mimeType?.split('/')[1]) ?? asset.uri.split('.').pop() ?? 'jpg'
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
         const contentType = asset.mimeType ?? 'image/jpeg'
-        const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 })
-        const binary = atob(base64)
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
         const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/message-attachments/${fileName}`
-        const res = await fetch(uploadUrl, {
-          method: 'POST',
+        const res = await FileSystem.uploadAsync(uploadUrl, asset.uri, {
+          httpMethod: 'POST',
+          uploadType: 1, // MULTIPART — uses foreground session, response is parseable
+          fieldName: 'file',
+          mimeType: contentType,
           headers: {
             'Authorization': `Bearer ${token}`,
             'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-            'Content-Type': contentType,
           },
-          body: bytes.buffer,
         })
-        if (res.ok) {
+        if (res.status >= 200 && res.status < 300) {
           const publicUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/message-attachments/${fileName}`
           setAttachments((prev) => prev.map((a) => a.local === asset.uri ? { local: a.local, remote: publicUrl } : a))
         } else {
-          const err = await res.text()
-          Alert.alert('Upload failed', err)
+          Alert.alert('Upload failed', res.body ?? `Status ${res.status}`)
           setAttachments((prev) => prev.filter((a) => a.local !== asset.uri))
         }
       } catch (e: any) {
