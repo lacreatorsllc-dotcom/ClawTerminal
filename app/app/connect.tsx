@@ -197,9 +197,12 @@ export default function ConnectScreen() {
             <Text style={styles.stepTitle}>Run this command</Text>
             <Text style={styles.stepDesc}>In your agent's environment, run the connector command below.</Text>
             <View style={styles.commandBox}>
-              <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
-                <Text style={styles.copyBtnText}>{copied ? '✓' : '⧉'}</Text>
-              </TouchableOpacity>
+              <View style={styles.commandHeader}>
+                <Text style={styles.commandHeaderLabel}>bash</Text>
+                <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
+                  <Text style={styles.copyBtnText}>{copied ? '✓' : '⧉'}</Text>
+                </TouchableOpacity>
+              </View>
               <View style={styles.commandBody}>
                 <Text style={styles.command}>{installCmd}</Text>
               </View>
@@ -377,36 +380,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.bgBorder,
     overflow: 'hidden',
-    position: 'relative',
   },
   commandHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.bgBorder,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
-  commandHeaderIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: '#3d3bff22',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  commandHeaderIconText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 10, color: '#6366f1' },
-  commandHeaderLabel: { flex: 1, fontSize: 11, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 1.2 },
-  commandBody: { padding: 14 },
+  commandHeaderLabel: { fontSize: 12, fontWeight: '500', color: Colors.textSecondary },
+  commandBody: { paddingHorizontal: 14, paddingBottom: 14 },
   command: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: Colors.accentGreen, lineHeight: 18 },
-  copyBtn: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    padding: 6,
-    zIndex: 1,
-  },
+  copyBtn: { padding: 4 },
   copyBtnText: { color: Colors.textSecondary, fontSize: 20 },
 
   // Instructions
