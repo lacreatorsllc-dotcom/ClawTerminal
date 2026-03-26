@@ -4,6 +4,7 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
   Image, Linking, Alert
 } from 'react-native'
+import { ShareCardModal } from './share-card'
 import * as ImagePicker from 'expo-image-picker'
 import * as FileSystem from 'expo-file-system/legacy'
 import { useLocalSearchParams, router } from 'expo-router'
@@ -54,6 +55,7 @@ const STATUS_COLOR: Record<AgentStatus, string> = {
 export default function AgentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const [tab, setTab] = useState<Tab>('chat')
+  const [showShareCard, setShowShareCard] = useState(false)
   const [tokenStats, setTokenStats] = useState<{ input: number; output: number; messageCount: number } | null>(null)
   const [agentSkills, setAgentSkills] = useState<InstalledSkill[]>([])
   const [loadingSkills, setLoadingSkills] = useState(false)
@@ -225,6 +227,13 @@ export default function AgentDetailScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
+      <ShareCardModal
+        visible={showShareCard}
+        onClose={() => setShowShareCard(false)}
+        agentName={agent.name}
+        initialTrade={agent.metadata?.trade as any}
+      />
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -237,6 +246,9 @@ export default function AgentDetailScreen() {
             <Text style={[styles.statusText, { color: STATUS_COLOR[status] }]}>{status}</Text>
           </View>
         </View>
+        <TouchableOpacity style={styles.shareBtn} onPress={() => setShowShareCard(true)}>
+          <Text style={styles.shareBtnText}>Share</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Tabs */}
@@ -453,6 +465,13 @@ function Row({ label, value, valueColor, mono }: { label: string; value: string;
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 60, paddingBottom: 12, gap: 12 },
+  shareBtn: {
+    backgroundColor: 'rgba(255,69,58,0.08)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  shareBtnText: { color: Colors.accentCrimson, fontSize: 13, fontWeight: '600' },
   backBtn: { padding: 4 },
   backBtnText: { fontSize: 28, color: Colors.textSecondary, lineHeight: 28 },
   headerInfo: { flex: 1 },
