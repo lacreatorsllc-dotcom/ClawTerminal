@@ -199,6 +199,9 @@ export default function ConnectScreen() {
             <View style={styles.commandBox}>
               <View style={styles.commandBody}>
                 <Text style={styles.command}>{installCmd}</Text>
+                <TouchableOpacity style={styles.copyBtn} onPress={handleCopy}>
+                  <Text style={styles.copyBtnText}>{copied ? '✓  Copied' : '⧉  Copy'}</Text>
+                </TouchableOpacity>
               </View>
             </View>
             <TouchableOpacity
