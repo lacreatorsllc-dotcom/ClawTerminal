@@ -51,16 +51,7 @@ export function subscribeToAgent(
   }
 ) {
   const channel = supabase
-    .channel(`agent:${agentId}`, { config: { broadcast: { self: true } } })
-    .on('broadcast', { event: 'message' }, ({ payload }) => {
-      if (handlers.onMessage) {
-        handlers.onMessage({
-          direction: payload.direction,
-          content: payload.content,
-          ts: payload.ts ?? Date.now(),
-        })
-      }
-    })
+    .channel(`agent:${agentId}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'messages', filter: `agent_id=eq.${agentId}` },
@@ -126,21 +117,11 @@ export async function getOrCreateSkill(params: {
 // ─────────────────────────────────────────────
 
 export async function sendMessage(
-  channel: ReturnType<typeof supabase.channel> | null,
+  _channel: ReturnType<typeof supabase.channel> | null,
   agentId: string,
   userId: string,
   content: string
 ) {
-  // Broadcast for real-time delivery
-  if (channel) {
-    await channel.send({
-      type: 'broadcast',
-      event: 'message',
-      payload: { direction: 'inbound', content, ts: Date.now() },
-    })
-  }
-
-  // Persist to DB for history
   return supabase.from('messages').insert({
     agent_id: agentId,
     user_id: userId,
