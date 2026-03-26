@@ -151,4 +151,5 @@ insert into public.skills (name, description, category, version, config_schema) 
   'Documents',
   '1.0.0',
   '{"fields": []}'
-);
+)
+ON CONFLICT (name) DO NOTHING;
