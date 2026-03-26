@@ -328,20 +328,20 @@ export default function SkillsScreen() {
         )}
 
         <TouchableOpacity
-          style={[styles.sourceChip, activeSource === 'anthropic' && styles.sourceChipAnthropicActive]}
-          onPress={() => { setActiveSource((s) => s === 'anthropic' ? 'all' : 'anthropic'); setActiveCategory('All') }}
-        >
-          <Text style={[styles.sourceChipText, activeSource === 'anthropic' && styles.sourceChipAnthropicTextActive]}>
-            Anthropic
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
           style={[styles.sourceChip, activeSource === 'clawhub' && styles.sourceChipClawhubActive]}
           onPress={() => { setActiveSource((s) => s === 'clawhub' ? 'all' : 'clawhub'); setActiveCategory('All') }}
         >
           <Text style={[styles.sourceChipText, activeSource === 'clawhub' && styles.sourceChipClawhubTextActive]}>
             ClawHub
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.sourceChip, activeSource === 'anthropic' && styles.sourceChipAnthropicActive]}
+          onPress={() => { setActiveSource((s) => s === 'anthropic' ? 'all' : 'anthropic'); setActiveCategory('All') }}
+        >
+          <Text style={[styles.sourceChipText, activeSource === 'anthropic' && styles.sourceChipAnthropicTextActive]}>
+            Anthropic
           </Text>
         </TouchableOpacity>
 
@@ -426,6 +426,32 @@ export default function SkillsScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <>
+            {/* ClawHub skills */}
+            {activeSource !== 'anthropic' && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionLabel}>
+                    {activeCategory === 'All' ? 'Featured' : activeCategory}
+                  </Text>
+                  {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
+                </View>
+
+                {!loading && filteredClawHub.length === 0 && (
+                  <Text style={styles.emptyText}>No skills found</Text>
+                )}
+
+                {filteredClawHub.map((s) => (
+                  <ClawHubSkillCard
+                    key={s.name}
+                    skill={s}
+                    onInstall={handleInstall}
+                    installing={installingSlug === s.name}
+                    installed={installedSlugs.has(s.name)}
+                  />
+                ))}
+              </>
+            )}
+
             {/* Anthropic / local skills */}
             {localSkillsToShow.length > 0 && (
               <>
@@ -437,28 +463,6 @@ export default function SkillsScreen() {
                 ))}
               </>
             )}
-
-            {/* ClawHub skills */}
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>
-                {activeCategory === 'All' ? 'Featured' : activeCategory}
-              </Text>
-              {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
-            </View>
-
-            {!loading && filteredClawHub.length === 0 && (
-              <Text style={styles.emptyText}>No skills found</Text>
-            )}
-
-            {filteredClawHub.map((s) => (
-              <ClawHubSkillCard
-                key={s.name}
-                skill={s}
-                onInstall={handleInstall}
-                installing={installingSlug === s.name}
-                installed={installedSlugs.has(s.name)}
-              />
-            ))}
           </>
         }
       />
