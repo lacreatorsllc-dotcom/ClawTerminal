@@ -44,11 +44,11 @@ function LocalSkillCard({ skill }: { skill: Skill }) {
     <TouchableOpacity style={styles.card} onPress={() => router.push(`/skill/${skill.id}`)}>
       <View style={styles.cardHeader}>
         <Text style={styles.skillName}>{skill.name}</Text>
-        {skill.category && <View style={styles.badge}><Text style={styles.badgeText}>{skill.category}</Text></View>}
+        <View style={styles.providerBadgeAnthropic}><Text style={styles.providerBadgeText}>Anthropic</Text></View>
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
       <View style={styles.cardFooter}>
-        <Text style={styles.version}>v{skill.version}</Text>
+        <Text style={styles.version}>{skill.category ? `${skill.category} · ` : ''}v{skill.version}</Text>
         <TouchableOpacity style={styles.installBtn} onPress={() => router.push(`/skill/${skill.id}`)}>
           <Text style={styles.installBtnText}>Install</Text>
         </TouchableOpacity>
@@ -76,6 +76,11 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSk
         <View style={styles.nameRow}>
           <Text style={styles.skillName}>{skill.displayName}</Text>
           {skill.isOfficial && <View style={styles.officialBadge}><Text style={styles.officialBadgeText}>Official</Text></View>}
+        </View>
+        <View style={skill.verificationTier ? styles.providerBadgeVerified : styles.providerBadgeClawHub}>
+          <Text style={[styles.providerBadgeText, skill.verificationTier && styles.providerBadgeTextVerified]}>
+            {skill.verificationTier ? '✓ Verified' : 'ClawHub'}
+          </Text>
         </View>
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
@@ -117,7 +122,6 @@ export default function SkillsScreen() {
   const showToast = useUIStore((s) => s.showToast)
 
   const [query, setQuery] = useState('')
-  const [activeSource, setActiveSource] = useState<'All' | 'Anthropic' | 'ClawHub'>('All')
   const [activeCategory, setActiveCategory] = useState<string>('All')
   const [clawHubSkills, setClawHubSkills] = useState<ClawHubSkill[]>([])
   const [searchResults, setSearchResults] = useState<ClawHubSkill[]>([])
@@ -278,19 +282,6 @@ export default function SkillsScreen() {
         </View>
       )}
 
-      {/* Source filter */}
-      <View style={styles.sourceRow}>
-        {(['All', 'Anthropic', 'ClawHub'] as const).map((src) => (
-          <TouchableOpacity
-            key={src}
-            style={[styles.sourceChip, activeSource === src && styles.sourceChipActive]}
-            onPress={() => { setActiveSource(src); setActiveCategory('All') }}
-          >
-            <Text style={[styles.sourceChipText, activeSource === src && styles.sourceChipTextActive]}>{src}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       {/* Search */}
       <View style={styles.searchRow}>
         <TextInput
@@ -305,8 +296,8 @@ export default function SkillsScreen() {
         {searching && <ActivityIndicator size="small" color={Colors.accentTeal} style={styles.searchSpinner} />}
       </View>
 
-      {/* Category filter — only when Anthropic/All+Library is visible */}
-      {!query.trim() && categories.length > 1 && activeSource !== 'ClawHub' && (
+      {/* Category filter */}
+      {!query.trim() && categories.length > 1 && (
         <View style={styles.chipRow}>
           <ScrollView
             horizontal
@@ -336,40 +327,33 @@ export default function SkillsScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <>
-            {/* Anthropic / Library skills */}
-            {activeSource !== 'ClawHub' && filteredLocalSkills.length > 0 && (
+            {/* Anthropic skills */}
+            {filteredLocalSkills.length > 0 && (
               <>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionLabel}>Anthropic</Text>
-                </View>
                 {filteredLocalSkills.map((s) => (
                   <LocalSkillCard key={s.id} skill={s} />
                 ))}
               </>
             )}
-            {activeSource === 'Anthropic' && filteredLocalSkills.length === 0 && (
-              <Text style={styles.emptyText}>No skills match this filter</Text>
+            {activeCategory !== 'All' && filteredLocalSkills.length === 0 && (
+              <Text style={styles.emptyText}>No skills in this category</Text>
             )}
 
-            {/* ClawHub skills */}
-            {activeSource !== 'Anthropic' && (
+            {/* ClawHub skills — only shown on All */}
+            {activeCategory === 'All' && (
               <>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionLabel}>{query.trim() ? 'Search results' : 'ClawHub'}</Text>
-                  {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
-                </View>
-                {!loading && displayedClawHub.length === 0 && (
-                  <Text style={styles.emptyText}>{query.trim() ? 'No results' : 'No skills available'}</Text>
-                )}
-                {displayedClawHub.map((s) => (
-                  <ClawHubSkillCard
-                    key={s.name}
-                    skill={s}
-                    onInstall={handleInstall}
-                    installing={installingSlug === s.name}
-                    installed={installedSlugs.has(s.name)}
-                  />
-                ))}
+                {loading
+                  ? <ActivityIndicator size="small" color={Colors.accentTeal} style={{ marginTop: 16 }} />
+                  : displayedClawHub.map((s) => (
+                    <ClawHubSkillCard
+                      key={s.name}
+                      skill={s}
+                      onInstall={handleInstall}
+                      installing={installingSlug === s.name}
+                      installed={installedSlugs.has(s.name)}
+                    />
+                  ))
+                }
               </>
             )}
           </>
@@ -384,14 +368,11 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 12 },
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
-  sourceRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 4 },
-  sourceChip: {
-    paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20,
-    backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.bgBorder,
-  },
-  sourceChipActive: { backgroundColor: Colors.accentCrimson, borderColor: Colors.accentCrimson },
-  sourceChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  sourceChipTextActive: { color: '#fff' },
+  providerBadgeAnthropic: { backgroundColor: 'rgba(99,102,241,0.12)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  providerBadgeClawHub: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  providerBadgeVerified: { backgroundColor: 'rgba(59,130,246,0.15)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
+  providerBadgeText: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, letterSpacing: 0.3 },
+  providerBadgeTextVerified: { color: '#60a5fa' },
   chipRow: { height: 46, justifyContent: 'center' },
   agentPicker: { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
   agentChip: {
