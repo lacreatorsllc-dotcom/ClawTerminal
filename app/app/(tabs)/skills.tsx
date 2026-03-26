@@ -268,17 +268,16 @@ export default function SkillsScreen() {
             if (res.status !== 'fulfilled') continue
             for (const s of (res.value.results ?? res.value.items ?? [])) {
               const skill: ClawHubSkill = { ...s, name: s.slug ?? s.name }
-                if (!seen.has(skill.name)) { seen.add(skill.name); items.push(skill) }
-              }
+              if (!seen.has(skill.name)) { seen.add(skill.name); items.push(skill) }
             }
-            items = items.filter((s) => matchesCategory(s, activeCategory))
           }
+          items = items.filter((s) => matchesCategory(s, activeCategory))
         }
-        const translated = await Promise.all(items.map(translateSkill))
-        setClawHubSkills(translated)
-      } catch {}
-      setLoading(false)
-    }
+      }
+      const translated = await Promise.all(items.map(translateSkill))
+      setClawHubSkills(translated)
+    } catch {}
+    setLoading(false)
   }, [activeCategory])
 
   useEffect(() => {
