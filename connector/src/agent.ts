@@ -10,7 +10,7 @@ const SUPABASE_SERVICE_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhdm9ucnRkeWRoZGdid25wdXh5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDIyMjg2OCwiZXhwIjoyMDg5Nzk4ODY4fQ.3LNbwLYn0zLmck-nRG-VclmKAFggLU0BV0HsZz3MyfQ';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const HISTORY_LIMIT = 50;
-const PROJECT_ROOT = '/Users/mememarketer/Pentagon/claw_terminal';
+const PROJECT_ROOT = '/Users/mememarketer/Pentagon/ClawTerminal';
 
 interface AgentOptions {
   userId: string;
@@ -205,7 +205,7 @@ export async function runAgent({ userId, agentName, systemPrompt, apiKey }: Agen
           // Done — extract text reply
           finalReply = response.content
             .filter((b): b is Anthropic.Messages.TextBlock => b.type === 'text')
-            .map(b => b.text)
+            .map((b: Anthropic.Messages.TextBlock) => b.text)
             .join('');
           break;
         }

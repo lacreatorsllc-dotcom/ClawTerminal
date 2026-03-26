@@ -1,0 +1,15 @@
+# Local agent runner scripts (contain env var references, never commit)
+connector/run-*.sh
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Supabase local
+supabase/.temp/
+
+# Project memory (local only)
+project_memory/
