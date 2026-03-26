@@ -179,7 +179,7 @@ export default function AgentDetailScreen() {
     if ((!input.trim() && attachments.length === 0) || !user || !id) return
     const content = input.trim() || (attachments.length > 0 ? '[image]' : '')
     setInput('')
-    const urls = attachments.map((a) => a.remote ?? a.local)
+    const urls = attachments.filter((a) => a.remote).map((a) => a.remote!)
     const meta = urls.length > 0 ? { attachments: urls } : undefined
     setAttachments([])
     await sendMessage(channelRef.current, id, user.id, content, meta)
@@ -275,7 +275,7 @@ export default function AgentDetailScreen() {
               returnKeyType="send"
               onSubmitEditing={handleSend}
             />
-            <TouchableOpacity style={[styles.sendBtn, (!input.trim() && attachments.length === 0) && styles.sendBtnDisabled]} onPress={handleSend}>
+            <TouchableOpacity style={[styles.sendBtn, (!input.trim() && attachments.length === 0 || uploading) && styles.sendBtnDisabled]} onPress={handleSend} disabled={uploading}>
               <Text style={styles.sendBtnText}>↑</Text>
             </TouchableOpacity>
           </View>
