@@ -117,6 +117,7 @@ export default function SkillsScreen() {
   const showToast = useUIStore((s) => s.showToast)
 
   const [query, setQuery] = useState('')
+  const [activeCategory, setActiveCategory] = useState<string>('All')
   const [clawHubSkills, setClawHubSkills] = useState<ClawHubSkill[]>([])
   const [searchResults, setSearchResults] = useState<ClawHubSkill[]>([])
   const [loading, setLoading] = useState(true)
