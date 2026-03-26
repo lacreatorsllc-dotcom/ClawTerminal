@@ -322,7 +322,19 @@ export default function SkillsScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <>
-            {/* ClawHub skills — featured first */}
+            {/* Local / Supabase skills — always first */}
+            {filteredLocalSkills.length > 0 && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionLabel}>Library</Text>
+                </View>
+                {filteredLocalSkills.map((s) => (
+                  <LocalSkillCard key={s.id} skill={s} />
+                ))}
+              </>
+            )}
+
+            {/* ClawHub skills — featured below library */}
             {(activeCategory === 'All') && (
               <>
                 <View style={styles.sectionHeader}>
@@ -342,18 +354,6 @@ export default function SkillsScreen() {
                     installing={installingSlug === s.name}
                     installed={installedSlugs.has(s.name)}
                   />
-                ))}
-              </>
-            )}
-
-            {/* Local / Supabase skills */}
-            {filteredLocalSkills.length > 0 && (
-              <>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionLabel}>Library</Text>
-                </View>
-                {filteredLocalSkills.map((s) => (
-                  <LocalSkillCard key={s.id} skill={s} />
                 ))}
               </>
             )}

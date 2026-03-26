@@ -12,10 +12,14 @@ export const useChatStore = create<ChatState>((set) => ({
   setMessages: (agentId, messages) =>
     set((state) => ({ messagesByAgent: { ...state.messagesByAgent, [agentId]: messages } })),
   addMessage: (agentId, message) =>
-    set((state) => ({
-      messagesByAgent: {
-        ...state.messagesByAgent,
-        [agentId]: [...(state.messagesByAgent[agentId] ?? []), message],
-      },
-    })),
+    set((state) => {
+      const existing = state.messagesByAgent[agentId] ?? []
+      if (existing.some((m) => m.id === message.id)) return state
+      return {
+        messagesByAgent: {
+          ...state.messagesByAgent,
+          [agentId]: [...existing, message],
+        },
+      }
+    }),
 }))

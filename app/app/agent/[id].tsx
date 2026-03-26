@@ -157,34 +157,30 @@ export default function AgentDetailScreen() {
     const newItems = result.assets.map((a) => ({ local: a.uri }))
     setAttachments((prev) => [...prev, ...newItems])
 
-    // Upload via FileSystem.uploadAsync (most reliable in Expo/RN)
+    // Upload via base64 read → Uint8Array → Supabase Storage (avoids iOS background session issues)
     setUploading(true)
-    const token = session?.access_token
     for (const asset of result.assets) {
       try {
         const ext = (asset.mimeType?.split('/')[1]) ?? asset.uri.split('.').pop() ?? 'jpg'
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
         const contentType = asset.mimeType ?? 'image/jpeg'
-        const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/message-attachments/${fileName}`
-        const res = await FileSystem.uploadAsync(uploadUrl, asset.uri, {
-          httpMethod: 'POST',
-          uploadType: 0, // BINARY_CONTENT
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-            'Content-Type': contentType,
-          },
-        })
-        if (res.status >= 200 && res.status < 300) {
-          const publicUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/message-attachments/${fileName}`
+        const base64 = await FileSystem.readAsStringAsync(asset.uri, { encoding: FileSystem.EncodingType.Base64 })
+        const binary = atob(base64)
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+        const { data, error } = await supabase.storage
+          .from('message-attachments')
+          .upload(fileName, bytes, { contentType, upsert: false })
+        if (error) {
+          Alert.alert('Upload failed', error.message)
+        } else if (data) {
+          const { data: { publicUrl } } = supabase.storage.from('message-attachments').getPublicUrl(data.path)
           setAttachments((prev) => prev.map((a) => a.local === asset.uri ? { local: a.local, remote: publicUrl } : a))
-        } else {
-          console.error('[upload] failed:', res.status, res.body)
-          Alert.alert('Upload failed', `Status ${res.status}: ${res.body}`)
         }
       } catch (e: any) {
-        console.error('[upload] exception:', e?.message)
         Alert.alert('Upload error', e?.message ?? 'Unknown error')
+        // Remove the failed attachment so it doesn't block sending
+        setAttachments((prev) => prev.filter((a) => a.local !== asset.uri))
       }
     }
     setUploading(false)
