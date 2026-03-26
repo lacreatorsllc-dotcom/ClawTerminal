@@ -65,11 +65,10 @@ export default function SkillDetailScreen() {
 
       <View style={styles.header}>
         <Text style={styles.skillName}>{skill.name}</Text>
-        {skill.category && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{skill.category}</Text>
-          </View>
-        )}
+        <View style={styles.metaRow}>
+          <View style={styles.providerBadge}><Text style={styles.providerBadgeText}>Anthropic</Text></View>
+          {skill.category && <View style={styles.badge}><Text style={styles.badgeText}>{skill.category}</Text></View>}
+        </View>
       </View>
 
       <Text style={styles.description}>{skill.description}</Text>
@@ -105,6 +104,9 @@ const styles = StyleSheet.create({
   backBtnText: { color: Colors.accentCrimson, fontSize: 16 },
   header: { gap: 8 },
   skillName: { fontSize: 26, fontWeight: '700', color: Colors.textPrimary },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  providerBadge: { backgroundColor: 'rgba(99,102,241,0.15)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
+  providerBadgeText: { color: '#a5b4fc', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   badge: {
     alignSelf: 'flex-start',
     backgroundColor: Colors.bgElevated,

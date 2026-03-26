@@ -44,14 +44,13 @@ function LocalSkillCard({ skill }: { skill: Skill }) {
     <TouchableOpacity style={styles.card} onPress={() => router.push(`/skill/${skill.id}`)}>
       <View style={styles.cardHeader}>
         <Text style={styles.skillName}>{skill.name}</Text>
-        <View style={styles.providerBadgeAnthropic}><Text style={styles.providerBadgeText}>Anthropic</Text></View>
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
       <View style={styles.cardFooter}>
         <Text style={styles.version}>{skill.category ? `${skill.category} · ` : ''}v{skill.version}</Text>
-        <TouchableOpacity style={styles.installBtn} onPress={() => router.push(`/skill/${skill.id}`)}>
+        <View style={styles.installBtn}>
           <Text style={styles.installBtnText}>Install</Text>
-        </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   )
@@ -76,11 +75,6 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed }: ClawHubSk
         <View style={styles.nameRow}>
           <Text style={styles.skillName}>{skill.displayName}</Text>
           {skill.isOfficial && <View style={styles.officialBadge}><Text style={styles.officialBadgeText}>Official</Text></View>}
-        </View>
-        <View style={skill.verificationTier ? styles.providerBadgeVerified : styles.providerBadgeClawHub}>
-          <Text style={[styles.providerBadgeText, skill.verificationTier && styles.providerBadgeTextVerified]}>
-            {skill.verificationTier ? '✓ Verified' : 'ClawHub'}
-          </Text>
         </View>
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.summary || 'No description.'}</Text>
@@ -452,6 +446,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     minWidth: 70,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   installBtnLoading: { opacity: 0.7 },
   installBtnText: { color: Colors.bgPrimary, fontSize: 13, fontWeight: '600' },
