@@ -5,6 +5,7 @@ import {
   Image, Linking, Alert
 } from 'react-native'
 import * as ImagePicker from 'expo-image-picker'
+import * as FileSystem from 'expo-file-system'
 import { useLocalSearchParams, router } from 'expo-router'
 import { supabase, subscribeToAgent, sendMessage } from '../../lib/supabase'
 import { useAgentsStore } from '../../stores/agentsStore'
@@ -156,7 +157,7 @@ export default function AgentDetailScreen() {
     const newItems = result.assets.map((a) => ({ local: a.uri }))
     setAttachments((prev) => [...prev, ...newItems])
 
-    // Upload in background using direct REST (Supabase JS client upload has issues in RN)
+    // Upload via FileSystem.uploadAsync (most reliable in Expo/RN)
     setUploading(true)
     const { data: sessionData } = await supabase.auth.getSession()
     const token = sessionData.session?.access_token
@@ -166,24 +167,21 @@ export default function AgentDetailScreen() {
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
         const contentType = asset.mimeType ?? 'image/jpeg'
         const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/message-attachments/${fileName}`
-        const res = await fetch(uploadUrl, {
-          method: 'POST',
+        const res = await FileSystem.uploadAsync(uploadUrl, asset.uri, {
+          httpMethod: 'POST',
+          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
           headers: {
             'Authorization': `Bearer ${token}`,
             'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
             'Content-Type': contentType,
-            'x-upsert': 'false',
           },
-          body: { uri: asset.uri, name: fileName, type: contentType } as any,
         })
-        if (!res.ok) {
-          const err = await res.text()
-          console.error('[upload] failed:', err)
-          Alert.alert('Upload failed', err)
-        } else {
+        if (res.status >= 200 && res.status < 300) {
           const publicUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/message-attachments/${fileName}`
-          console.log('[upload] success:', publicUrl)
           setAttachments((prev) => prev.map((a) => a.local === asset.uri ? { local: a.local, remote: publicUrl } : a))
+        } else {
+          console.error('[upload] failed:', res.status, res.body)
+          Alert.alert('Upload failed', `Status ${res.status}: ${res.body}`)
         }
       } catch (e: any) {
         console.error('[upload] exception:', e?.message)
