@@ -1,20 +1,20 @@
 {
   "expo": {
-    "name": "ClawTerminal",
-    "slug": "clawterminal",
+    "name": "SLUGS",
+    "slug": "slugs",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "scheme": "clawterminal",
+    "scheme": "slugs",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#080A0E"
+      "backgroundColor": "#141413"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mememarketer.clawterminal"
+      "bundleIdentifier": "com.mememarketer.slugs"
     },
     "android": {
       "adaptiveIcon": {

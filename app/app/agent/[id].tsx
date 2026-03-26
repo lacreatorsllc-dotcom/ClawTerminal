@@ -156,22 +156,32 @@ export default function AgentDetailScreen() {
     const newItems = result.assets.map((a) => ({ local: a.uri }))
     setAttachments((prev) => [...prev, ...newItems])
 
-    // Upload in background
+    // Upload in background using direct REST (Supabase JS client upload has issues in RN)
     setUploading(true)
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
     for (const asset of result.assets) {
       try {
         const ext = (asset.mimeType?.split('/')[1]) ?? asset.uri.split('.').pop() ?? 'jpg'
         const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-        const formData = new FormData()
-        formData.append('file', { uri: asset.uri, name: fileName, type: asset.mimeType ?? 'image/jpeg' } as any)
-        const { data, error } = await supabase.storage
-          .from('message-attachments')
-          .upload(fileName, formData, { contentType: asset.mimeType ?? 'image/jpeg', upsert: false })
-        if (error) {
-          console.error('[upload] storage error:', error.message)
-          Alert.alert('Upload failed', error.message)
-        } else if (data) {
-          const { data: { publicUrl } } = supabase.storage.from('message-attachments').getPublicUrl(data.path)
+        const contentType = asset.mimeType ?? 'image/jpeg'
+        const uploadUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/message-attachments/${fileName}`
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'apikey': process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+            'Content-Type': contentType,
+            'x-upsert': 'false',
+          },
+          body: { uri: asset.uri, name: fileName, type: contentType } as any,
+        })
+        if (!res.ok) {
+          const err = await res.text()
+          console.error('[upload] failed:', err)
+          Alert.alert('Upload failed', err)
+        } else {
+          const publicUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/message-attachments/${fileName}`
           console.log('[upload] success:', publicUrl)
           setAttachments((prev) => prev.map((a) => a.local === asset.uri ? { local: a.local, remote: publicUrl } : a))
         }
