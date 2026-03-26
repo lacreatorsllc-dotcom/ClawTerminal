@@ -10,7 +10,7 @@ export const Colors = {
   accentCrimsonHot: '#e8885a', // gradient end, hover/press states
 
   // Semantic — status & signal
-  accentGreen: '#788c5d',   // connected, active — Anthropic green
+  accentGreen: '#00c896',   // connected, active — vibrant emerald
   accentTeal: '#6a9bcc',    // live process, syncing — Anthropic blue
   accentAmber: '#d97757',   // warning, stale, reconnecting — reuses brand orange
   accentRed: '#ef4444',     // error, disconnected
