@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   skillDesc: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
   skillDescOriginal: { color: Colors.textMuted, fontSize: 11, lineHeight: 16, fontStyle: 'italic' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 8 },
   sourceLabelAnthropic: { fontSize: 11, fontWeight: '700', color: '#a5b4fc', letterSpacing: 0.3 },
   sourceLabelClawhub: { fontSize: 11, fontWeight: '700', color: Colors.accentTeal, letterSpacing: 0.3 },
   categoryBadge: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
