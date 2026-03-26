@@ -1,14 +1,26 @@
 {
-  "hooks" : {
-    "PreToolUse" : [
+  "hooks": {
+    "PreToolUse": [
       {
-        "hooks" : [
+        "hooks": [
           {
-            "command" : "\/Users\/mememarketer\/.pentagon\/hooks\/scope-guard.sh",
-            "type" : "command"
+            "command": "/Users/mememarketer/.pentagon/hooks/scope-guard.sh",
+            "type": "command"
           }
         ],
-        "matcher" : "Write|Edit|NotebookEdit|Bash"
+        "matcher": "Write|Edit|NotebookEdit|Bash"
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/mememarketer/Pentagon/ClawTerminal && if ! git diff --quiet || ! git diff --staged --quiet || [ -n \"$(git ls-files --others --exclude-standard)\" ]; then git add -A && git commit -m \"auto: checkpoint $(date '+%Y-%m-%d %H:%M')\" && git push origin main; fi 2>/dev/null || true",
+            "timeout": 30,
+            "statusMessage": "Saving work to GitHub..."
+          }
+        ]
       }
     ]
   }
