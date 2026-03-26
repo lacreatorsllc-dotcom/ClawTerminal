@@ -151,7 +151,7 @@ export default function AgentsScreen() {
         <View style={styles.headerLeft}>
           <View style={styles.logoRow}>
             <Image
-              source={require('../../assets/icon.png')}
+              source={require('../../assets/slugs-logo.png')}
               style={styles.logoImage}
               resizeMode="contain"
             />
