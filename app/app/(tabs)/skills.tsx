@@ -645,12 +645,19 @@ export default function SkillsScreen() {
         }
         ListHeaderComponent={
           <>
-            {activeSource !== 'anthropic' && (
+            {activeSource !== 'anthropic' && activeSource !== 'skillssh' && (
               <>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionLabel}>{sectionLabel}</Text>
-                  {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
-                </View>
+                {activeCategory !== 'All' && (
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionLabel}>{sectionLabel}</Text>
+                    {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
+                  </View>
+                )}
+                {loading && activeCategory === 'All' && (
+                  <View style={styles.sectionHeader}>
+                    <ActivityIndicator size="small" color={Colors.accentTeal} />
+                  </View>
+                )}
                 {!loading && filteredClawHub.length === 0 && (
                   <Text style={styles.emptyText}>No skills found</Text>
                 )}
