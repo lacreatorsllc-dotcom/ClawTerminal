@@ -117,6 +117,7 @@ export default function SkillsScreen() {
   const showToast = useUIStore((s) => s.showToast)
 
   const [query, setQuery] = useState('')
+  const [activeSource, setActiveSource] = useState<'All' | 'Anthropic' | 'ClawHub'>('All')
   const [activeCategory, setActiveCategory] = useState<string>('All')
   const [clawHubSkills, setClawHubSkills] = useState<ClawHubSkill[]>([])
   const [searchResults, setSearchResults] = useState<ClawHubSkill[]>([])
@@ -277,6 +278,19 @@ export default function SkillsScreen() {
         </View>
       )}
 
+      {/* Source filter */}
+      <View style={styles.sourceRow}>
+        {(['All', 'Anthropic', 'ClawHub'] as const).map((src) => (
+          <TouchableOpacity
+            key={src}
+            style={[styles.sourceChip, activeSource === src && styles.sourceChipActive]}
+            onPress={() => { setActiveSource(src); setActiveCategory('All') }}
+          >
+            <Text style={[styles.sourceChipText, activeSource === src && styles.sourceChipTextActive]}>{src}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {/* Search */}
       <View style={styles.searchRow}>
         <TextInput
@@ -291,8 +305,8 @@ export default function SkillsScreen() {
         {searching && <ActivityIndicator size="small" color={Colors.accentTeal} style={styles.searchSpinner} />}
       </View>
 
-      {/* Category filter */}
-      {!query.trim() && categories.length > 1 && (
+      {/* Category filter — only when Anthropic/All+Library is visible */}
+      {!query.trim() && categories.length > 1 && activeSource !== 'ClawHub' && (
         <View style={styles.chipRow}>
           <ScrollView
             horizontal
@@ -322,30 +336,31 @@ export default function SkillsScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <>
-            {/* Local / Supabase skills — always first */}
-            {filteredLocalSkills.length > 0 && (
+            {/* Anthropic / Library skills */}
+            {activeSource !== 'ClawHub' && filteredLocalSkills.length > 0 && (
               <>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionLabel}>Library</Text>
+                  <Text style={styles.sectionLabel}>Anthropic</Text>
                 </View>
                 {filteredLocalSkills.map((s) => (
                   <LocalSkillCard key={s.id} skill={s} />
                 ))}
               </>
             )}
+            {activeSource === 'Anthropic' && filteredLocalSkills.length === 0 && (
+              <Text style={styles.emptyText}>No skills match this filter</Text>
+            )}
 
-            {/* ClawHub skills — featured below library */}
-            {(activeCategory === 'All') && (
+            {/* ClawHub skills */}
+            {activeSource !== 'Anthropic' && (
               <>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionLabel}>{query.trim() ? 'Search results' : 'Featured'}</Text>
+                  <Text style={styles.sectionLabel}>{query.trim() ? 'Search results' : 'ClawHub'}</Text>
                   {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
                 </View>
-
                 {!loading && displayedClawHub.length === 0 && (
                   <Text style={styles.emptyText}>{query.trim() ? 'No results' : 'No skills available'}</Text>
                 )}
-
                 {displayedClawHub.map((s) => (
                   <ClawHubSkillCard
                     key={s.name}
@@ -369,6 +384,14 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 12 },
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
+  sourceRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 8, marginBottom: 4 },
+  sourceChip: {
+    paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.bgBorder,
+  },
+  sourceChipActive: { backgroundColor: Colors.accentCrimson, borderColor: Colors.accentCrimson },
+  sourceChipText: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  sourceChipTextActive: { color: '#fff' },
   chipRow: { height: 46, justifyContent: 'center' },
   agentPicker: { paddingHorizontal: 16, alignItems: 'center', gap: 8 },
   agentChip: {
