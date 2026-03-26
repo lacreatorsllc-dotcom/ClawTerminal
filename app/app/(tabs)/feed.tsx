@@ -181,36 +181,52 @@ export default function FeedScreen() {
     const agentIds = agents.map((a) => a.id)
     if (agentIds.length === 0) { setLoading(false); return }
 
-    const { data } = await supabase
-      .from('messages')
-      .select('id, agent_id, content, created_at')
-      .in('agent_id', agentIds)
-      .eq('direction', 'inbound')
-      .order('created_at', { ascending: false })
-      .limit(60)
+    const [{ data: messages }, { data: skillInstalls }] = await Promise.all([
+      supabase
+        .from('messages')
+        .select('id, agent_id, content, created_at')
+        .in('agent_id', agentIds)
+        .eq('direction', 'inbound')
+        .order('created_at', { ascending: false })
+        .limit(60),
+      supabase
+        .from('agent_skills')
+        .select('id, agent_id, skill_slug, config, created_at')
+        .in('agent_id', agentIds)
+        .order('created_at', { ascending: false })
+        .limit(20),
+    ])
 
-    const enriched: FeedItem[] = (data ?? []).map((m) => {
+    const msgItems: FeedItem[] = (messages ?? []).map((m) => {
       const cardType = classifyMessage(m.content)
-      return {
-        ...m,
-        cardType,
-        pnl: cardType === 'pnl' ? parsePnL(m.content) : null,
-      }
+      return { ...m, cardType, pnl: cardType === 'pnl' ? parsePnL(m.content) : null }
     })
 
-    setItems(enriched)
+    const skillItems: FeedItem[] = (skillInstalls ?? []).map((s) => ({
+      id: `skill:${s.id}`,
+      agent_id: s.agent_id,
+      content: `Skill installed: ${s.config?.displayName ?? s.skill_slug}${s.config?.version ? ` v${s.config.version}` : ''}`,
+      created_at: s.created_at,
+      cardType: 'system' as CardType,
+    }))
+
+    const merged = [...msgItems, ...skillItems].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ).slice(0, 60)
+
+    setItems(merged)
     setLoading(false)
   }, [user, agents])
 
   useEffect(() => { loadFeed() }, [loadFeed])
 
-  // Realtime: push new inbound messages to top of feed
+  // Realtime: push new inbound messages and skill installs to top of feed
   useEffect(() => {
     if (!user || agents.length === 0) return
     const agentIds = agents.map((a) => a.id)
 
     const channel = supabase
-      .channel('feed:messages')
+      .channel('feed:live')
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -227,6 +243,22 @@ export default function FeedScreen() {
           created_at: row.created_at,
           cardType,
           pnl: cardType === 'pnl' ? parsePnL(row.content) : null,
+        }
+        setItems((prev) => [newItem, ...prev.slice(0, 59)])
+      })
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'agent_skills',
+      }, (payload) => {
+        const row = payload.new as any
+        if (!agentIds.includes(row.agent_id)) return
+        const newItem: FeedItem = {
+          id: `skill:${row.id}`,
+          agent_id: row.agent_id,
+          content: `Skill installed: ${row.config?.displayName ?? row.skill_slug}${row.config?.version ? ` v${row.config.version}` : ''}`,
+          created_at: row.created_at,
+          cardType: 'system',
         }
         setItems((prev) => [newItem, ...prev.slice(0, 59)])
       })

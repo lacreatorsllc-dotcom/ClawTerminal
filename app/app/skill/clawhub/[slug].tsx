@@ -95,13 +95,6 @@ export default function ClawHubSkillDetailScreen() {
 
         setInstalled(true)
         showToast(`${skillName} installed on ${agentName}`)
-
-        await supabase.from('messages').insert({
-          agent_id: agentId,
-          user_id: user!.id,
-          direction: 'outbound',
-          content: `Skill installed: ${skillName} v${version}`,
-        })
       } catch (err: any) {
         console.error('[install]', err?.message)
         showToast(`Install failed: ${err?.message ?? 'unknown error'}`)
