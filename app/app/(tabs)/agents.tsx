@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Platform, Animated, Image } from 'react-native'
 
-const AGENT_AVATAR = require('../../assets/agent-avatar.png')
+const AGENT_AVATAR = require('../../assets/slug-pfp.png')
 import { router } from 'expo-router'
 import { supabase } from '../../lib/supabase'
 import { useAgentsStore } from '../../stores/agentsStore'
@@ -233,11 +233,12 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     borderWidth: 1.5,
-    backgroundColor: 'rgba(255, 69, 58, 0.08)',
+    backgroundColor: '#000',
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
-  avatarImage: { width: 44, height: 44, borderRadius: 22 },
+  avatarImage: { width: 48, height: 48 },
   agentName: { color: Colors.textPrimary, fontSize: 16, fontWeight: '600' },
   agentMeta: { color: Colors.textSecondary, fontSize: 11, marginTop: 2, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },

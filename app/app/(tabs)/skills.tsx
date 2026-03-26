@@ -13,32 +13,78 @@ import type { Skill } from '../../lib/types'
 
 const CLAWHUB = 'https://clawhub.ai/api/v1'
 
+// ClawHub assigns "community" to every skill — channels are meaningless.
+// Categories use targeted search queries + client-side keyword filtering.
+
 const CLAWHUB_CATEGORIES = [
-  'All', 'Trading', 'Finance', 'Productivity', 'AI/ML', 'Development', 'Utility',
-  'Business', 'Social', 'Web', 'Media', 'Science', 'Data', 'Education',
-  'Health', 'Entertainment', 'News', 'Community', 'Location',
+  'All', 'Crypto', 'Trading', 'Finance', 'Developer', 'Productivity',
+  'Marketing', 'Business', 'Media', 'AI Agents', 'Lifestyle',
 ]
 
-// Maps display label → API channel param (all ClawHub channels)
-const CATEGORY_CHANNEL: Record<string, string> = {
-  'AI/ML': 'ai-ml',
-  'Utility': 'utility',
-  'Development': 'development',
-  'Productivity': 'productivity',
-  'Web': 'web',
-  'Science': 'science',
-  'Media': 'media',
-  'Social': 'social',
-  'Finance': 'finance',
-  'Trading': 'trading',
-  'Location': 'location',
-  'Business': 'business',
-  'Community': 'community',
-  'Data': 'data',
-  'Education': 'education',
-  'Health': 'health',
-  'Entertainment': 'entertainment',
-  'News': 'news',
+interface CategoryConfig {
+  queries: string[]   // search terms — results merged + deduped
+  keywords: string[]  // skill must match at least one in displayName+summary
+  label: string       // section heading
+}
+
+const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
+  'Crypto': {
+    queries: ['crypto bitcoin', 'ethereum blockchain'],
+    keywords: ['crypto', 'bitcoin', 'btc', 'ethereum', 'eth', 'blockchain', 'defi', 'nft', 'token', 'coin', 'wallet', 'binance', 'coinbase', 'web3', 'dex', 'staking', 'yield', 'solana', 'polymarket'],
+    label: 'Crypto & Blockchain',
+  },
+  'Trading': {
+    queries: ['trading stocks market', 'quant trading bot'],
+    keywords: ['trading', 'trade', 'stock', 'stocks', 'market', 'forex', 'quant', 'backtest', 'arbitrage', 'futures', 'options', 'candlestick', 'macd', 'chart', 'equity', 'ticker', 'automated trading', 'grid trading', 'day trading'],
+    label: 'Trading & Markets',
+  },
+  'Finance': {
+    queries: ['finance investment', 'tax invoice budget'],
+    keywords: ['finance', 'financial', 'investment', 'invest', 'tax', 'invoice', 'budget', 'expense', 'accounting', 'revenue', 'income', 'payroll', 'billing', 'money', 'bank', 'loan', 'credit', 'insurance', 'fund'],
+    label: 'Finance & Money',
+  },
+  'Developer': {
+    queries: ['code github developer', 'programming cli tool'],
+    keywords: ['code', 'coding', 'github', 'git', 'developer', 'programming', 'api', 'cli', 'sdk', 'database', 'sql', 'python', 'javascript', 'typescript', 'docker', 'deploy', 'debug', 'refactor', 'ocr', 'file process'],
+    label: 'Developer Tools',
+  },
+  'Productivity': {
+    queries: ['productivity workflow automation', 'google workspace calendar email'],
+    keywords: ['productivity', 'workflow', 'automation', 'calendar', 'email', 'docs', 'google', 'task', 'schedule', 'reminder', 'meeting', 'notes', 'organize', 'document', 'spreadsheet', 'slides', 'summary', 'inbox', 'mail'],
+    label: 'Productivity & Workflow',
+  },
+  'Marketing': {
+    queries: ['marketing seo content', 'social media growth'],
+    keywords: ['marketing', 'seo', 'content', 'keyword', 'social media', 'instagram', 'twitter', 'linkedin', 'tiktok', 'growth', 'engagement', 'campaign', 'ads', 'copywriting', 'brand', 'audience', 'lead generation'],
+    label: 'Marketing & SEO',
+  },
+  'Business': {
+    queries: ['crm sales business', 'customer support operations'],
+    keywords: ['crm', 'sales', 'business', 'customer', 'support', 'operations', 'lead', 'prospect', 'pipeline', 'contact', 'outreach', 'hiring', 'recruit', 'hr', 'enterprise', 'project management'],
+    label: 'Business & Sales',
+  },
+  'Media': {
+    queries: ['video editor creator', 'image audio media content'],
+    keywords: ['video', 'image', 'audio', 'media', 'photo', 'caption', 'subtitle', 'editor', 'creator', 'youtube', 'stream', 'podcast', 'music', 'animation', 'reels', 'thumbnail', 'transcript', 'recording'],
+    label: 'Media & Content',
+  },
+  'AI Agents': {
+    queries: ['ai agent llm prompt', 'agent security memory'],
+    keywords: ['agent', 'llm', 'prompt', 'gpt', 'claude', 'model', 'memory', 'guard', 'security', 'permission', 'orchestrat', 'context', 'embedding', 'rag', 'chatbot', 'openclaw', 'mcp'],
+    label: 'AI & Agents',
+  },
+  'Lifestyle': {
+    queries: ['travel health fitness food', 'game entertainment hobby'],
+    keywords: ['travel', 'health', 'fitness', 'food', 'recipe', 'sport', 'game', 'hobby', 'weather', 'entertainment', 'movie', 'book', 'shopping', 'restaurant', 'hotel', 'flight', 'nutrition', 'workout'],
+    label: 'Lifestyle & More',
+  },
+}
+
+function matchesCategory(skill: ClawHubSkill, cat: string): boolean {
+  const config = CATEGORY_CONFIG[cat]
+  if (!config) return true
+  const hay = `${skill.displayName} ${skill.summary} ${skill.originalSummary ?? ''} ${skill.name}`.toLowerCase()
+  return config.keywords.some((kw) => hay.includes(kw))
 }
 
 async function translateSkill(skill: ClawHubSkill): Promise<ClawHubSkill> {
@@ -73,7 +119,7 @@ function LocalSkillCard({ skill }: { skill: Skill }) {
   return (
     <TouchableOpacity style={styles.card} onPress={() => router.push(`/skill/${skill.id}`)}>
       <View style={styles.cardHeader}>
-        <Text style={[styles.skillName, { flex: 1 }]}>{skill.name}</Text>
+        <Text style={[styles.skillName, { flex: 1 }]} numberOfLines={2}>{skill.name}</Text>
         <View style={styles.installBtn}><Text style={styles.installBtnText}>Install</Text></View>
       </View>
       <Text style={styles.skillDesc} numberOfLines={2}>{skill.description}</Text>
@@ -99,12 +145,7 @@ interface ClawHubSkillCardProps {
 }
 
 function ClawHubSkillCard({ skill, onInstall, installing, installed, activeCategory }: ClawHubSkillCardProps) {
-  // Only show the channel badge when browsing All — when a category is selected
-  // the badge would show the skill's own metadata channel which may differ from the filter
-  const showChannelBadge = activeCategory === 'All' && !!skill.channel
-  const channelLabel = skill.channel
-    ? (Object.entries(CATEGORY_CHANNEL).find(([, v]) => v === skill.channel)?.[0] ?? skill.channel.charAt(0).toUpperCase() + skill.channel.slice(1))
-    : null
+  const catLabel = activeCategory !== 'All' ? (CATEGORY_CONFIG[activeCategory]?.label ?? activeCategory) : null
 
   return (
     <TouchableOpacity
@@ -136,14 +177,11 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed, activeCateg
       <View style={styles.cardFooter}>
         <Text style={styles.sourceLabelClawhub}>ClawHub</Text>
         {skill.verificationTier && (
-          <View style={styles.verifiedBadge}>
-            <Ionicons name="checkmark-circle" size={13} color="#4f8ef7" />
-            <Text style={styles.verifiedBadgeText}>Verified</Text>
-          </View>
+          <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
         )}
-        {showChannelBadge && (
+        {catLabel && (
           <View style={styles.categoryBadge}>
-            <Text style={styles.categoryBadgeText}>{channelLabel}</Text>
+            <Text style={styles.categoryBadgeText}>{catLabel}</Text>
           </View>
         )}
       </View>
@@ -167,11 +205,9 @@ export default function SkillsScreen() {
   const [loading, setLoading] = useState(true)
   const [searching, setSearching] = useState(false)
 
-  // Agent dropdown
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
 
-  // Auto-select first connected agent
   useEffect(() => {
     if (selectedAgentId) return
     const connected = agents.find((a) => getConnectionStatus(a.id) === 'connected')
@@ -181,7 +217,6 @@ export default function SkillsScreen() {
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId)
 
-  // Per-skill install state
   const [installingSlug, setInstallingSlug] = useState<string | null>(null)
   const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(new Set())
 
@@ -206,51 +241,58 @@ export default function SkillsScreen() {
     if (selectedAgentIdRef.current) loadInstalledSlugs(selectedAgentIdRef.current)
   }, [loadInstalledSlugs]))
 
-  // Load local skills
   useEffect(() => {
     supabase.from('skills').select('*').then(({ data }) => { if (data) setSkills(data) })
   }, [])
 
-  // Fetch ClawHub skills — refetch when category changes
+  // Fetch ClawHub skills for active category
   useEffect(() => {
     setLoading(true)
-
     const fetchSkills = async () => {
       try {
-        const channel = activeCategory !== 'All' ? CATEGORY_CHANNEL[activeCategory] : null
-        const url = channel
-          ? `${CLAWHUB}/packages?family=skill&channel=${channel}&limit=30`
-          : `${CLAWHUB}/packages?family=skill&limit=30`
-        const res = await fetch(url)
-        const data = await res.json()
-        const items: ClawHubSkill[] = data.items ?? []
-        // Show skills immediately with original text, translate in background
-        setClawHubSkills(items)
-        setLoading(false)
+        let items: ClawHubSkill[] = []
+        if (activeCategory === 'All') {
+          const data = await fetch(`${CLAWHUB}/packages?family=skill&limit=30`).then((r) => r.json())
+          items = (data.items ?? []).map((s: any) => ({ ...s, name: s.slug ?? s.name }))
+        } else {
+          const config = CATEGORY_CONFIG[activeCategory]
+          if (config) {
+            const seen = new Set<string>()
+            const responses = await Promise.allSettled(
+              config.queries.map((q) =>
+                fetch(`${CLAWHUB}/search?q=${encodeURIComponent(q)}&limit=30`).then((r) => r.json())
+              )
+            )
+            for (const res of responses) {
+              if (res.status !== 'fulfilled') continue
+              for (const s of (res.value.results ?? res.value.items ?? [])) {
+                const skill: ClawHubSkill = { ...s, name: s.slug ?? s.name }
+                if (!seen.has(skill.name)) { seen.add(skill.name); items.push(skill) }
+              }
+            }
+            items = items.filter((s) => matchesCategory(s, activeCategory))
+          }
+        }
         const translated = await Promise.all(items.map(translateSkill))
         setClawHubSkills(translated)
-      } catch (e) {
-        console.warn('[ClawHub fetch]', e)
-        setLoading(false)
-      }
+      } catch {}
+      setLoading(false)
     }
-
     fetchSkills()
   }, [activeCategory])
 
-  // Search ClawHub
+  // Search — filtered by active category keywords when one is selected
   useEffect(() => {
     if (!query.trim()) { setSearchResults([]); return }
     const timer = setTimeout(async () => {
       setSearching(true)
       try {
-        const channel = activeCategory !== 'All' ? CATEGORY_CHANNEL[activeCategory] : null
-        const url = channel
-          ? `${CLAWHUB}/search?q=${encodeURIComponent(query)}&channel=${channel}&limit=30`
-          : `${CLAWHUB}/search?q=${encodeURIComponent(query)}&limit=20`
-        const r = await fetch(url)
+        const r = await fetch(`${CLAWHUB}/search?q=${encodeURIComponent(query)}&limit=40`)
         const data = await r.json()
-        const results: ClawHubSkill[] = (data.results ?? []).map((r: any) => ({ ...r, name: r.slug ?? r.name }))
+        let results: ClawHubSkill[] = (data.results ?? []).map((s: any) => ({ ...s, name: s.slug ?? s.name }))
+        if (activeCategory !== 'All') {
+          results = results.filter((s) => matchesCategory(s, activeCategory))
+        }
         const translated = await Promise.all(results.map(translateSkill))
         setSearchResults(translated)
       } catch {}
@@ -302,10 +344,7 @@ export default function SkillsScreen() {
 
   const displayedClawHub = query.trim() ? searchResults : clawHubSkills
 
-  // Derive Anthropic categories from local skills
   const anthropicCategories = ['All', ...Array.from(new Set(skills.map((s) => s.category).filter(Boolean) as string[]))]
-
-  // Active category list based on selected source
   const activeCategoryList = activeSource === 'anthropic' ? anthropicCategories : CLAWHUB_CATEGORIES
 
   const filteredLocalSkills = skills.filter((s) =>
@@ -313,7 +352,7 @@ export default function SkillsScreen() {
     (!query.trim() || s.name.toLowerCase().includes(query.toLowerCase()) || s.description.toLowerCase().includes(query.toLowerCase()))
   )
 
-  const filteredClawHub = (activeSource === 'anthropic')
+  const filteredClawHub = activeSource === 'anthropic'
     ? []
     : verifiedOnly
       ? displayedClawHub.filter((s) => !!s.verificationTier)
@@ -321,72 +360,51 @@ export default function SkillsScreen() {
 
   const localSkillsToShow = activeSource === 'clawhub' ? [] : filteredLocalSkills
 
+  const sectionLabel = activeCategory !== 'All'
+    ? (CATEGORY_CONFIG[activeCategory]?.label ?? activeCategory)
+    : 'Featured on ClawHub'
+
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Skills</Text>
         <Text style={styles.subtitle}>{clawHubSkills.length + skills.length} available</Text>
       </View>
 
-      {/* Top filter row: agent + source + verified */}
+      {/* Top filter row */}
       <View style={styles.topFilterWrapper}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.topFilterRow}
-      >
-        {agents.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.topFilterRow}>
+          {agents.length > 0 && (
+            <TouchableOpacity style={styles.agentChip} onPress={() => setDropdownOpen(true)} activeOpacity={0.8}>
+              <View style={[styles.agentDot, {
+                backgroundColor: selectedAgent
+                  ? (getConnectionStatus(selectedAgent.id) === 'connected' ? Colors.accentGreen : Colors.textMuted)
+                  : Colors.textMuted
+              }]} />
+              <Text style={styles.agentChipText}>{selectedAgent ? selectedAgent.name : 'Select agent'}</Text>
+              <Ionicons name="chevron-down" size={12} color={Colors.accentCrimson} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
-            style={styles.agentChip}
-            onPress={() => setDropdownOpen(true)}
-            activeOpacity={0.8}
+            style={[styles.sourceChip, activeSource === 'clawhub' && styles.sourceChipClawhubActive]}
+            onPress={() => { setActiveSource((s) => s === 'clawhub' ? 'all' : 'clawhub'); setActiveCategory('All') }}
           >
-            <View style={[styles.agentDot, {
-              backgroundColor: selectedAgent
-                ? (getConnectionStatus(selectedAgent.id) === 'connected' ? Colors.accentGreen : Colors.textMuted)
-                : Colors.textMuted
-            }]} />
-            <Text style={styles.agentChipText}>
-              {selectedAgent ? selectedAgent.name : 'Select agent'}
-            </Text>
-            <Ionicons name="chevron-down" size={12} color={Colors.accentCrimson} />
+            <Text style={[styles.sourceChipText, activeSource === 'clawhub' && styles.sourceChipClawhubTextActive]}>ClawHub</Text>
           </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={[styles.sourceChip, activeSource === 'clawhub' && styles.sourceChipClawhubActive]}
-          onPress={() => { setActiveSource((s) => s === 'clawhub' ? 'all' : 'clawhub'); setActiveCategory('All') }}
-        >
-          <Text style={[styles.sourceChipText, activeSource === 'clawhub' && styles.sourceChipClawhubTextActive]}>
-            ClawHub
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.sourceChip, activeSource === 'anthropic' && styles.sourceChipAnthropicActive]}
-          onPress={() => { setActiveSource((s) => s === 'anthropic' ? 'all' : 'anthropic'); setActiveCategory('All') }}
-        >
-          <Text style={[styles.sourceChipText, activeSource === 'anthropic' && styles.sourceChipAnthropicTextActive]}>
-            Anthropic
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.sourceChip, styles.verifiedFilterChip, verifiedOnly && styles.verifiedFilterChipActive]}
-          onPress={() => setVerifiedOnly((v) => !v)}
-        >
-          <Ionicons
-            name="shield-checkmark"
-            size={12}
-            color={verifiedOnly ? '#60a5fa' : Colors.textSecondary}
-            style={{ marginRight: 4 }}
-          />
-          <Text style={[styles.sourceChipText, verifiedOnly && styles.verifiedFilterTextActive]}>
-            Verified
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <TouchableOpacity
+            style={[styles.sourceChip, activeSource === 'anthropic' && styles.sourceChipAnthropicActive]}
+            onPress={() => { setActiveSource((s) => s === 'anthropic' ? 'all' : 'anthropic'); setActiveCategory('All') }}
+          >
+            <Text style={[styles.sourceChipText, activeSource === 'anthropic' && styles.sourceChipAnthropicTextActive]}>Anthropic</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sourceChip, styles.verifiedFilterChip, verifiedOnly && styles.verifiedFilterChipActive]}
+            onPress={() => setVerifiedOnly((v) => !v)}
+          >
+            <Ionicons name="shield-checkmark" size={12} color={verifiedOnly ? '#60a5fa' : Colors.textSecondary} style={{ marginRight: 4 }} />
+            <Text style={[styles.sourceChipText, verifiedOnly && styles.verifiedFilterTextActive]}>Verified</Text>
+          </TouchableOpacity>
+        </ScrollView>
       </View>
 
       {/* Agent dropdown modal */}
@@ -426,7 +444,7 @@ export default function SkillsScreen() {
         {searching && <ActivityIndicator size="small" color={Colors.accentTeal} style={styles.searchSpinner} />}
       </View>
 
-      {/* Category filters — only shown when a source is selected */}
+      {/* Category chips — only when a source is selected */}
       {!query.trim() && activeSource !== 'all' && (
         <View style={styles.chipRow}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryRow}>
@@ -436,9 +454,7 @@ export default function SkillsScreen() {
                 style={[styles.categoryChip, activeCategory === cat && styles.categoryChipActive]}
                 onPress={() => setActiveCategory(cat)}
               >
-                <Text style={[styles.categoryChipText, activeCategory === cat && styles.categoryChipTextActive]}>
-                  {cat}
-                </Text>
+                <Text style={[styles.categoryChipText, activeCategory === cat && styles.categoryChipTextActive]}>{cat}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -453,20 +469,15 @@ export default function SkillsScreen() {
         contentContainerStyle={styles.list}
         ListHeaderComponent={
           <>
-            {/* ClawHub skills */}
             {activeSource !== 'anthropic' && (
               <>
                 <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionLabel}>
-                    {activeCategory === 'All' ? 'Featured' : activeCategory}
-                  </Text>
+                  <Text style={styles.sectionLabel}>{sectionLabel}</Text>
                   {loading && <ActivityIndicator size="small" color={Colors.accentTeal} />}
                 </View>
-
                 {!loading && filteredClawHub.length === 0 && (
                   <Text style={styles.emptyText}>No skills found</Text>
                 )}
-
                 {filteredClawHub.map((s) => (
                   <ClawHubSkillCard
                     key={s.name}
@@ -479,8 +490,6 @@ export default function SkillsScreen() {
                 ))}
               </>
             )}
-
-            {/* Anthropic / local skills */}
             {localSkillsToShow.length > 0 && (
               <>
                 <View style={styles.sectionHeader}>
@@ -504,37 +513,23 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
   subtitle: { fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
 
-  // Top filter row
   topFilterWrapper: { height: 52 },
   topFilterRow: { paddingHorizontal: 16, gap: 8, alignItems: 'center', height: 52 },
 
-  // Agent chip (crimson tint)
   agentChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    backgroundColor: 'rgba(255,69,58,0.08)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: Colors.accentCrimson,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    flexShrink: 0,
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    backgroundColor: 'rgba(255,69,58,0.08)', borderRadius: 20,
+    borderWidth: 1, borderColor: Colors.accentCrimson,
+    paddingHorizontal: 14, paddingVertical: 9, flexShrink: 0,
   },
   agentChipText: { fontSize: 13, fontWeight: '600', color: Colors.accentCrimson },
   agentDot: { width: 7, height: 7, borderRadius: 4 },
 
-  // Source filter chips
   sourceChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 20,
-    backgroundColor: Colors.bgElevated,
-    borderWidth: 1,
-    borderColor: Colors.bgBorder,
-    flexShrink: 0,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 9,
+    borderRadius: 20, backgroundColor: Colors.bgElevated,
+    borderWidth: 1, borderColor: Colors.bgBorder, flexShrink: 0,
   },
   sourceChipText: { fontSize: 13, fontWeight: '600', color: Colors.textPrimary },
   sourceChipAnthropicActive: { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: '#a5b4fc' },
@@ -544,90 +539,59 @@ const styles = StyleSheet.create({
   verifiedFilterChip: { borderColor: 'rgba(96,165,250,0.3)' },
   verifiedFilterChipActive: { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: '#60a5fa' },
   verifiedFilterTextActive: { color: '#60a5fa' },
+
   modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-start',
-    paddingTop: 180,
-    paddingHorizontal: 16,
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-start', paddingTop: 180, paddingHorizontal: 16,
   },
   dropdownMenu: {
-    backgroundColor: Colors.bgElevated,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.bgBorder,
-    overflow: 'hidden',
-    gap: 0,
+    backgroundColor: Colors.bgElevated, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.bgBorder, overflow: 'hidden',
   },
   dropdownMenuLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 8,
+    fontSize: 11, fontWeight: '700', color: Colors.textMuted,
+    letterSpacing: 1, textTransform: 'uppercase',
+    paddingHorizontal: 16, paddingTop: 14, paddingBottom: 8,
   },
   dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    borderTopWidth: 1,
-    borderTopColor: Colors.bgBorder,
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 13,
+    borderTopWidth: 1, borderTopColor: Colors.bgBorder,
   },
   dropdownItemActive: { backgroundColor: 'rgba(255,69,58,0.06)' },
   dropdownItemText: { flex: 1, fontSize: 15, color: Colors.textPrimary },
   dropdownItemTextActive: { color: Colors.accentCrimson, fontWeight: '600' },
 
-  // Search
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 4,
-    backgroundColor: Colors.bgElevated,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.bgBorder,
-    paddingHorizontal: 14,
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: 16, marginBottom: 4,
+    backgroundColor: Colors.bgElevated, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.bgBorder, paddingHorizontal: 14,
   },
   searchInput: { flex: 1, height: 44, color: Colors.textPrimary, fontSize: 15 },
   searchSpinner: { marginLeft: 8 },
 
-  // Category chips
   chipRow: { height: 52 },
   categoryRow: { paddingHorizontal: 16, alignItems: 'center', gap: 8, height: 52 },
   categoryChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 20,
-    backgroundColor: Colors.bgElevated,
-    borderWidth: 1,
-    borderColor: Colors.bgBorder,
-    flexShrink: 0,
+    paddingHorizontal: 16, paddingVertical: 9,
+    flexDirection: 'row', alignItems: 'center',
+    borderRadius: 20, backgroundColor: Colors.bgElevated,
+    borderWidth: 1, borderColor: Colors.bgBorder, flexShrink: 0,
   },
-  categoryChipActive: {
-    borderColor: Colors.accentGreen,
-    backgroundColor: 'rgba(0,200,150,0.08)',
-  },
+  categoryChipActive: { borderColor: Colors.accentGreen, backgroundColor: 'rgba(0,200,150,0.08)' },
   categoryChipText: { fontSize: 13, fontWeight: '600', color: Colors.textPrimary },
   categoryChipTextActive: { color: Colors.accentGreen, fontWeight: '700' },
-  // List
+
   list: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 4 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase' },
   emptyText: { color: Colors.textSecondary, textAlign: 'center', paddingVertical: 24 },
 
-  // Cards
   card: { backgroundColor: '#0f0f0f', borderRadius: 16, padding: 16, gap: 8 },
   cardInstalled: { borderWidth: 1, borderColor: 'rgba(0,200,150,0.25)' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  cardFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8, flexWrap: 'wrap' },
   skillName: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
   skillDesc: { color: Colors.textSecondary, fontSize: 13, lineHeight: 18 },
   skillDescOriginal: { color: Colors.textMuted, fontSize: 11, lineHeight: 16, fontStyle: 'italic' },
@@ -636,26 +600,12 @@ const styles = StyleSheet.create({
   sourceLabelClawhub: { fontSize: 11, fontWeight: '700', color: Colors.accentTeal, letterSpacing: 0.3 },
   categoryBadge: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   categoryBadgeText: { color: Colors.accentGreen, fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
-  verifiedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(79,142,247,0.12)',
-    borderRadius: 20,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(79,142,247,0.25)',
-  },
-  verifiedBadgeText: { color: '#4f8ef7', fontSize: 11, fontWeight: '700' },
+  verifiedBadge: { backgroundColor: 'rgba(59,130,246,0.15)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
+  verifiedBadgeText: { color: '#60a5fa', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
   installBtn: {
-    backgroundColor: Colors.accentCrimson,
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    minWidth: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: Colors.accentCrimson, borderRadius: 8,
+    paddingHorizontal: 14, paddingVertical: 6,
+    minWidth: 70, alignItems: 'center', justifyContent: 'center',
   },
   installBtnLoading: { opacity: 0.7 },
   installBtnText: { color: Colors.bgPrimary, fontSize: 13, fontWeight: '600' },
