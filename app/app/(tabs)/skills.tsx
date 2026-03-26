@@ -136,7 +136,10 @@ function ClawHubSkillCard({ skill, onInstall, installing, installed, activeCateg
       <View style={styles.cardFooter}>
         <Text style={styles.sourceLabelClawhub}>ClawHub</Text>
         {skill.verificationTier && (
-          <View style={styles.verifiedBadge}><Text style={styles.verifiedBadgeText}>✓ Verified</Text></View>
+          <View style={styles.verifiedBadge}>
+            <Ionicons name="checkmark-circle" size={13} color="#4f8ef7" />
+            <Text style={styles.verifiedBadgeText}>Verified</Text>
+          </View>
         )}
         {showChannelBadge && (
           <View style={styles.categoryBadge}>
@@ -218,12 +221,18 @@ export default function SkillsScreen() {
         const url = channel
           ? `${CLAWHUB}/packages?family=skill&channel=${channel}&limit=30`
           : `${CLAWHUB}/packages?family=skill&limit=30`
-        const data = await fetch(url).then((r) => r.json())
+        const res = await fetch(url)
+        const data = await res.json()
         const items: ClawHubSkill[] = data.items ?? []
+        // Show skills immediately with original text, translate in background
+        setClawHubSkills(items)
+        setLoading(false)
         const translated = await Promise.all(items.map(translateSkill))
         setClawHubSkills(translated)
-      } catch {}
-      setLoading(false)
+      } catch (e) {
+        console.warn('[ClawHub fetch]', e)
+        setLoading(false)
+      }
     }
 
     fetchSkills()
@@ -627,8 +636,18 @@ const styles = StyleSheet.create({
   sourceLabelClawhub: { fontSize: 11, fontWeight: '700', color: Colors.accentTeal, letterSpacing: 0.3 },
   categoryBadge: { backgroundColor: 'rgba(0,200,150,0.10)', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4 },
   categoryBadgeText: { color: Colors.accentGreen, fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
-  verifiedBadge: { backgroundColor: 'rgba(59,130,246,0.15)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 },
-  verifiedBadgeText: { color: '#60a5fa', fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(79,142,247,0.12)',
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(79,142,247,0.25)',
+  },
+  verifiedBadgeText: { color: '#4f8ef7', fontSize: 11, fontWeight: '700' },
   installBtn: {
     backgroundColor: Colors.accentCrimson,
     borderRadius: 8,
