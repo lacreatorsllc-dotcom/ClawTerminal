@@ -163,6 +163,8 @@ const SKILLSSH_SKILLS: SkillsShSkill[] = [
   { slug: 'anthropics/theme-factory', owner: 'anthropics', displayName: 'Theme Factory', summary: 'Generate and apply consistent color themes, typography scales, and spacing systems.', category: 'Design', isOfficial: true },
   { slug: 'figma/create-design-system-rules', owner: 'figma', displayName: 'Design System Rules', summary: 'Define and enforce design system tokens, components, and patterns across your codebase.', category: 'Design', isOfficial: true },
   // Web3
+  { slug: 'cabal/trading-boy', owner: 'cabal', displayName: 'Trading Boy', summary: 'CLI-based autonomous AI trading agent for crypto and commodities — SOUL personality framework, bear-case reasoning, and Telegram bot control.', category: 'Web3', isOfficial: true },
+  { slug: 'okx/agent-tradekit', owner: 'okx', displayName: 'OKX Agent TradeKit', summary: 'Build AI agents that automate trading on OKX — natural language commands, MCP server, spot/futures/options, grid bots, and DCA strategies.', category: 'Web3', isOfficial: true },
   { slug: 'coinbase/trade', owner: 'coinbase', displayName: 'Coinbase Trade', summary: 'Execute cryptocurrency trades via Coinbase — market orders, limit orders, and portfolio management.', category: 'Web3', isOfficial: true },
   { slug: 'coinbase/send-usdc', owner: 'coinbase', displayName: 'Send USDC', summary: 'Programmatically send USDC stablecoin transfers on Base and other EVM chains.', category: 'Web3', isOfficial: true },
   { slug: 'coinbase/authenticate-wallet', owner: 'coinbase', displayName: 'Wallet Auth', summary: 'Authenticate users with their crypto wallet — Sign-In with Ethereum and Base account patterns.', category: 'Web3', isOfficial: true },
