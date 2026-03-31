@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router'
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 
 export default function TabsLayout() {
@@ -25,35 +26,42 @@ export default function TabsLayout() {
         name="feed"
         options={{
           title: 'Feed',
-          tabBarIcon: ({ color }) => <TabIcon symbol="◉" color={color} />,
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="reader" size={24} color={color} />
+          ),
         }}
+      />
+      <Tabs.Screen
+        name="search"
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="agents"
         options={{
-          title: 'Agents',
-          tabBarIcon: ({ color }) => <TabIcon symbol="◈" color={color} />,
+          title: 'Slugs',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons name="access-point" size={28} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="skills"
         options={{
-          title: 'Skills',
-          tabBarIcon: ({ color }) => <TabIcon symbol="⬡" color={color} />,
+          title: 'Market',
+          tabBarIcon: ({ color }) => (
+            <MaterialCommunityIcons name="store" size={26} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <TabIcon symbol="⚙" color={color} />,
+          title: 'Profile',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name={color === Colors.accentAmber ? 'person-circle' : 'person-circle-outline'} size={26} color={color} />
+          ),
         }}
       />
     </Tabs>
   )
-}
-
-function TabIcon({ symbol, color }: { symbol: string; color: string }) {
-  const { Text } = require('react-native')
-  return <Text style={{ fontSize: 22, color }}>{symbol}</Text>
 }
