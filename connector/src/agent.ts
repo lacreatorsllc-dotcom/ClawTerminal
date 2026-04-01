@@ -304,9 +304,16 @@ export async function runAgent({ userId, agentName, systemPrompt, apiKey, storag
   // ─── Image generation helper (has closure access to channel/agentId/userId) ──
 
   async function handleGenerateImage(input: { prompt: string; caption: string }): Promise<string> {
-    if (!openai) return 'Image generation requires an OpenAI API key.';
+    // Prefer Manus (Nano Banana Pro) when available, fall back to DALL-E 3
+    if (manusKey) {
+      console.log(`[image] Generating via Manus: ${input.caption}`);
+      const result = await runManusTask(`Generate this image: ${input.prompt}\n\nCaption: ${input.caption}`);
+      return result;
+    }
+
+    if (!openai) return 'Image generation requires an OpenAI API key or Manus key.';
     try {
-      console.log(`[image] Generating: ${input.caption}`);
+      console.log(`[image] Generating via DALL-E: ${input.caption}`);
       const response = await openai.images.generate({
         model: 'dall-e-3',
         prompt: input.prompt,
@@ -317,20 +324,16 @@ export async function runAgent({ userId, agentName, systemPrompt, apiKey, storag
       const tempUrl = response.data?.[0]?.url;
       if (!tempUrl) return 'Image generation returned no URL.';
 
-      // Download image bytes
       const imgRes = await fetch(tempUrl);
       const buffer = Buffer.from(await imgRes.arrayBuffer());
       const fileName = `koda-${Date.now()}.png`;
 
-      // Upload to Supabase storage
       const { error: uploadError } = await supabase.storage
         .from('message-attachments')
         .upload(fileName, buffer, { contentType: 'image/png', upsert: false });
       if (uploadError) return `Storage upload failed: ${uploadError.message}`;
 
       const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/message-attachments/${fileName}`;
-
-      // Send as its own chat message with attachment
       const msgMetadata = { attachments: [publicUrl] };
       await channel.send({
         type: 'broadcast',
@@ -338,11 +341,8 @@ export async function runAgent({ userId, agentName, systemPrompt, apiKey, storag
         payload: { direction: 'outbound', content: input.caption, ts: Date.now(), metadata: msgMetadata },
       });
       await supabase.from('messages').insert({
-        agent_id: agentId,
-        user_id: userId,
-        direction: 'outbound',
-        content: input.caption,
-        metadata: msgMetadata,
+        agent_id: agentId, user_id: userId, direction: 'outbound',
+        content: input.caption, metadata: msgMetadata,
       });
 
       console.log(`[image] Sent: ${fileName}`);
