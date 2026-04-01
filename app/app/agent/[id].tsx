@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
-  Image, Linking, Alert, Modal, ScrollView,
+  Image, Linking, Alert, Modal, ScrollView, Dimensions, Clipboard, Animated,
 } from 'react-native'
+import * as FileSystem from 'expo-file-system'
+import * as MediaLibrary from 'expo-media-library'
 import { ShareCardModal, type TradeData } from '../../components/share-card'
 import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, router } from 'expo-router'
@@ -16,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
 
-type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills'
+type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
 
 function parsePositionsFromResponse(text: string): TradeData[] {
   const positions: TradeData[] = []
@@ -73,7 +75,7 @@ interface InstalledSkill {
   category: string | null
 }
 
-const SLASH_COMMANDS = [
+const SLASH_COMMANDS_DEFAULT = [
   { cmd: '/help',      desc: 'Show command list' },
   { cmd: '/status',    desc: 'Agent status & health' },
   { cmd: '/agents',    desc: 'List all agents' },
@@ -95,11 +97,43 @@ const SLASH_COMMANDS = [
   { cmd: '/decisions', desc: 'Recent trade decisions' },
 ]
 
+const SLASH_COMMANDS_KODA = [
+  { cmd: '/brief',         desc: 'Turn an idea into a structured brief' },
+  { cmd: '/trends',        desc: 'Find trending topics in your niche' },
+  { cmd: '/concept',       desc: 'Build 3 creative concepts' },
+  { cmd: '/script',        desc: 'Write a punchy video script' },
+  { cmd: '/art-direction', desc: 'Set palette, mood & lighting' },
+  { cmd: '/storyboard',    desc: 'Map every shot with timing' },
+  { cmd: '/generate',      desc: 'Generate AI images for each shot' },
+  { cmd: '/assemble',      desc: 'Assemble your reel from all assets' },
+  { cmd: '/publish',       desc: 'Write captions and posting strategy' },
+  { cmd: '/repurpose',     desc: 'Adapt content to every platform' },
+  { cmd: '/pipeline',      desc: 'Run the full creative pipeline' },
+]
+
+function getSlashCommands(agentName?: string) {
+  if (agentName?.toLowerCase() === 'koda') return SLASH_COMMANDS_KODA
+  return SLASH_COMMANDS_DEFAULT
+}
+
+const TRADING_AGENT_NAMES = ['blue chip', 'trading-boy', 'bluechip']
+
+function getAgentTabs(agentName?: string): Tab[] {
+  const name = agentName?.toLowerCase() ?? ''
+  if (TRADING_AGENT_NAMES.some((n) => name.includes(n))) {
+    return ['chat', 'trades', 'status', 'vitals', 'activity', 'skills']
+  }
+  if (name === 'koda') {
+    return ['chat', 'studio', 'status', 'vitals', 'activity', 'skills']
+  }
+  return ['chat', 'status', 'vitals', 'activity', 'skills']
+}
+
 const URL_REGEX = /^https?:\/\/[^\s]+$/
 const TOKEN_REGEX = /(https?:\/\/[^\s]+|`\/[a-z][a-z0-9_\s\-\[\]]*`|\/[a-z][a-z0-9_]*)/g
 
-function MessageText({ content, outbound }: { content: string; outbound: boolean }) {
-  const parts = content.split(TOKEN_REGEX)
+const MessageText = memo(function MessageText({ content, outbound }: { content: string; outbound: boolean }) {
+  const parts = useMemo(() => content.split(TOKEN_REGEX), [content])
   return (
     <Text style={[styles.bubbleText, outbound && styles.bubbleTextOut]}>
       {parts.map((part, i) => {
@@ -109,6 +143,210 @@ function MessageText({ content, outbound }: { content: string; outbound: boolean
         return <Text key={i}>{part}</Text>
       })}
     </Text>
+  )
+})
+
+const IMG_W = Dimensions.get('window').width * 0.65
+
+function ImageBubble({ url }: { url: string }) {
+  const [lightboxVisible, setLightboxVisible] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [imgLoading, setImgLoading] = useState(true)
+  const [imgError, setImgError] = useState(false)
+  const shimmer = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    // Prefetch so lightbox opens instantly
+    Image.prefetch(url).catch(() => {})
+    // Shimmer loop
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmer, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(shimmer, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ])
+    )
+    anim.start()
+    return () => anim.stop()
+  }, [url])
+
+  async function handleDownload() {
+    setDownloading(true)
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync()
+      if (status !== 'granted') { Alert.alert('Permission needed', 'Allow photo library access to save images.'); return }
+      const fileName = url.split('/').pop() ?? 'koda-image.png'
+      const localUri = FileSystem.cacheDirectory + fileName
+      await FileSystem.downloadAsync(url, localUri)
+      await MediaLibrary.saveToLibraryAsync(localUri)
+      Alert.alert('Saved', 'Image saved to your photo library.')
+    } catch (e: any) {
+      Alert.alert('Download failed', e.message)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  const shimmerOpacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.4, 0.85] })
+
+  return (
+    <>
+      <TouchableOpacity activeOpacity={imgLoading ? 1 : 0.85} onPress={() => !imgLoading && !imgError && setLightboxVisible(true)}>
+        <View style={styles.bubbleImage}>
+          {/* Skeleton shown while loading */}
+          {(imgLoading || imgError) && (
+            <Animated.View style={[StyleSheet.absoluteFill, { borderRadius: 10, backgroundColor: imgError ? Colors.bgElevated : Colors.bgSurface, opacity: imgError ? 1 : shimmerOpacity, alignItems: 'center', justifyContent: 'center' }]}>
+              {imgError
+                ? <Text style={{ color: Colors.textMuted, fontSize: 12 }}>Failed to load</Text>
+                : <ActivityIndicator size="small" color={Colors.textMuted} />
+              }
+            </Animated.View>
+          )}
+          <Image
+            source={{ uri: url }}
+            style={[StyleSheet.absoluteFill, { borderRadius: 10, opacity: imgLoading || imgError ? 0 : 1 }]}
+            resizeMode="cover"
+            onLoadStart={() => { setImgLoading(true); setImgError(false) }}
+            onLoad={() => setImgLoading(false)}
+            onError={() => { setImgLoading(false); setImgError(true) }}
+          />
+        </View>
+      </TouchableOpacity>
+      <Modal visible={lightboxVisible} transparent animationType="fade" onRequestClose={() => setLightboxVisible(false)}>
+        <View style={lightboxStyles.backdrop}>
+          <TouchableOpacity style={lightboxStyles.close} onPress={() => setLightboxVisible(false)}>
+            <Text style={lightboxStyles.closeText}>✕</Text>
+          </TouchableOpacity>
+          <Image source={{ uri: url }} style={lightboxStyles.fullImage} resizeMode="contain" />
+          <TouchableOpacity style={lightboxStyles.downloadBtn} onPress={handleDownload} disabled={downloading}>
+            {downloading
+              ? <ActivityIndicator color="#fff" size="small" />
+              : <Text style={lightboxStyles.downloadText}>↓ Save to Photos</Text>
+            }
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    </>
+  )
+}
+
+function VideoBubble({ url }: { url: string }) {
+  return (
+    <View style={videoBubbleStyles.container}>
+      <View style={videoBubbleStyles.thumb}>
+        <Text style={videoBubbleStyles.playIcon}>▶</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={videoBubbleStyles.label}>Video ready</Text>
+        <Text style={videoBubbleStyles.url} numberOfLines={1}>{url}</Text>
+      </View>
+      <TouchableOpacity style={videoBubbleStyles.openBtn} onPress={() => Linking.openURL(url)} activeOpacity={0.7}>
+        <Text style={videoBubbleStyles.openBtnText}>Open ↗</Text>
+      </TouchableOpacity>
+    </View>
+  )
+}
+
+const videoBubbleStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 10, padding: 10, marginBottom: 6,
+    width: IMG_W,
+  },
+  thumb: {
+    width: 44, height: 44, borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  playIcon: { fontSize: 18, color: '#fff' },
+  label: { fontSize: 13, fontWeight: '600', color: '#fff', marginBottom: 2 },
+  url: { fontSize: 11, color: Colors.textMuted },
+  openBtn: {
+    backgroundColor: Colors.accentTeal + '22',
+    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+  },
+  openBtnText: { fontSize: 12, fontWeight: '600', color: Colors.accentTeal },
+})
+
+const SCREEN_W = Dimensions.get('window').width
+const SCREEN_H = Dimensions.get('window').height
+
+const lightboxStyles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  close: { position: 'absolute', top: 56, right: 20, zIndex: 10, padding: 12 },
+  closeText: { color: '#fff', fontSize: 22, fontWeight: '600' },
+  fullImage: { width: SCREEN_W, height: SCREEN_H - 160, },
+  downloadBtn: {
+    position: 'absolute', bottom: 52,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 24, paddingHorizontal: 24, paddingVertical: 12,
+  },
+  downloadText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+})
+
+const MessageBubble = memo(function MessageBubble({ item }: { item: Message }) {
+  const [pressed, setPressed] = useState(false)
+  const timeStr = useMemo(
+    () => new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    [item.created_at]
+  )
+
+  function handleLongPress() {
+    if (item.content && item.content !== '[image]') {
+      Clipboard.setString(item.content)
+      setPressed(true)
+      setTimeout(() => setPressed(false), 600)
+    }
+  }
+
+  return (
+    <TouchableOpacity
+      activeOpacity={1}
+      onLongPress={handleLongPress}
+      style={[styles.bubble, item.direction === 'inbound' && styles.bubbleOut, pressed && styles.bubblePressed]}
+    >
+      {item.metadata?.video_url && <VideoBubble url={item.metadata.video_url} />}
+      {item.metadata?.attachments?.map((url, i) => (
+        <ImageBubble key={i} url={url} />
+      ))}
+      {item.content && item.content !== '[image]' && (
+        <MessageText content={item.content} outbound={item.direction === 'inbound'} />
+      )}
+      <Text style={styles.bubbleTime}>{timeStr}</Text>
+    </TouchableOpacity>
+  )
+})
+
+function TypingBubble() {
+  const dot1 = useRef(new Animated.Value(0.3)).current
+  const dot2 = useRef(new Animated.Value(0.3)).current
+  const dot3 = useRef(new Animated.Value(0.3)).current
+
+  useEffect(() => {
+    const makeDotAnim = (dot: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, { toValue: 1, duration: 280, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.3, duration: 280, useNativeDriver: true }),
+          Animated.delay(560),
+        ])
+      )
+    const a1 = makeDotAnim(dot1, 0)
+    const a2 = makeDotAnim(dot2, 186)
+    const a3 = makeDotAnim(dot3, 372)
+    a1.start(); a2.start(); a3.start()
+    return () => { a1.stop(); a2.stop(); a3.stop() }
+  }, [])
+
+  return (
+    <View style={[styles.bubble, styles.bubbleOut, { paddingVertical: 12, paddingHorizontal: 14 }]}>
+      <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
+        {([dot1, dot2, dot3] as Animated.Value[]).map((dot, i) => (
+          <Animated.View key={i} style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: Colors.textMuted, opacity: dot }} />
+        ))}
+      </View>
+    </View>
   )
 }
 
@@ -189,6 +427,162 @@ const tradeCardStyles = StyleSheet.create({
   priceVal: { color: Colors.textSecondary, fontWeight: '600' },
 })
 
+// ─── Studio Tab ──────────────────────────────────────────────────────────────
+
+type WorkItem = { type: string; preview: string; timestamp: string; full: string }
+
+const WORK_TYPES: { label: string; pattern: RegExp; color: string }[] = [
+  { label: 'Brief',         pattern: /^BRIEF\s*\n---/m,          color: '#a855f7' },
+  { label: 'Script',        pattern: /^BLOCK 1 — HOOK/m,         color: '#ff453a' },
+  { label: 'Concept',       pattern: /^CONCEPT [ABC]\n---/m,      color: '#6a9bcc' },
+  { label: 'Art Direction', pattern: /^ART DIRECTION\n---/m,      color: '#d97757' },
+  { label: 'Storyboard',    pattern: /^SHOT DECK\n---/m,          color: '#00c896' },
+  { label: 'Trend',         pattern: /^TREND #1\n---/m,           color: '#fbbf24' },
+  { label: 'Publish',       pattern: /^PUBLISH\n---/m,            color: '#ff6b6b' },
+  { label: 'Repurpose',     pattern: /^REPURPOSE\n---/m,          color: '#34d399' },
+]
+
+function parseWorkItems(messages: Message[]): WorkItem[] {
+  const items: WorkItem[] = []
+  for (const msg of messages) {
+    if (msg.direction !== 'outbound') continue
+    const text = msg.content
+    for (const wt of WORK_TYPES) {
+      if (wt.pattern.test(text)) {
+        const lines = text.split('\n').filter(Boolean)
+        const preview = lines.slice(0, 3).join(' ').slice(0, 120)
+        items.push({ type: wt.label, preview, timestamp: msg.created_at, full: text })
+        break
+      }
+    }
+  }
+  return items.reverse()
+}
+
+function StudioTab({ messages, notionUrl }: { messages: Message[]; notionUrl?: string }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const workItems = useMemo(() => parseWorkItems(messages), [messages])
+
+  const grouped = useMemo(() => {
+    const map: Record<string, WorkItem[]> = {}
+    for (const item of workItems) {
+      if (!map[item.type]) map[item.type] = []
+      map[item.type].push(item)
+    }
+    return map
+  }, [workItems])
+
+  const typeColor = (type: string) => WORK_TYPES.find((w) => w.label === type)?.color ?? Colors.textMuted
+
+  return (
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+      {/* Notion link */}
+      <TouchableOpacity
+        style={studioStyles.notionBtn}
+        onPress={() => notionUrl ? Linking.openURL(notionUrl) : null}
+        activeOpacity={notionUrl ? 0.7 : 1}
+      >
+        <View style={studioStyles.notionIcon}>
+          <Text style={studioStyles.notionIconText}>N</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={studioStyles.notionLabel}>Notion Workspace</Text>
+          <Text style={studioStyles.notionSub} numberOfLines={1}>
+            {notionUrl ?? 'Set notion_url in agent metadata to link'}
+          </Text>
+        </View>
+        {notionUrl && <Text style={studioStyles.notionArrow}>↗</Text>}
+      </TouchableOpacity>
+
+      {workItems.length === 0 ? (
+        <View style={{ alignItems: 'center', marginTop: 48 }}>
+          <Text style={{ color: Colors.textMuted, fontSize: 14 }}>No work yet — run /brief to start your first project</Text>
+        </View>
+      ) : (
+        Object.entries(grouped).map(([type, items]) => (
+          <View key={type} style={{ marginBottom: 24 }}>
+            <View style={studioStyles.sectionHeader}>
+              <View style={[studioStyles.typeDot, { backgroundColor: typeColor(type) }]} />
+              <Text style={studioStyles.sectionTitle}>{type.toUpperCase()}</Text>
+              <Text style={studioStyles.sectionCount}>{items.length}</Text>
+            </View>
+            {items.map((item, i) => {
+              const key = `${type}-${i}`
+              const isOpen = expanded === key
+              return (
+                <TouchableOpacity
+                  key={key}
+                  style={studioStyles.workCard}
+                  activeOpacity={0.75}
+                  onPress={() => setExpanded(isOpen ? null : key)}
+                >
+                  <View style={studioStyles.workCardTop}>
+                    <View style={[studioStyles.workTypeBadge, { backgroundColor: typeColor(type) + '22' }]}>
+                      <Text style={[studioStyles.workTypeBadgeText, { color: typeColor(type) }]}>{item.type}</Text>
+                    </View>
+                    <Text style={studioStyles.workTime}>
+                      {new Date(item.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    </Text>
+                  </View>
+                  <Text style={studioStyles.workPreview} numberOfLines={isOpen ? undefined : 3}>
+                    {isOpen ? item.full : item.preview}
+                  </Text>
+                  <Text style={studioStyles.workExpand}>{isOpen ? 'Show less' : 'Show more'}</Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        ))
+      )}
+    </ScrollView>
+  )
+}
+
+const studioStyles = StyleSheet.create({
+  notionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.bgSurface,
+    borderRadius: 12, padding: 14, marginBottom: 24,
+    borderWidth: 1, borderColor: Colors.bgBorder,
+  },
+  notionIcon: {
+    width: 36, height: 36, borderRadius: 8,
+    backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center',
+  },
+  notionIconText: { fontSize: 18, fontWeight: '700', color: '#000' },
+  notionLabel: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
+  notionSub: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  notionArrow: { fontSize: 18, color: Colors.textMuted },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, justifyContent: 'space-between' },
+  typeDot: { width: 8, height: 8, borderRadius: 4 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1 },
+  sectionCount: { fontSize: 11, color: Colors.textMuted },
+  workCard: {
+    backgroundColor: Colors.bgSurface, borderRadius: 12,
+    padding: 14, marginBottom: 10,
+    borderWidth: 1, borderColor: Colors.bgBorder,
+  },
+  workCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  workTypeBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  workTypeBadgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  workTime: { fontSize: 11, color: Colors.textMuted },
+  workPreview: { fontSize: 13, color: Colors.textSecondary, lineHeight: 20 },
+  workExpand: { fontSize: 12, color: Colors.accentTeal, marginTop: 8 },
+})
+
+const DEFAULT_OR_MODELS = [
+  { id: 'openai/gpt-4o',                       name: 'GPT-4o' },
+  { id: 'openai/gpt-4o-mini',                  name: 'GPT-4o Mini' },
+  { id: 'anthropic/claude-sonnet-4-6',         name: 'Claude Sonnet 4.6' },
+  { id: 'anthropic/claude-haiku-4-5',          name: 'Claude Haiku 4.5' },
+  { id: 'anthropic/claude-opus-4-6',           name: 'Claude Opus 4.6' },
+  { id: 'google/gemini-pro-1.5',               name: 'Gemini Pro 1.5' },
+  { id: 'meta-llama/llama-3.1-70b-instruct',   name: 'Llama 3.1 70B' },
+  { id: 'mistralai/mistral-large',             name: 'Mistral Large' },
+  { id: 'deepseek/deepseek-chat',              name: 'DeepSeek Chat' },
+  { id: 'x-ai/grok-2',                        name: 'Grok 2' },
+]
+
 const STATUS_COLOR: Record<AgentStatus, string> = {
   connected: Colors.accentGreen,
   connecting: Colors.accentTeal,
@@ -220,14 +614,81 @@ export default function AgentDetailScreen() {
   const [uploading, setUploading] = useState(false)
   const flatListRef = useRef<FlatList>(null)
   const channelRef = useRef<any>(null)
+  const prevMsgCountRef = useRef(0)
+  const isAtBottomRef = useRef(true)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [unreadWhileScrolled, setUnreadWhileScrolled] = useState(0)
+  const [isAgentTyping, setIsAgentTyping] = useState(false)
+  const [modelSettingsVisible, setModelSettingsVisible] = useState(false)
+  const [selectedWorkflow, setSelectedWorkflow] = useState<'manus' | 'openrouter'>('manus')
+  const [imageProvider, setImageProvider] = useState<'manus' | 'dalle'>('manus')
+  const [orKey, setOrKey] = useState('')
+  const [orModel, setOrModel] = useState('')
+  const [orModelSearch, setOrModelSearch] = useState('')
+  const [orModels, setOrModels] = useState<{ id: string; name: string }[]>([])
+  const [fetchingModels, setFetchingModels] = useState(false)
+  const [savingModel, setSavingModel] = useState(false)
 
   const { agents, getConnectionStatus, upsertAgent } = useAgentsStore()
-  const { user, session } = useAuthStore()
+  const { user, session, isLoading: authLoading } = useAuthStore()
   const { messagesByAgent, setMessages, addMessage } = useChatStore()
   const showToast = useUIStore((s) => s.showToast)
 
   const agent = agents.find((a) => a.id === id)
+
+  // Load saved settings when modal opens
+  useEffect(() => {
+    if (!modelSettingsVisible || !agent) return
+    const meta = agent.metadata as any
+    const hasOrKey = !!meta?.openrouterKey
+    setSelectedWorkflow(hasOrKey ? 'openrouter' : 'manus')
+    setImageProvider(meta?.imageProvider ?? 'manus')
+    setOrKey(meta?.openrouterKey ?? '')
+    setOrModel(meta?.model ?? '')
+    setOrModelSearch('')
+  }, [modelSettingsVisible])
+
+  async function fetchOpenRouterModels(key: string) {
+    if (!key.trim()) return
+    setFetchingModels(true)
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/models', {
+        headers: { Authorization: `Bearer ${key.trim()}` },
+      })
+      if (!res.ok) { showToast('Invalid OpenRouter key'); return }
+      const data = await res.json() as { data: { id: string; name: string }[] }
+      setOrModels(data.data ?? [])
+    } catch {
+      showToast('Failed to fetch models')
+    } finally {
+      setFetchingModels(false)
+    }
+  }
+
+  async function saveModelSettings() {
+    if (!agent) return
+    setSavingModel(true)
+    const meta = (agent.metadata ?? {}) as any
+    const update = selectedWorkflow === 'manus'
+      ? { ...meta, openrouterKey: undefined, model: undefined, activeProvider: 'manus', imageProvider }
+      : { ...meta, openrouterKey: orKey.trim(), model: orModel, activeProvider: 'openrouter', imageProvider }
+    // Remove undefined keys
+    Object.keys(update).forEach(k => update[k] === undefined && delete update[k])
+    await supabase.from('agents').update({ metadata: update }).eq('id', agent.id)
+    upsertAgent({ ...agent, metadata: update })
+    setSavingModel(false)
+    setModelSettingsVisible(false)
+    showToast(selectedWorkflow === 'manus' ? 'Switched to Manus' : `Switched to ${orModel}`)
+  }
+
+  const slashCommands = useMemo(() => getSlashCommands(agent?.name), [agent?.name])
+  const agentTabs = useMemo(() => getAgentTabs(agent?.name), [agent?.name])
+  useEffect(() => {
+    if (!agentTabs.includes(tab)) setTab('chat')
+  }, [agentTabs])
   const messages = messagesByAgent[id] ?? []
+  // Inverted FlatList needs data in reverse order (newest first = renders at visual bottom)
+  const messagesReversed = useMemo(() => [...messages].reverse(), [messages])
   const status = id ? getConnectionStatus(id) : 'disconnected'
 
   useEffect(() => {
@@ -369,6 +830,7 @@ export default function AgentDetailScreen() {
           created_at: new Date(payload.ts).toISOString(),
           metadata: payload.metadata ?? null,
         }
+        if (payload.direction === 'outbound') setIsAgentTyping(false)
         addMessage(id, msg)
       },
     })
@@ -376,6 +838,43 @@ export default function AgentDetailScreen() {
       if (channelRef.current) supabase.removeChannel(channelRef.current)
     }
   }, [id])
+
+  // Reset unread badge and typing state when switching tabs
+  useEffect(() => {
+    if (tab !== 'chat') { setIsAgentTyping(false); return }
+    isAtBottomRef.current = true
+    setShowScrollBtn(false)
+    setUnreadWhileScrolled(0)
+  }, [tab])
+
+  // Track unread messages while scrolled up (inverted: offset 0 = bottom/newest)
+  useEffect(() => {
+    const count = messages.length
+    if (count === 0 || tab !== 'chat') return
+    if (count > prevMsgCountRef.current && !isAtBottomRef.current) {
+      setUnreadWhileScrolled((n) => n + (count - prevMsgCountRef.current))
+    }
+    prevMsgCountRef.current = count
+  }, [messages.length, tab])
+
+  const renderMessage = useCallback(({ item }: { item: Message }) => (
+    <MessageBubble item={item} />
+  ), [])
+
+  // Inverted list: offset 0 = visual bottom (newest). atBottom = user is at newest messages.
+  const handleScroll = useCallback((event: any) => {
+    const atBottom = event.nativeEvent.contentOffset.y < 80
+    isAtBottomRef.current = atBottom
+    setShowScrollBtn(!atBottom)
+    if (atBottom) setUnreadWhileScrolled(0)
+  }, [])
+
+  const scrollToBottom = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true })
+    setUnreadWhileScrolled(0)
+    setShowScrollBtn(false)
+    isAtBottomRef.current = true
+  }, [])
 
   function handleDisconnect() {
     if (!agent) return
@@ -467,24 +966,58 @@ export default function AgentDetailScreen() {
       metadata: meta ?? null,
     })
 
-    // Persist to DB so it survives navigation
-    const { error: insertError } = await supabase.from('messages').insert({
-      agent_id: id,
-      user_id: user.id,
-      direction: 'inbound' as const,
-      content,
-    })
-    if (insertError) showToast('Message not saved')
+    if (agent?.metadata?.paired) setIsAgentTyping(true)
 
-    await sendMessage(channelRef.current, id, user.id, content, meta)
-
-    // If this is a Telegram agent, forward the message via Edge Function
     if (agent?.metadata?.type === 'telegram') {
+      // Telegram: persist inbound + forward via edge function
+      await supabase.from('messages').insert({
+        agent_id: id, user_id: user.id, direction: 'inbound' as const, content,
+      })
       fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/telegram-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId: id, userId: user.id, text: content }),
-      }).catch(() => {}) // fire-and-forget
+      }).catch(() => {})
+    } else if (agent?.metadata?.paired) {
+      // Connector agent: persist inbound + relay via Realtime for connector to pick up
+      const { error: insertError } = await supabase.from('messages').insert({
+        agent_id: id, user_id: user.id, direction: 'inbound' as const, content,
+      })
+      if (insertError) showToast('Message not saved')
+      await sendMessage(channelRef.current, id, user.id, content, meta)
+    } else {
+      // Platform agent: persist inbound first, then call chat edge function
+      await supabase.from('messages').insert({
+        agent_id: id, user_id: user.id, direction: 'inbound' as const, content,
+      })
+      const { data: { session: freshSession } } = await supabase.auth.getSession()
+      if (!freshSession?.access_token) {
+        showToast('Session expired — please sign in again')
+        return
+      }
+      fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${freshSession.access_token}`,
+        },
+        body: JSON.stringify({ agent_id: id, content }),
+      }).then(async (r) => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}))
+          showToast((err as any).error ?? `Error ${r.status}`)
+          return
+        }
+        // Fetch the new outbound message from DB and add it to the store
+        const { data } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('agent_id', id)
+          .eq('direction', 'outbound')
+          .order('created_at', { ascending: false })
+          .limit(1)
+        if (data?.[0]) addMessage(id, data[0])
+      }).catch(() => showToast('Failed to reach agent'))
     }
   }
 
@@ -530,7 +1063,10 @@ export default function AgentDetailScreen() {
 
   if (!agent) return (
     <View style={styles.container}>
-      <Text style={{ color: Colors.textSecondary, textAlign: 'center', marginTop: 100 }}>Agent not found</Text>
+      {authLoading
+        ? <ActivityIndicator size="large" color={Colors.accentAmber} style={{ marginTop: 100 }} />
+        : <Text style={{ color: Colors.textSecondary, textAlign: 'center', marginTop: 100 }}>Agent not found</Text>
+      }
     </View>
   )
 
@@ -544,6 +1080,160 @@ export default function AgentDetailScreen() {
         initialTrade={selectedTrade ?? undefined}
       />
 
+      {/* Model Settings Modal */}
+      <Modal visible={modelSettingsVisible} transparent animationType="slide" onRequestClose={() => setModelSettingsVisible(false)}>
+        <View style={modelStyles.overlay}>
+          <View style={modelStyles.sheet}>
+            {/* Header */}
+            <View style={modelStyles.sheetHeader}>
+              <Text style={modelStyles.sheetTitle}>Model</Text>
+              <TouchableOpacity onPress={() => setModelSettingsVisible(false)} style={modelStyles.closeBtn}>
+                <Text style={modelStyles.closeBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Current model display */}
+            {(() => {
+              const meta = (agent?.metadata ?? {}) as any
+              const isOR = !!meta.openrouterKey
+              const currentModel = isOR ? (meta.model ?? 'openrouter') : 'Manus'
+              const currentSub = isOR ? meta.model : 'manus-1.6 · Nano Banana Pro'
+              return (
+                <View style={modelStyles.currentCard}>
+                  <View style={modelStyles.currentDot} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={modelStyles.currentLabel}>Currently running</Text>
+                    <Text style={modelStyles.currentModel}>{isOR ? currentModel.split('/').pop() : currentModel}</Text>
+                    <Text style={modelStyles.currentSub}>{currentSub}</Text>
+                  </View>
+                </View>
+              )
+            })()}
+
+            {/* Workflow picker */}
+            <Text style={modelStyles.label}>Workflow</Text>
+            <View style={modelStyles.workflowRow}>
+              <TouchableOpacity
+                style={[modelStyles.workflowCard, selectedWorkflow === 'manus' && modelStyles.workflowCardActive]}
+                onPress={() => setSelectedWorkflow('manus')}
+                activeOpacity={0.75}
+              >
+                <Text style={modelStyles.workflowIcon}>🤖</Text>
+                <Text style={[modelStyles.workflowName, selectedWorkflow === 'manus' && { color: Colors.accentTeal }]}>Manus</Text>
+                <Text style={modelStyles.workflowDesc}>Nano Banana Pro{'\n'}for images</Text>
+                {selectedWorkflow === 'manus' && <Text style={modelStyles.workflowCheck}>✓</Text>}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[modelStyles.workflowCard, selectedWorkflow === 'openrouter' && modelStyles.workflowCardActive]}
+                onPress={() => setSelectedWorkflow('openrouter')}
+                activeOpacity={0.75}
+              >
+                <Text style={modelStyles.workflowIcon}>🔀</Text>
+                <Text style={[modelStyles.workflowName, selectedWorkflow === 'openrouter' && { color: Colors.accentTeal }]}>OpenRouter</Text>
+                <Text style={modelStyles.workflowDesc}>100+ models{'\n'}one API key</Text>
+                {selectedWorkflow === 'openrouter' && <Text style={modelStyles.workflowCheck}>✓</Text>}
+              </TouchableOpacity>
+            </View>
+
+            {/* Image Generation picker */}
+            <Text style={[modelStyles.label, { marginTop: 20 }]}>Image Generation</Text>
+            <View style={modelStyles.workflowRow}>
+              <TouchableOpacity
+                style={[modelStyles.workflowCard, imageProvider === 'manus' && modelStyles.workflowCardActive]}
+                onPress={() => setImageProvider('manus')}
+                activeOpacity={0.75}
+              >
+                <Text style={modelStyles.workflowIcon}>🍌</Text>
+                <Text style={[modelStyles.workflowName, imageProvider === 'manus' && { color: Colors.accentTeal }]}>Manus</Text>
+                <Text style={modelStyles.workflowDesc}>Nano Banana Pro{'\n'}higher quality</Text>
+                {imageProvider === 'manus' && <Text style={modelStyles.workflowCheck}>✓</Text>}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[modelStyles.workflowCard, imageProvider === 'dalle' && modelStyles.workflowCardActive]}
+                onPress={() => setImageProvider('dalle')}
+                activeOpacity={0.75}
+              >
+                <Text style={modelStyles.workflowIcon}>🎨</Text>
+                <Text style={[modelStyles.workflowName, imageProvider === 'dalle' && { color: Colors.accentTeal }]}>DALL-E 3</Text>
+                <Text style={modelStyles.workflowDesc}>OpenAI{'\n'}fast & reliable</Text>
+                {imageProvider === 'dalle' && <Text style={modelStyles.workflowCheck}>✓</Text>}
+              </TouchableOpacity>
+            </View>
+
+            {/* OpenRouter config — only visible when selected */}
+            {selectedWorkflow === 'openrouter' && (
+              <>
+                <Text style={[modelStyles.label, { marginTop: 16 }]}>API Key</Text>
+                <View style={modelStyles.keyRow}>
+                  <TextInput
+                    style={[modelStyles.input, { flex: 1, marginBottom: 0 }]}
+                    value={orKey}
+                    onChangeText={setOrKey}
+                    placeholder="sk-or-..."
+                    placeholderTextColor={Colors.textMuted}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity
+                    style={[modelStyles.fetchBtn, (fetchingModels || !orKey.trim()) && { opacity: 0.4 }]}
+                    onPress={() => fetchOpenRouterModels(orKey)}
+                    disabled={fetchingModels || !orKey.trim()}
+                  >
+                    {fetchingModels
+                      ? <ActivityIndicator size="small" color={Colors.accentTeal} />
+                      : <Text style={modelStyles.fetchBtnText}>Load</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  style={[modelStyles.input, { marginTop: 10 }]}
+                  value={orModelSearch}
+                  onChangeText={setOrModelSearch}
+                  placeholder="Search models…"
+                  placeholderTextColor={Colors.textMuted}
+                  autoCapitalize="none"
+                />
+
+                <ScrollView style={modelStyles.modelList} keyboardShouldPersistTaps="handled">
+                  {(orModels.length > 0 ? orModels : DEFAULT_OR_MODELS)
+                    .filter(m => m.id.toLowerCase().includes(orModelSearch.toLowerCase()) || m.name.toLowerCase().includes(orModelSearch.toLowerCase()))
+                    .map(m => (
+                      <TouchableOpacity
+                        key={m.id}
+                        style={[modelStyles.modelRow, orModel === m.id && modelStyles.modelRowSelected]}
+                        onPress={() => { setOrModel(m.id); setOrModelSearch('') }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={[modelStyles.modelId, orModel === m.id && { color: Colors.accentTeal }]}>{m.id}</Text>
+                          {m.name !== m.id && <Text style={modelStyles.modelName}>{m.name}</Text>}
+                        </View>
+                        {orModel === m.id && <Text style={modelStyles.checkmark}>✓</Text>}
+                      </TouchableOpacity>
+                    ))
+                  }
+                </ScrollView>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={[modelStyles.saveBtn, (savingModel || (selectedWorkflow === 'openrouter' && (!orKey.trim() || !orModel))) && { opacity: 0.4 }]}
+              onPress={saveModelSettings}
+              disabled={savingModel || (selectedWorkflow === 'openrouter' && (!orKey.trim() || !orModel))}
+            >
+              {savingModel
+                ? <ActivityIndicator color="#000" size="small" />
+                : <Text style={modelStyles.saveBtnText}>Apply</Text>
+              }
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -554,9 +1244,18 @@ export default function AgentDetailScreen() {
           <View style={styles.statusRow}>
             <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[status] }]} />
             <Text style={[styles.statusText, { color: STATUS_COLOR[status] }]}>{status}</Text>
+            {(() => {
+              const meta = agent.metadata as any
+              if (meta?.openrouterKey && meta?.model) return <Text style={styles.modelBadge}>{meta.model.split('/').pop()}</Text>
+              if (meta?.activeProvider === 'manus' || (!meta?.openrouterKey)) return <Text style={styles.modelBadge}>manus</Text>
+              return null
+            })()}
           </View>
         </View>
         <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.gearBtn} onPress={() => setModelSettingsVisible(true)}>
+            <Text style={styles.gearBtnText}>⚙</Text>
+          </TouchableOpacity>
           {['connected', 'connecting', 'stale'].includes(status) && (
             <TouchableOpacity style={styles.disconnectBtn} onPress={handleDisconnect}>
               <Text style={styles.disconnectBtnText}>Disconnect</Text>
@@ -570,7 +1269,7 @@ export default function AgentDetailScreen() {
 
       {/* Tabs */}
       <View style={styles.tabs}>
-        {(['chat', 'trades', 'status', 'vitals', 'activity', 'skills'] as Tab[]).map((t) => (
+        {agentTabs.map((t) => (
           <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.tabActive]} onPress={() => setTab(t)}>
             <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t.charAt(0).toUpperCase() + t.slice(1)}</Text>
           </TouchableOpacity>
@@ -580,24 +1279,35 @@ export default function AgentDetailScreen() {
       {/* Chat Tab */}
       {tab === 'chat' && (
         <>
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(m) => m.id}
-            renderItem={({ item }) => (
-              <View style={[styles.bubble, item.direction === 'inbound' && styles.bubbleOut]}>
-                {item.metadata?.attachments?.map((url, i) => (
-                  <Image key={i} source={{ uri: url }} style={styles.bubbleImage} resizeMode="cover" />
-                ))}
-                {item.content && item.content !== '[image]' && (
-                  <MessageText content={item.content} outbound={item.direction === 'inbound'} />
+          <View style={styles.chatArea}>
+            <FlatList
+              ref={flatListRef}
+              data={messagesReversed}
+              keyExtractor={(m) => m.id}
+              renderItem={renderMessage}
+              contentContainerStyle={styles.chatList}
+              ListHeaderComponent={isAgentTyping ? <TypingBubble /> : null}
+              inverted
+              removeClippedSubviews={true}
+              windowSize={10}
+              maxToRenderPerBatch={10}
+              initialNumToRender={20}
+              onScroll={handleScroll}
+              scrollEventThrottle={100}
+            />
+            {showScrollBtn && (
+              <TouchableOpacity style={styles.scrollToBottomBtn} onPress={scrollToBottom} activeOpacity={0.85}>
+                {unreadWhileScrolled > 0 && (
+                  <View style={styles.scrollToBottomBadge}>
+                    <Text style={styles.scrollToBottomBadgeText}>
+                      {unreadWhileScrolled > 99 ? '99+' : unreadWhileScrolled}
+                    </Text>
+                  </View>
                 )}
-                <Text style={styles.bubbleTime}>{new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
-              </View>
+                <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
+              </TouchableOpacity>
             )}
-            contentContainerStyle={styles.chatList}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          />
+          </View>
           {attachments.length > 0 && (
             <View style={styles.attachmentPreview}>
               {attachments.map((att, i) => (
@@ -616,7 +1326,7 @@ export default function AgentDetailScreen() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              {SLASH_COMMANDS.filter(c => c.cmd.startsWith(input)).map((c) => (
+              {slashCommands.filter(c => c.cmd.startsWith(input)).map((c) => (
                 <TouchableOpacity
                   key={c.cmd}
                   style={styles.cmdPickerRow}
@@ -648,7 +1358,7 @@ export default function AgentDetailScreen() {
               value={input}
               onChangeText={(v) => {
                 setInput(v)
-                const matches = SLASH_COMMANDS.filter(c => c.cmd.startsWith(v))
+                const matches = slashCommands.filter(c => c.cmd.startsWith(v))
               setCmdPickerVisible(v.startsWith('/') && !v.includes(' ') && !(matches.length === 1 && matches[0].cmd === v))
               }}
               placeholder="Message agent…"
@@ -913,6 +1623,10 @@ export default function AgentDetailScreen() {
           )}
         </View>
       )}
+      {/* ── Studio Tab ── */}
+      {tab === 'studio' && (
+        <StudioTab messages={messages} notionUrl={agent?.metadata?.notion_url as string | undefined} />
+      )}
       {/* ── Trades Tab ── */}
       {tab === 'trades' && (
         <ScrollView style={styles.tabContent} contentContainerStyle={{ padding: 16, gap: 0 }}>
@@ -1029,7 +1743,39 @@ const styles = StyleSheet.create({
   tabActive: { borderBottomWidth: 2, borderBottomColor: Colors.accentCrimson },
   tabText: { fontSize: 14, color: Colors.textSecondary, fontWeight: '500' },
   tabTextActive: { color: Colors.accentCrimson },
-  chatList: { paddingHorizontal: 16, paddingTop: 16, gap: 8 },
+  chatArea: { flex: 1, position: 'relative' },
+  chatList: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16, gap: 8 },
+  scrollToBottomBtn: {
+    position: 'absolute',
+    right: 14,
+    bottom: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  scrollToBottomBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -3,
+    backgroundColor: Colors.accentCrimson,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  scrollToBottomBadgeText: { color: '#fff', fontSize: 9, fontWeight: '700' },
   bubble: {
     maxWidth: '80%',
     backgroundColor: Colors.bgElevated,
@@ -1038,7 +1784,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   bubbleOut: { alignSelf: 'flex-end', backgroundColor: '#1a0608' },
-  bubbleImage: { width: '100%', height: 180, borderRadius: 10, marginBottom: 6 },
+  bubbleImage: { width: IMG_W, height: 200, borderRadius: 10, marginBottom: 6, overflow: 'hidden', backgroundColor: Colors.bgSurface },
+  bubblePressed: { opacity: 0.6 },
   bubbleText: { color: Colors.textPrimary, fontSize: 15, lineHeight: 20 },
   bubbleTextOut: { color: '#fff' },
   bubbleLink: { color: Colors.accentTeal, textDecorationLine: 'underline' },
@@ -1287,4 +2034,85 @@ const styles = StyleSheet.create({
   skillCategory: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   skillVersion: { fontSize: 11, color: Colors.textMuted },
   skillDesc: { fontSize: 12, color: Colors.textSecondary, lineHeight: 17, marginTop: 2 },
+  centered: { alignItems: 'center' as const, justifyContent: 'center' as const, paddingVertical: 24 },
+
+  // Header additions
+  modelBadge: { fontSize: 10, color: Colors.textMuted, marginLeft: 6, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  gearBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.bgBorder, alignItems: 'center', justifyContent: 'center' },
+  gearBtnText: { fontSize: 16, color: Colors.textSecondary },
+})
+
+const modelStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20, paddingBottom: 44,
+    maxHeight: '88%',
+  },
+  sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  sheetTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary },
+  closeBtn: { padding: 4 },
+  closeBtnText: { fontSize: 18, color: Colors.textMuted },
+
+  // Current model card
+  currentCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.bgSurface,
+    borderRadius: 14, padding: 14, marginBottom: 24,
+    borderWidth: 1, borderColor: Colors.bgBorder,
+  },
+  currentDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.accentGreen },
+  currentLabel: { fontSize: 11, fontWeight: '600', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3 },
+  currentModel: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary, marginBottom: 2 },
+  currentSub: { fontSize: 12, color: Colors.textMuted },
+
+  label: { fontSize: 11, fontWeight: '700', color: Colors.textMuted, letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 },
+
+  // Workflow cards
+  workflowRow: { flexDirection: 'row', gap: 10, marginBottom: 4 },
+  workflowCard: {
+    flex: 1, backgroundColor: Colors.bgSurface,
+    borderRadius: 14, padding: 14,
+    borderWidth: 1.5, borderColor: Colors.bgBorder,
+    position: 'relative',
+  },
+  workflowCardActive: { borderColor: Colors.accentTeal },
+  workflowIcon: { fontSize: 22, marginBottom: 8 },
+  workflowName: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary, marginBottom: 4 },
+  workflowDesc: { fontSize: 11, color: Colors.textMuted, lineHeight: 16 },
+  workflowCheck: { position: 'absolute', top: 10, right: 12, fontSize: 13, color: Colors.accentTeal, fontWeight: '700' },
+
+  // OpenRouter config
+  keyRow: { flexDirection: 'row', gap: 8 },
+  input: {
+    backgroundColor: Colors.bgSurface,
+    borderRadius: 10, borderWidth: 1, borderColor: Colors.bgBorder,
+    paddingHorizontal: 12, paddingVertical: 10,
+    color: Colors.textPrimary, fontSize: 14,
+    marginBottom: 0,
+  },
+  fetchBtn: {
+    backgroundColor: Colors.bgSurface, borderRadius: 10, borderWidth: 1, borderColor: Colors.bgBorder,
+    paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', minWidth: 56,
+  },
+  fetchBtnText: { fontSize: 13, fontWeight: '600', color: Colors.accentTeal },
+  modelList: { maxHeight: 200, marginBottom: 16, marginTop: 2 },
+  modelRow: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 10, paddingHorizontal: 12,
+    borderRadius: 10, marginBottom: 4,
+    backgroundColor: Colors.bgSurface,
+    borderWidth: 1, borderColor: Colors.bgBorder,
+  },
+  modelRowSelected: { borderColor: Colors.accentTeal },
+  modelId: { fontSize: 12, color: Colors.textPrimary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  modelName: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
+  checkmark: { fontSize: 13, color: Colors.accentTeal, marginLeft: 6 },
+
+  saveBtn: {
+    backgroundColor: Colors.accentTeal, borderRadius: 12,
+    paddingVertical: 14, alignItems: 'center', marginTop: 16,
+  },
+  saveBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
 })

@@ -302,9 +302,10 @@ async function runAgent({ userId, agentName, systemPrompt, apiKey, storageMode, 
         }
     }
     // ─── Image generation helper (has closure access to channel/agentId/userId) ──
-    async function handleGenerateImage(input) {
+    async function handleGenerateImage(input, provider) {
+        const useManus = provider ? provider === 'manus' : !!manusKey;
         // Prefer Manus (Nano Banana Pro) when available, fall back to DALL-E 3
-        if (manusKey) {
+        if (useManus && manusKey) {
             console.log(`[image] Generating via Manus: ${input.caption}`);
             const result = await runManusTask(`Generate this image: ${input.prompt}\n\nCaption: ${input.caption}`);
             return result;
@@ -586,6 +587,7 @@ async function runAgent({ userId, agentName, systemPrompt, apiKey, storageMode, 
         const metaData = (agentMeta?.metadata ?? {});
         const orKey = metaData.openrouterKey;
         const orModel = metaData.model;
+        const imageProvider = metaData.imageProvider ?? (manusKey ? 'manus' : 'dalle');
         const activeOpenAI = orKey
             ? new openai_1.default({ apiKey: orKey, baseURL: 'https://openrouter.ai/api/v1', defaultHeaders: { 'HTTP-Referer': 'https://clawterminal.app', 'X-Title': 'ClawTerminal' } })
             : openai;
@@ -648,7 +650,7 @@ async function runAgent({ userId, agentName, systemPrompt, apiKey, storageMode, 
                             const fn = tc.function;
                             const input = JSON.parse(fn.arguments);
                             console.log(`[tool] ${fn.name}(${fn.arguments.slice(0, 80)})`);
-                            const result = fn.name === 'generate_image' ? await handleGenerateImage(input)
+                            const result = fn.name === 'generate_image' ? await handleGenerateImage(input, imageProvider)
                                 : fn.name === 'push_to_notion' ? await handlePushToNotion(input)
                                     : fn.name === 'generate_video' ? await handleGenerateVideo(input)
                                         : fn.name === 'list_higgsfield_projects' ? await handleListHiggsfieldProjects(input)
@@ -687,7 +689,7 @@ async function runAgent({ userId, agentName, systemPrompt, apiKey, storageMode, 
                             if (block.type === 'tool_use') {
                                 console.log(`[tool] ${block.name}`);
                                 const result = block.name === 'generate_image'
-                                    ? await handleGenerateImage(block.input)
+                                    ? await handleGenerateImage(block.input, imageProvider)
                                     : block.name === 'push_to_notion'
                                         ? await handlePushToNotion(block.input)
                                         : block.name === 'generate_video'
