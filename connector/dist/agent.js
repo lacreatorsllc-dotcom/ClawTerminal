@@ -223,7 +223,8 @@ async function runAgent({ userId, agentName, systemPrompt, apiKey, storageMode, 
             platform: os.platform(),
             node_version: process.version,
             protocol_version: '1.1',
-            powered_by: 'claude',
+            powered_by: isOpenAI ? 'openai' : 'anthropic',
+            llmProvider: isOpenAI ? 'openai' : 'anthropic',
             storage_mode: storageMode,
             paired: true,
         },
@@ -582,17 +583,29 @@ async function runAgent({ userId, agentName, systemPrompt, apiKey, storageMode, 
             console.log('[claw-agent] Duplicate message ignored');
             return;
         }
-        // Check agent metadata for OpenRouter config (hot-swappable model)
+        // Check agent metadata for hot-swappable LLM config
         const { data: agentMeta } = await supabase.from('agents').select('metadata').eq('id', agentId).single();
         const metaData = (agentMeta?.metadata ?? {});
         const orKey = metaData.openrouterKey;
         const orModel = metaData.model;
+        const metaOpenAIKey = metaData.openaiKey;
+        const metaAnthropicKey = metaData.anthropicKey;
+        const llmProvider = metaData.llmProvider
+            ?? (orKey ? 'openrouter' : isOpenAI ? 'openai' : 'anthropic');
         const imageProvider = metaData.imageProvider ?? (manusKey ? 'manus' : 'dalle');
-        const activeOpenAI = orKey
+        // Build active LLM clients based on provider
+        const activeOpenAI = llmProvider === 'openrouter'
             ? new openai_1.default({ apiKey: orKey, baseURL: 'https://openrouter.ai/api/v1', defaultHeaders: { 'HTTP-Referer': 'https://clawterminal.app', 'X-Title': 'ClawTerminal' } })
-            : openai;
-        const useAnthropic = !orKey && !isOpenAI;
-        const activeModel = orKey ? (orModel ?? 'openai/gpt-4o') : 'gpt-4o';
+            : llmProvider === 'openai'
+                ? new openai_1.default({ apiKey: metaOpenAIKey ?? apiKey })
+                : null;
+        const activeAnthropic = llmProvider === 'anthropic'
+            ? new sdk_1.default({ apiKey: metaAnthropicKey ?? apiKey })
+            : null;
+        const useAnthropic = llmProvider === 'anthropic';
+        const activeModel = llmProvider === 'openrouter' ? (orModel ?? 'openai/gpt-4o')
+            : llmProvider === 'anthropic' ? (orModel ?? 'claude-opus-4-6')
+                : 'gpt-4o';
         const userMessage = payload.content;
         console.log(`[user] ${userMessage}`);
         responding = true;
@@ -673,8 +686,8 @@ async function runAgent({ userId, agentName, systemPrompt, apiKey, storageMode, 
                     content: m.content,
                 }));
                 while (true) {
-                    const response = await anthropic.messages.create({
-                        model: 'claude-sonnet-4-6',
+                    const response = await activeAnthropic.messages.create({
+                        model: activeModel,
                         max_tokens: 4096,
                         system: resolvedSystemPrompt,
                         tools: TOOLS,

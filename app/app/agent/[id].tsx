@@ -620,8 +620,9 @@ export default function AgentDetailScreen() {
   const [unreadWhileScrolled, setUnreadWhileScrolled] = useState(0)
   const [isAgentTyping, setIsAgentTyping] = useState(false)
   const [modelSettingsVisible, setModelSettingsVisible] = useState(false)
-  const [selectedWorkflow, setSelectedWorkflow] = useState<'manus' | 'openrouter'>('manus')
+  const [selectedWorkflow, setSelectedWorkflow] = useState<'openai' | 'anthropic' | 'openrouter'>('openai')
   const [imageProvider, setImageProvider] = useState<'manus' | 'dalle'>('manus')
+  const [llmApiKey, setLlmApiKey] = useState('')
   const [orKey, setOrKey] = useState('')
   const [orModel, setOrModel] = useState('')
   const [orModelSearch, setOrModelSearch] = useState('')
@@ -640,9 +641,10 @@ export default function AgentDetailScreen() {
   useEffect(() => {
     if (!modelSettingsVisible || !agent) return
     const meta = agent.metadata as any
-    const hasOrKey = !!meta?.openrouterKey
-    setSelectedWorkflow(hasOrKey ? 'openrouter' : 'manus')
+    const provider = meta?.llmProvider ?? (meta?.openrouterKey ? 'openrouter' : 'openai')
+    setSelectedWorkflow(provider)
     setImageProvider(meta?.imageProvider ?? 'manus')
+    setLlmApiKey(provider === 'openai' ? (meta?.openaiKey ?? '') : (meta?.anthropicKey ?? ''))
     setOrKey(meta?.openrouterKey ?? '')
     setOrModel(meta?.model ?? '')
     setOrModelSearch('')
@@ -669,16 +671,22 @@ export default function AgentDetailScreen() {
     if (!agent) return
     setSavingModel(true)
     const meta = (agent.metadata ?? {}) as any
-    const update = selectedWorkflow === 'manus'
-      ? { ...meta, openrouterKey: undefined, model: undefined, activeProvider: 'manus', imageProvider }
-      : { ...meta, openrouterKey: orKey.trim(), model: orModel, activeProvider: 'openrouter', imageProvider }
-    // Remove undefined keys
+    const base = { ...meta, imageProvider, llmProvider: selectedWorkflow }
+    let update: any
+    if (selectedWorkflow === 'openai') {
+      update = { ...base, openrouterKey: undefined, model: undefined, openaiKey: llmApiKey.trim() || undefined, anthropicKey: undefined }
+    } else if (selectedWorkflow === 'anthropic') {
+      update = { ...base, openrouterKey: undefined, model: undefined, anthropicKey: llmApiKey.trim() || undefined, openaiKey: undefined }
+    } else {
+      update = { ...base, openrouterKey: orKey.trim(), model: orModel, openaiKey: undefined, anthropicKey: undefined }
+    }
     Object.keys(update).forEach(k => update[k] === undefined && delete update[k])
     await supabase.from('agents').update({ metadata: update }).eq('id', agent.id)
     upsertAgent({ ...agent, metadata: update })
     setSavingModel(false)
     setModelSettingsVisible(false)
-    showToast(selectedWorkflow === 'manus' ? 'Switched to Manus' : `Switched to ${orModel}`)
+    const label = selectedWorkflow === 'openrouter' ? orModel : selectedWorkflow === 'anthropic' ? 'Anthropic' : 'OpenAI'
+    showToast(`Switched to ${label}`)
   }
 
   const slashCommands = useMemo(() => getSlashCommands(agent?.name), [agent?.name])
@@ -1095,33 +1103,44 @@ export default function AgentDetailScreen() {
             {/* Current model display */}
             {(() => {
               const meta = (agent?.metadata ?? {}) as any
-              const isOR = !!meta.openrouterKey
-              const currentModel = isOR ? (meta.model ?? 'openrouter') : 'Manus'
-              const currentSub = isOR ? meta.model : 'manus-1.6 · Nano Banana Pro'
+              const provider = meta?.llmProvider ?? (meta?.openrouterKey ? 'openrouter' : 'openai')
+              const labelMap: Record<string, string> = { openai: 'OpenAI', anthropic: 'Anthropic', openrouter: 'OpenRouter' }
+              const subMap: Record<string, string> = { openai: 'gpt-4o', anthropic: meta?.model ?? 'claude-opus-4-6', openrouter: meta?.model ?? 'select a model' }
               return (
                 <View style={modelStyles.currentCard}>
                   <View style={modelStyles.currentDot} />
                   <View style={{ flex: 1 }}>
                     <Text style={modelStyles.currentLabel}>Currently running</Text>
-                    <Text style={modelStyles.currentModel}>{isOR ? currentModel.split('/').pop() : currentModel}</Text>
-                    <Text style={modelStyles.currentSub}>{currentSub}</Text>
+                    <Text style={modelStyles.currentModel}>{labelMap[provider] ?? provider}</Text>
+                    <Text style={modelStyles.currentSub}>{subMap[provider]}</Text>
                   </View>
                 </View>
               )
             })()}
 
-            {/* Workflow picker */}
-            <Text style={modelStyles.label}>Workflow</Text>
+            {/* LLM picker */}
+            <Text style={modelStyles.label}>Language Model</Text>
             <View style={modelStyles.workflowRow}>
               <TouchableOpacity
-                style={[modelStyles.workflowCard, selectedWorkflow === 'manus' && modelStyles.workflowCardActive]}
-                onPress={() => setSelectedWorkflow('manus')}
+                style={[modelStyles.workflowCard, selectedWorkflow === 'openai' && modelStyles.workflowCardActive]}
+                onPress={() => setSelectedWorkflow('openai')}
                 activeOpacity={0.75}
               >
-                <Text style={modelStyles.workflowIcon}>🤖</Text>
-                <Text style={[modelStyles.workflowName, selectedWorkflow === 'manus' && { color: Colors.accentTeal }]}>Manus</Text>
-                <Text style={modelStyles.workflowDesc}>Nano Banana Pro{'\n'}for images</Text>
-                {selectedWorkflow === 'manus' && <Text style={modelStyles.workflowCheck}>✓</Text>}
+                <Text style={modelStyles.workflowIcon}>🟢</Text>
+                <Text style={[modelStyles.workflowName, selectedWorkflow === 'openai' && { color: Colors.accentTeal }]}>OpenAI</Text>
+                <Text style={modelStyles.workflowDesc}>gpt-4o</Text>
+                {selectedWorkflow === 'openai' && <Text style={modelStyles.workflowCheck}>✓</Text>}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[modelStyles.workflowCard, selectedWorkflow === 'anthropic' && modelStyles.workflowCardActive]}
+                onPress={() => setSelectedWorkflow('anthropic')}
+                activeOpacity={0.75}
+              >
+                <Text style={modelStyles.workflowIcon}>🟠</Text>
+                <Text style={[modelStyles.workflowName, selectedWorkflow === 'anthropic' && { color: Colors.accentTeal }]}>Anthropic</Text>
+                <Text style={modelStyles.workflowDesc}>claude-opus-4-6</Text>
+                {selectedWorkflow === 'anthropic' && <Text style={modelStyles.workflowCheck}>✓</Text>}
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -1131,10 +1150,24 @@ export default function AgentDetailScreen() {
               >
                 <Text style={modelStyles.workflowIcon}>🔀</Text>
                 <Text style={[modelStyles.workflowName, selectedWorkflow === 'openrouter' && { color: Colors.accentTeal }]}>OpenRouter</Text>
-                <Text style={modelStyles.workflowDesc}>100+ models{'\n'}one API key</Text>
+                <Text style={modelStyles.workflowDesc}>100+ models</Text>
                 {selectedWorkflow === 'openrouter' && <Text style={modelStyles.workflowCheck}>✓</Text>}
               </TouchableOpacity>
             </View>
+
+            {/* API key input for OpenAI / Anthropic */}
+            {(selectedWorkflow === 'openai' || selectedWorkflow === 'anthropic') && (
+              <TextInput
+                style={[modelStyles.input, { marginTop: 12 }]}
+                value={llmApiKey}
+                onChangeText={setLlmApiKey}
+                placeholder={selectedWorkflow === 'openai' ? 'sk-... (leave blank to use default)' : 'sk-ant-... (leave blank to use default)'}
+                placeholderTextColor={Colors.textMuted}
+                secureTextEntry
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            )}
 
             {/* Image Generation picker */}
             <Text style={[modelStyles.label, { marginTop: 20 }]}>Image Generation</Text>
@@ -1145,8 +1178,8 @@ export default function AgentDetailScreen() {
                 activeOpacity={0.75}
               >
                 <Text style={modelStyles.workflowIcon}>🍌</Text>
-                <Text style={[modelStyles.workflowName, imageProvider === 'manus' && { color: Colors.accentTeal }]}>Manus</Text>
-                <Text style={modelStyles.workflowDesc}>Nano Banana Pro{'\n'}higher quality</Text>
+                <Text style={[modelStyles.workflowName, imageProvider === 'manus' && { color: Colors.accentTeal }]}>Nano Banana Pro</Text>
+                <Text style={modelStyles.workflowDesc}>Manus · higher quality</Text>
                 {imageProvider === 'manus' && <Text style={modelStyles.workflowCheck}>✓</Text>}
               </TouchableOpacity>
 
@@ -1157,7 +1190,7 @@ export default function AgentDetailScreen() {
               >
                 <Text style={modelStyles.workflowIcon}>🎨</Text>
                 <Text style={[modelStyles.workflowName, imageProvider === 'dalle' && { color: Colors.accentTeal }]}>DALL-E 3</Text>
-                <Text style={modelStyles.workflowDesc}>OpenAI{'\n'}fast & reliable</Text>
+                <Text style={modelStyles.workflowDesc}>OpenAI · fast & reliable</Text>
                 {imageProvider === 'dalle' && <Text style={modelStyles.workflowCheck}>✓</Text>}
               </TouchableOpacity>
             </View>
@@ -1247,7 +1280,8 @@ export default function AgentDetailScreen() {
             {(() => {
               const meta = agent.metadata as any
               if (meta?.openrouterKey && meta?.model) return <Text style={styles.modelBadge}>{meta.model.split('/').pop()}</Text>
-              if (meta?.activeProvider === 'manus' || (!meta?.openrouterKey)) return <Text style={styles.modelBadge}>manus</Text>
+              const provider = meta?.llmProvider ?? 'openai'
+              return <Text style={styles.modelBadge}>{provider}</Text>
               return null
             })()}
           </View>
