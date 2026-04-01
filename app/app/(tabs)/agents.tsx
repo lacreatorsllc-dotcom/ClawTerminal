@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, Platform,
-  Animated, Image as RNImage, Modal, TextInput, ActivityIndicator, ScrollView,
+  Animated, Image as RNImage, Modal, ActivityIndicator, ScrollView, TextInput,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
@@ -182,7 +182,6 @@ export default function SlugsScreen() {
   const { agents, setAgents, upsertAgent, loading, setLoading } = useAgentsStore()
   const { user, username } = useAuthStore()
   const [filter, setFilter] = useState<FilterStatus>('all')
-  const [searchQuery, setSearchQuery] = useState('')
 
   // Deploy modal
   const [deployVisible, setDeployVisible] = useState(false)
@@ -358,22 +357,6 @@ export default function SlugsScreen() {
         </View>
       </Modal>
 
-      {/* Search bar */}
-      <View style={styles.searchRow}>
-        <Ionicons name="search-outline" size={16} color={Colors.textMuted} style={{ marginRight: 8 }} />
-        <TextInput
-          style={styles.searchInput}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search agents or @username…"
-          placeholderTextColor={Colors.textMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-      </View>
-
       {/* Filter pills */}
       {!loading && agents.length > 0 && (
         <View style={styles.filterRow}>
@@ -413,8 +396,6 @@ export default function SlugsScreen() {
       ) : (
         <FlatList
           data={agents.filter((a) => {
-            const q = searchQuery.trim().toLowerCase()
-            if (q && !a.name.toLowerCase().includes(q)) return false
             if (filter === 'all') return true
             const s = a.status ?? 'disconnected'
             if (filter === 'active') return ['connected', 'connecting', 'stale'].includes(s)
@@ -504,26 +485,6 @@ const styles = StyleSheet.create({
   cmdText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: Colors.accentGreen, lineHeight: 18 },
   viewAgentBtn: { backgroundColor: Colors.bgElevated, borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: Colors.bgBorder },
   viewAgentBtnText: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: Colors.bgElevated,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: Colors.bgBorder,
-    minHeight: 52,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: Colors.textPrimary,
-    padding: 0,
-    marginLeft: 2,
-  },
   filterRow: {
     flexDirection: 'row',
     gap: 8,

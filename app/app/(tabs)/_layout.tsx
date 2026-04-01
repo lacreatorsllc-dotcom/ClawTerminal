@@ -33,7 +33,12 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="search"
-        options={{ href: null }}
+        options={{
+          title: 'Search',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="search" size={24} color={color} />
+          ),
+        }}
       />
       <Tabs.Screen
         name="agents"

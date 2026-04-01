@@ -1,0 +1,4 @@
+openai
+fal-client
+requests
+python-dotenv
