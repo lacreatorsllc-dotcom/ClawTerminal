@@ -2,13 +2,13 @@ import { initializeApp } from 'firebase/app'
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore'
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAZeMHmCG1fM8JnjZUBZp8-dHUVY_g9lmU",
-  authDomain: "slugs-run.firebaseapp.com",
-  projectId: "slugs-run",
-  storageBucket: "slugs-run.firebasestorage.app",
-  messagingSenderId: "1094657124615",
-  appId: "1:1094657124615:web:6d030b4fd11a4b33f13da2",
-  measurementId: "G-58PCZ8WXNY"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 }
 
 const app = initializeApp(firebaseConfig)
