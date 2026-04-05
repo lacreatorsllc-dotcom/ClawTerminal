@@ -90,6 +90,15 @@ export default function EarlyAccess() {
                 <div className="text-xs font-semibold text-text leading-none">iOS</div>
               </div>
             </div>
+            <div className="flex items-center gap-2 bg-bg2 border border-glass rounded-xl px-4 py-2.5 opacity-60">
+              <svg className="w-4 h-4 text-text2" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.523 15.341c-.51 0-.93-.419-.93-.93s.42-.93.93-.93.929.419.929.93-.419.93-.929.93m-11.046 0c-.511 0-.93-.419-.93-.93s.419-.93.93-.93.929.419.929.93-.418.93-.929.93m11.4-6.142l1.86-3.22a.387.387 0 0 0-.141-.529.386.386 0 0 0-.529.141l-1.884 3.262A11.447 11.447 0 0 0 12 8.018c-1.661 0-3.238.348-4.665.961L5.45 5.717a.386.386 0 0 0-.528-.141.386.386 0 0 0-.142.529l1.861 3.22C3.93 10.63 2.18 13.163 2 16.104h20c-.18-2.941-1.929-5.474-4.123-6.905"/>
+              </svg>
+              <div>
+                <div className="text-[9px] text-text2 leading-none mb-0.5">Coming soon to</div>
+                <div className="text-xs font-semibold text-text leading-none">Android</div>
+              </div>
+            </div>
             <div
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5"
               style={{
@@ -109,8 +118,8 @@ export default function EarlyAccess() {
                 <path d="M4 7h13.5l2.5-2H6.5L4 7z" fill="url(#sol-ea2)"/>
               </svg>
               <div>
-                <div className="text-[9px] leading-none mb-0.5" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Coming soon to</div>
-                <div className="text-xs font-semibold leading-none" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Seeker Mobile</div>
+                <div className="text-[9px] leading-none mb-0.5" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Also on</div>
+                <div className="text-xs font-semibold leading-none" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Seeker · Solana's mobile browser</div>
               </div>
             </div>
           </div>
