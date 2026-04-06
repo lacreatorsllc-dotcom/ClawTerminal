@@ -297,7 +297,7 @@ export default function Hero() {
                 </svg>
                 <div>
                   <div className="text-[9px] leading-none mb-0.5" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Also on</div>
-                  <div className="text-xs font-semibold leading-none" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Seeker · Solana's mobile browser</div>
+                  <div className="text-xs font-semibold leading-none" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Seeker</div>
                 </div>
               </div>
             </motion.div>
