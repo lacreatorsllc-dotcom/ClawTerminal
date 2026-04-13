@@ -26,6 +26,7 @@ export default function DeployScreen() {
   const [name, setName] = useState('Range Farmer')
   const [cabalChatId, setCabalChatId] = useState('')
   const [tbApiKey, setTbApiKey] = useState('')
+  const [openaiKey, setOpenaiKey] = useState('')
   const [deploying, setDeploying] = useState(false)
   const [deployed, setDeployed] = useState<DeployedAgent | null>(null)
   const [error, setError] = useState('')
@@ -66,7 +67,11 @@ export default function DeployScreen() {
       const res = await fetch(`${TB_BRIDGE_URL}/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.uid, apiKey: tbApiKey.trim() }),
+        body: JSON.stringify({
+          userId: user.uid,
+          apiKey: tbApiKey.trim(),
+          openaiKey: openaiKey.trim() || undefined,
+        }),
       })
       const data = await res.json() as any
       if (!res.ok) throw new Error(data.error ?? 'Connect failed')
@@ -287,7 +292,7 @@ export default function DeployScreen() {
               <Text style={s.infoRow}>⏸  Pause / resume from the app</Text>
             </View>
 
-            <Text style={s.fieldLabel}>API Key</Text>
+            <Text style={s.fieldLabel}>Cabal API Key</Text>
             <TextInput
               style={s.input}
               value={tbApiKey}
@@ -298,8 +303,20 @@ export default function DeployScreen() {
               autoCorrect={false}
               secureTextEntry={false}
             />
+            <Text style={s.hintText}>Starts with tb_live_. Find it in your cabal.ventures dashboard.</Text>
 
-            <Text style={s.hintText}>Your API key starts with tb_live_. Find it in your cabal.ventures dashboard.</Text>
+            <Text style={[s.fieldLabel, { marginTop: 20 }]}>OpenAI API Key</Text>
+            <TextInput
+              style={s.input}
+              value={openaiKey}
+              onChangeText={setOpenaiKey}
+              placeholder="sk-..."
+              placeholderTextColor={Colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+            <Text style={s.hintText}>For agent chat. Get yours at platform.openai.com/api-keys.</Text>
 
             {error ? <Text style={s.errorText}>{error}</Text> : null}
 

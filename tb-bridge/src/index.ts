@@ -17,12 +17,12 @@ process.on('unhandledRejection', (reason) => {
 // Track running agents to avoid duplicate listeners
 const runningAgents = new Set<string>()
 
-function activateAgent(firestoreId: string, apiKey: string, tbAgentId: string, tbTraderId: string, agentName: string): void {
+function activateAgent(firestoreId: string, apiKey: string, tbAgentId: string, tbTraderId: string, agentName: string, openaiKey?: string): void {
   if (runningAgents.has(firestoreId)) return
   runningAgents.add(firestoreId)
   startPoller(firestoreId, apiKey, tbAgentId, tbTraderId)
-  startChatListener(firestoreId, apiKey, tbAgentId, agentName)
-  console.log(`[tb-bridge] activated agent ${firestoreId} (${agentName})`)
+  startChatListener(firestoreId, apiKey, tbAgentId, agentName, openaiKey)
+  console.log(`[tb-bridge] activated agent ${firestoreId} (${agentName}) openai=${openaiKey ? 'yes' : 'no'}`)
 }
 
 function parseBody(req: http.IncomingMessage): Promise<any> {
@@ -80,7 +80,7 @@ const server = http.createServer(async (req, res) => {
   if (method === 'POST' && url === '/connect') {
     try {
       const body = await parseBody(req)
-      const { userId, apiKey } = body as { userId?: string; apiKey?: string }
+      const { userId, apiKey, openaiKey } = body as { userId?: string; apiKey?: string; openaiKey?: string }
 
       if (!userId || typeof userId !== 'string') {
         return send(res, 400, { error: 'userId is required' })
@@ -114,6 +114,7 @@ const server = http.createServer(async (req, res) => {
             tb_agent_id: agent.id,
             tb_trader_id: agent.traderId,
             tb_api_key: apiKey,
+            openai_api_key: openaiKey ?? null,
             status: 'connected',
             autonomy_level: agent.autonomyLevel,
             watchlist: agent.watchlist,
@@ -133,6 +134,7 @@ const server = http.createServer(async (req, res) => {
           await docRef.update({
             name: agent.name,
             tb_api_key: apiKey,
+            ...(openaiKey ? { openai_api_key: openaiKey } : {}),
             status: 'connected',
             autonomy_level: agent.autonomyLevel,
             watchlist: agent.watchlist,
@@ -143,7 +145,9 @@ const server = http.createServer(async (req, res) => {
         }
 
         // Activate poller + chat listener
-        activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name)
+        // If re-connecting an already-running agent with a new key, update its listener
+        const currentOpenaiKey = openaiKey ?? (existing.empty ? undefined : existing.docs[0].data().openai_api_key)
+        activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name, currentOpenaiKey)
         connectedAgents.push({ id: firestoreId, name: agent.name, tbAgentId: agent.id })
       }
 
@@ -169,7 +173,7 @@ async function startup(): Promise<void> {
   for (const doc of snap.docs) {
     const data = doc.data()
     if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key) {
-      activateAgent(doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent')
+      activateAgent(doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined)
       count++
     }
   }
@@ -184,7 +188,7 @@ async function startup(): Promise<void> {
         if (change.type !== 'added') continue
         const data = change.doc.data()
         if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key && !runningAgents.has(change.doc.id)) {
-          activateAgent(change.doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent')
+          activateAgent(change.doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined)
         }
       }
     })

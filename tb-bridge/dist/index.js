@@ -51,13 +51,13 @@ process.on('unhandledRejection', (reason) => {
 });
 // Track running agents to avoid duplicate listeners
 const runningAgents = new Set();
-function activateAgent(firestoreId, apiKey, tbAgentId, tbTraderId, agentName) {
+function activateAgent(firestoreId, apiKey, tbAgentId, tbTraderId, agentName, openaiKey) {
     if (runningAgents.has(firestoreId))
         return;
     runningAgents.add(firestoreId);
     (0, poller_1.startPoller)(firestoreId, apiKey, tbAgentId, tbTraderId);
-    (0, chat_1.startChatListener)(firestoreId, apiKey, tbAgentId, agentName);
-    console.log(`[tb-bridge] activated agent ${firestoreId} (${agentName})`);
+    (0, chat_1.startChatListener)(firestoreId, apiKey, tbAgentId, agentName, openaiKey);
+    console.log(`[tb-bridge] activated agent ${firestoreId} (${agentName}) openai=${openaiKey ? 'yes' : 'no'}`);
 }
 function parseBody(req) {
     return new Promise((resolve, reject) => {
@@ -111,7 +111,7 @@ const server = http.createServer(async (req, res) => {
     if (method === 'POST' && url === '/connect') {
         try {
             const body = await parseBody(req);
-            const { userId, apiKey } = body;
+            const { userId, apiKey, openaiKey } = body;
             if (!userId || typeof userId !== 'string') {
                 return send(res, 400, { error: 'userId is required' });
             }
@@ -139,6 +139,7 @@ const server = http.createServer(async (req, res) => {
                         tb_agent_id: agent.id,
                         tb_trader_id: agent.traderId,
                         tb_api_key: apiKey,
+                        openai_api_key: openaiKey ?? null,
                         status: 'connected',
                         autonomy_level: agent.autonomyLevel,
                         watchlist: agent.watchlist,
@@ -159,6 +160,7 @@ const server = http.createServer(async (req, res) => {
                     await docRef.update({
                         name: agent.name,
                         tb_api_key: apiKey,
+                        ...(openaiKey ? { openai_api_key: openaiKey } : {}),
                         status: 'connected',
                         autonomy_level: agent.autonomyLevel,
                         watchlist: agent.watchlist,
@@ -168,7 +170,9 @@ const server = http.createServer(async (req, res) => {
                     });
                 }
                 // Activate poller + chat listener
-                activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name);
+                // If re-connecting an already-running agent with a new key, update its listener
+                const currentOpenaiKey = openaiKey ?? (existing.empty ? undefined : existing.docs[0].data().openai_api_key);
+                activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name, currentOpenaiKey);
                 connectedAgents.push({ id: firestoreId, name: agent.name, tbAgentId: agent.id });
             }
             return send(res, 200, { agents: connectedAgents });
@@ -190,7 +194,7 @@ async function startup() {
     for (const doc of snap.docs) {
         const data = doc.data();
         if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key) {
-            activateAgent(doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent');
+            activateAgent(doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined);
             count++;
         }
     }
@@ -204,7 +208,7 @@ async function startup() {
                 continue;
             const data = change.doc.data();
             if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key && !runningAgents.has(change.doc.id)) {
-                activateAgent(change.doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent');
+                activateAgent(change.doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined);
             }
         }
     });

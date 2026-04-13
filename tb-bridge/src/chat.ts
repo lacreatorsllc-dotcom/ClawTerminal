@@ -1,3 +1,4 @@
+import OpenAI from 'openai'
 import { db, FieldValue } from './firebase'
 import { pauseAgent, resumeAgent } from './api'
 
@@ -226,7 +227,9 @@ export function startChatListener(
   apiKey: string,
   tbAgentId: string,
   agentName: string,
+  openaiApiKey?: string,
 ): void {
+  const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null
   const processedIds = new Set<string>()
   let initialized = false
 
@@ -298,13 +301,43 @@ export function startChatListener(
             continue
           }
 
-          // Free-form text — no LLM configured yet
-          await writeReply(
-            firestoreAgentId,
-            `Use /help to see available commands.`,
-          )
+          // Free-form text — use LLM if key available
+          if (!openai) {
+            await writeReply(firestoreAgentId, `Use /help to see available commands.`)
+            continue
+          }
+
+          const agentDoc = await db.collection('agents').doc(firestoreAgentId).get()
+          const agentData = agentDoc.data() ?? {}
+          const live = agentData.live_state ?? {}
+          const state = live.state ?? 'UNKNOWN'
+          const positions = live.openPositions ?? []
+          const pnl = live.dailyPnlUsd ?? 0
+          const trades = live.dailyTradeCount ?? 0
+
+          const decisionsSnap = await db
+            .collection('agents').doc(firestoreAgentId).collection('decisions')
+            .orderBy('eventTime', 'desc').limit(10).get()
+          const decisions = decisionsSnap.docs.map((d) => d.data())
+
+          const system = `You are ${agentName}, a fully autonomous crypto trading agent on Cabal Ventures.
+
+STATE: ${state} | Positions: ${positions.length} | Daily PnL: $${Number(pnl).toFixed(2)} | Trades: ${trades}
+
+RECENT DECISIONS:
+${decisions.length > 0 ? decisions.map((d) => `[${d.eventTime}] ${d.tokenSymbol} ${d.actionType} (${d.confidence}%): ${d.details}`).join('\n') : 'None.'}
+
+Be concise and data-driven. Plain text only. Never fabricate data.`
+
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{ role: 'system', content: system }, { role: 'user', content: text }],
+            max_tokens: 400,
+          }, { timeout: 30_000 })
+
+          await writeReply(firestoreAgentId, completion.choices[0]?.message?.content ?? 'No response.')
         } catch (err: any) {
-          console.error(`[chat:${firestoreAgentId}] error:`, err?.message, '| code:', err?.code, '| status:', err?.status, '| type:', err?.type, '| cause:', err?.cause?.message)
+          console.error(`[chat:${firestoreAgentId}] error processing message:`, err?.message ?? err)
           await writeReply(firestoreAgentId, 'Error processing your message. Please try again.').catch(() => {})
         }
       }
