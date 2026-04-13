@@ -1,10 +1,12 @@
-// Fetch BTC/USDT price from Binance public API (no key needed)
+// Fetch BTC/USDT price from CoinGecko (no key needed, no geo-restrictions)
 export async function getBtcPrice(): Promise<{ price: number; change24h: number }> {
-  const res = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT')
-  if (!res.ok) throw new Error(`Binance API error: ${res.status}`)
-  const data = await res.json() as { lastPrice: string; priceChangePercent: string }
+  const res = await fetch(
+    'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true'
+  )
+  if (!res.ok) throw new Error(`CoinGecko API error: ${res.status}`)
+  const data = await res.json() as { bitcoin: { usd: number; usd_24h_change: number } }
   return {
-    price: parseFloat(data.lastPrice),
-    change24h: parseFloat(data.priceChangePercent),
+    price: data.bitcoin.usd,
+    change24h: data.bitcoin.usd_24h_change,
   }
 }
