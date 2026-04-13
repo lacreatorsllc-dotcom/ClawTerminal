@@ -16,7 +16,7 @@ const tools: FunctionDeclaration[] = [
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        side: { type: SchemaType.STRING, enum: ['buy', 'sell'], description: 'Trade direction' },
+        side: { type: SchemaType.STRING, format: 'enum', enum: ['buy', 'sell'], description: 'Trade direction' },
         qty: { type: SchemaType.NUMBER, description: 'BTC quantity, e.g. 0.001' },
       },
       required: ['side', 'qty'],
