@@ -92,8 +92,9 @@ export function startChatListener() {
           const msg = change.doc.data()
 
           // Skip messages that existed before this process started
-          const createdAt = msg.created_at?.toDate?.() ?? new Date(0)
-          if (createdAt < startTime) continue
+          // If created_at is null (serverTimestamp pending), treat as new
+          const createdAt = msg.created_at?.toDate?.()
+          if (createdAt && createdAt < startTime) continue
 
           const userText = msg.content as string
           if (!userText?.trim()) continue
