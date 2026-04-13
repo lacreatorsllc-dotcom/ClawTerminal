@@ -97,45 +97,7 @@ interface SkillsShSkill {
   isOfficial: boolean
 }
 
-const SKILLSSH_SKILLS: SkillsShSkill[] = [
-  // Developer
-  { slug: 'github/git-commit', owner: 'github', displayName: 'Git Commit', summary: 'Generates structured, meaningful commit messages from your staged changes.', category: 'Developer', isOfficial: true },
-  { slug: 'github/gh-cli', owner: 'github', displayName: 'GitHub CLI', summary: 'Full GitHub CLI integration — PRs, issues, repos, actions from your agent.', category: 'Developer', isOfficial: true },
-  { slug: 'github/refactor', owner: 'github', displayName: 'Refactor', summary: 'Identifies and applies code refactoring patterns to improve readability and maintainability.', category: 'Developer', isOfficial: true },
-  { slug: 'github/documentation-writer', owner: 'github', displayName: 'Documentation Writer', summary: 'Auto-generates inline docs, README files, and API references from your code.', category: 'Developer', isOfficial: true },
-  { slug: 'cloudflare/wrangler', owner: 'cloudflare', displayName: 'Cloudflare Wrangler', summary: 'Deploy and manage Cloudflare Workers, Pages, and D1 databases with ease.', category: 'Developer', isOfficial: true },
-  { slug: 'expo/expo-deployment', owner: 'expo', displayName: 'Expo Deployment', summary: 'Build, submit, and deploy React Native apps to the App Store and Google Play.', category: 'Developer', isOfficial: true },
-  { slug: 'vercel-labs/vercel-react-best-practices', owner: 'vercel-labs', displayName: 'React Best Practices', summary: 'Enforces Vercel and React performance patterns — memoization, server components, lazy loading.', category: 'Developer', isOfficial: false },
-  { slug: 'firebase/firebase-basics', owner: 'firebase', displayName: 'Firebase Basics', summary: 'Firebase setup, auth, Firestore, and Storage integration patterns for web and mobile.', category: 'Developer', isOfficial: true },
-  // AI & Agents
-  { slug: 'anthropics/mcp-builder', owner: 'anthropics', displayName: 'MCP Builder', summary: 'Build and deploy Model Context Protocol servers. Add tools, resources, and prompts to any MCP host.', category: 'AI & Agents', isOfficial: true },
-  { slug: 'anthropics/skill-creator', owner: 'anthropics', displayName: 'Skill Creator', summary: 'Generate new agent skills from a description — handles packaging, metadata, and publishing.', category: 'AI & Agents', isOfficial: true },
-  { slug: 'anthropics/claude-api', owner: 'anthropics', displayName: 'Claude API', summary: 'Best practices for integrating the Claude API — streaming, tool use, prompt caching, vision.', category: 'AI & Agents', isOfficial: true },
-  { slug: 'browser-use/browser-use', owner: 'browser-use', displayName: 'Browser Use', summary: 'Give your agent a real browser — navigate pages, fill forms, extract data, and interact with web UIs.', category: 'AI & Agents', isOfficial: false },
-  { slug: 'mastra/skills', owner: 'mastra', displayName: 'Mastra', summary: 'TypeScript AI agent framework — build, test, and deploy agents with memory, tools, and workflows.', category: 'AI & Agents', isOfficial: false },
-  { slug: 'langchain/langchain-skills', owner: 'langchain', displayName: 'LangChain', summary: 'LLM orchestration patterns — chains, agents, memory, and retrieval-augmented generation.', category: 'AI & Agents', isOfficial: true },
-  { slug: 'vercel-labs/agent-browser', owner: 'vercel-labs', displayName: 'Agent Browser', summary: 'Headless browser automation built for AI agents — scrape, screenshot, and interact with any site.', category: 'AI & Agents', isOfficial: false },
-  // Database
-  { slug: 'supabase/agent-skills', owner: 'supabase', displayName: 'Supabase', summary: 'Postgres database best practices, row-level security, real-time subscriptions, and Edge Functions.', category: 'Database', isOfficial: true },
-  { slug: 'neon/agent-skills', owner: 'neon', displayName: 'Neon Postgres', summary: 'Serverless Postgres on Neon — branching, autoscaling, and connection pooling patterns.', category: 'Database', isOfficial: true },
-  { slug: 'prisma/skills', owner: 'prisma', displayName: 'Prisma ORM', summary: 'Type-safe database access with Prisma — schema design, migrations, and query optimization.', category: 'Database', isOfficial: true },
-  { slug: 'redis/agent-skills', owner: 'redis', displayName: 'Redis', summary: 'In-memory caching, pub/sub messaging, and session management with Redis.', category: 'Database', isOfficial: true },
-  { slug: 'planetscale/database-skills', owner: 'planetscale', displayName: 'PlanetScale', summary: 'MySQL-compatible serverless database — branching workflow and zero-downtime schema changes.', category: 'Database', isOfficial: true },
-  // Design
-  { slug: 'figma/implement-design', owner: 'figma', displayName: 'Figma to Code', summary: 'Convert Figma designs to production-ready React, HTML, or CSS with pixel-perfect accuracy.', category: 'Design', isOfficial: true },
-  { slug: 'shadcn/ui', owner: 'shadcn', displayName: 'shadcn/ui', summary: 'Build beautiful UIs with shadcn components — accessible, customizable, and Tailwind-powered.', category: 'Design', isOfficial: false },
-  { slug: 'anthropics/canvas-design', owner: 'anthropics', displayName: 'Canvas Design', summary: 'Interactive visual design and rendering on HTML Canvas — charts, diagrams, and custom graphics.', category: 'Design', isOfficial: true },
-  { slug: 'anthropics/theme-factory', owner: 'anthropics', displayName: 'Theme Factory', summary: 'Generate and apply consistent color themes, typography scales, and spacing systems.', category: 'Design', isOfficial: true },
-  { slug: 'figma/create-design-system-rules', owner: 'figma', displayName: 'Design System Rules', summary: 'Define and enforce design system tokens, components, and patterns across your codebase.', category: 'Design', isOfficial: true },
-  // Web3
-  { slug: 'cabal/trading-boy', owner: 'cabal', displayName: 'Trading Boy', summary: 'CLI-based autonomous AI trading agent for crypto and commodities — SOUL personality framework, bear-case reasoning, and Telegram bot control.', category: 'Web3', isOfficial: true },
-  { slug: 'okx/agent-tradekit', owner: 'okx', displayName: 'OKX Agent TradeKit', summary: 'Build AI agents that automate trading on OKX — natural language commands, MCP server, spot/futures/options, grid bots, and DCA strategies.', category: 'Web3', isOfficial: true },
-  { slug: 'coinbase/trade', owner: 'coinbase', displayName: 'Coinbase Trade', summary: 'Execute cryptocurrency trades via Coinbase — market orders, limit orders, and portfolio management.', category: 'Web3', isOfficial: true },
-  { slug: 'coinbase/send-usdc', owner: 'coinbase', displayName: 'Send USDC', summary: 'Programmatically send USDC stablecoin transfers on Base and other EVM chains.', category: 'Web3', isOfficial: true },
-  { slug: 'coinbase/authenticate-wallet', owner: 'coinbase', displayName: 'Wallet Auth', summary: 'Authenticate users with their crypto wallet — Sign-In with Ethereum and Base account patterns.', category: 'Web3', isOfficial: true },
-  { slug: 'base/deploying-contracts-on-base', owner: 'base', displayName: 'Deploy Contracts', summary: 'Deploy and verify smart contracts on Base — Foundry/Hardhat patterns and gas optimization.', category: 'Web3', isOfficial: true },
-  { slug: 'base/building-with-base-account', owner: 'base', displayName: 'Base Account', summary: 'Build apps on Base with smart wallets, account abstraction, and gasless transactions.', category: 'Web3', isOfficial: true },
-]
+const SKILLSSH_SKILLS: SkillsShSkill[] = []
 
 // ── Local skill card ─────────────────────────────────────────────────────────
 function LocalSkillCard({ skill }: { skill: Skill }) {
