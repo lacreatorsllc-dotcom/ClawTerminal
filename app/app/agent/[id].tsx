@@ -671,24 +671,9 @@ function Slug001Screen() {
   useEffect(() => { return subscribeToSlug001(setState) }, [])
   useEffect(() => { return subscribeToSlug001Feed((events) => setFeed(events)) }, [])
   useEffect(() => { return subscribeToMessages('slug-001', setMessages) }, [])
-  const hasScrolledToBottom = useRef(false)
-  useEffect(() => {
-    if (tab !== 'chat') hasScrolledToBottom.current = false
-  }, [tab])
-
-  function onChatContentSizeChange() {
-    if (!hasScrolledToBottom.current) {
-      hasScrolledToBottom.current = true
-      flatRef.current?.scrollToEnd({ animated: false })
-    } else if (atBottom) {
-      flatRef.current?.scrollToEnd({ animated: true })
-    }
-  }
-
+  // Inverted list: offset 0 = newest messages (visual bottom). atBottom = user sees newest.
   function handleScroll(e: any) {
-    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent
-    const distFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y
-    setAtBottom(distFromBottom < 40)
+    setAtBottom(e.nativeEvent.contentOffset.y < 40)
   }
 
   async function sendChat() {
@@ -819,10 +804,10 @@ function Slug001Screen() {
         <View style={{ flex: 1 }}>
           <FlatList
             ref={flatRef}
-            data={messages}
+            data={[...messages].reverse()}
             keyExtractor={(m) => m.id}
+            inverted
             contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 16 }}
-            onContentSizeChange={onChatContentSizeChange}
             onScroll={handleScroll}
             scrollEventThrottle={100}
             ListEmptyComponent={
