@@ -45,41 +45,6 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
     keywords: ['finance', 'financial', 'investment', 'invest', 'tax', 'invoice', 'budget', 'expense', 'accounting', 'revenue', 'income', 'payroll', 'billing', 'money', 'bank', 'loan', 'credit', 'insurance', 'fund'],
     label: 'Finance & Money',
   },
-  'Developer': {
-    queries: ['code github developer', 'programming cli tool'],
-    keywords: ['code', 'coding', 'github', 'git', 'developer', 'programming', 'api', 'cli', 'sdk', 'database', 'sql', 'python', 'javascript', 'typescript', 'docker', 'deploy', 'debug', 'refactor', 'ocr', 'file process'],
-    label: 'Developer Tools',
-  },
-  'Productivity': {
-    queries: ['productivity workflow automation', 'google workspace calendar email'],
-    keywords: ['productivity', 'workflow', 'automation', 'calendar', 'email', 'docs', 'google', 'task', 'schedule', 'reminder', 'meeting', 'notes', 'organize', 'document', 'spreadsheet', 'slides', 'summary', 'inbox', 'mail'],
-    label: 'Productivity & Workflow',
-  },
-  'Marketing': {
-    queries: ['marketing seo content', 'social media growth'],
-    keywords: ['marketing', 'seo', 'content', 'keyword', 'social media', 'instagram', 'twitter', 'linkedin', 'tiktok', 'growth', 'engagement', 'campaign', 'ads', 'copywriting', 'brand', 'audience', 'lead generation'],
-    label: 'Marketing & SEO',
-  },
-  'Business': {
-    queries: ['crm sales business', 'customer support operations'],
-    keywords: ['crm', 'sales', 'business', 'customer', 'support', 'operations', 'lead', 'prospect', 'pipeline', 'contact', 'outreach', 'hiring', 'recruit', 'hr', 'enterprise', 'project management'],
-    label: 'Business & Sales',
-  },
-  'Media': {
-    queries: ['video editor creator', 'image audio media content'],
-    keywords: ['video', 'image', 'audio', 'media', 'photo', 'caption', 'subtitle', 'editor', 'creator', 'youtube', 'stream', 'podcast', 'music', 'animation', 'reels', 'thumbnail', 'transcript', 'recording'],
-    label: 'Media & Content',
-  },
-  'AI Agents': {
-    queries: ['ai agent llm prompt', 'agent security memory'],
-    keywords: ['agent', 'llm', 'prompt', 'gpt', 'claude', 'model', 'memory', 'guard', 'security', 'permission', 'orchestrat', 'context', 'embedding', 'rag', 'chatbot', 'openclaw', 'mcp'],
-    label: 'AI & Agents',
-  },
-  'Lifestyle': {
-    queries: ['travel health fitness food', 'game entertainment hobby'],
-    keywords: ['travel', 'health', 'fitness', 'food', 'recipe', 'sport', 'game', 'hobby', 'weather', 'entertainment', 'movie', 'book', 'shopping', 'restaurant', 'hotel', 'flight', 'nutrition', 'workout'],
-    label: 'Lifestyle & More',
-  },
 }
 
 function matchesCategory(skill: ClawHubSkill, cat: string): boolean {
@@ -170,29 +135,6 @@ const SKILLSSH_SKILLS: SkillsShSkill[] = [
   { slug: 'coinbase/authenticate-wallet', owner: 'coinbase', displayName: 'Wallet Auth', summary: 'Authenticate users with their crypto wallet — Sign-In with Ethereum and Base account patterns.', category: 'Web3', isOfficial: true },
   { slug: 'base/deploying-contracts-on-base', owner: 'base', displayName: 'Deploy Contracts', summary: 'Deploy and verify smart contracts on Base — Foundry/Hardhat patterns and gas optimization.', category: 'Web3', isOfficial: true },
   { slug: 'base/building-with-base-account', owner: 'base', displayName: 'Base Account', summary: 'Build apps on Base with smart wallets, account abstraction, and gasless transactions.', category: 'Web3', isOfficial: true },
-  // Marketing
-  { slug: 'coreyhaines31/seo-audit', owner: 'coreyhaines31', displayName: 'SEO Audit', summary: 'Comprehensive SEO analysis — technical issues, keyword gaps, backlink opportunities, and fixes.', category: 'Marketing', isOfficial: false },
-  { slug: 'apify/apify-market-research', owner: 'apify', displayName: 'Market Research', summary: 'Automated market research — competitor analysis, pricing intelligence, and trend detection.', category: 'Marketing', isOfficial: true },
-  { slug: 'apify/apify-lead-generation', owner: 'apify', displayName: 'Lead Generation', summary: 'Find and qualify B2B leads from LinkedIn, company websites, and public directories.', category: 'Marketing', isOfficial: true },
-  // Data & Analytics
-  { slug: 'datadog/dd-pup', owner: 'datadog', displayName: 'Datadog Monitor', summary: 'Query metrics, create monitors, and manage alerts. Full observability from your agent.', category: 'Data & Analytics', isOfficial: true },
-  { slug: 'posthog/posthog', owner: 'posthog', displayName: 'PostHog Analytics', summary: 'Query user events, manage feature flags, and analyze funnels with PostHog.', category: 'Data & Analytics', isOfficial: true },
-  { slug: 'tinybird/tinybird-agent-skills', owner: 'tinybird', displayName: 'Tinybird', summary: 'Real-time analytics at scale — ingest events, build APIs, and query billions of rows instantly.', category: 'Data & Analytics', isOfficial: true },
-  { slug: 'dagster/dagster-expert', owner: 'dagster', displayName: 'Dagster', summary: 'Build and orchestrate data pipelines — assets, jobs, schedules, and sensors in one place.', category: 'Data & Analytics', isOfficial: true },
-  // Scraping
-  { slug: 'firecrawl/firecrawl', owner: 'firecrawl', displayName: 'Firecrawl', summary: 'Turn any website into clean LLM-ready data — crawl, scrape, and extract structured content.', category: 'Scraping', isOfficial: true },
-  { slug: 'apify/apify-ultimate-scraper', owner: 'apify', displayName: 'Apify Scraper', summary: 'Enterprise web scraping — handle anti-bot measures, proxies, and large-scale extraction.', category: 'Scraping', isOfficial: true },
-  { slug: 'brave/web-search', owner: 'brave', displayName: 'Brave Search', summary: 'Privacy-first web, news, and image search with clean JSON results and no tracking.', category: 'Scraping', isOfficial: true },
-  { slug: 'browserbase/browser', owner: 'browserbase', displayName: 'Browserbase', summary: 'Scalable cloud browsers for agents — run headless Chromium with stealth and residential proxies.', category: 'Scraping', isOfficial: true },
-  // Media
-  { slug: 'elevenlabs/text-to-speech', owner: 'elevenlabs', displayName: 'ElevenLabs TTS', summary: 'Ultra-realistic voice generation — clone voices, generate audio, and create multilingual speech.', category: 'Media', isOfficial: true },
-  { slug: 'elevenlabs/speech-to-text', owner: 'elevenlabs', displayName: 'Speech to Text', summary: 'Accurate transcription with speaker diarization, timestamps, and multi-language support.', category: 'Media', isOfficial: true },
-  { slug: 'remotion/skills', owner: 'remotion', displayName: 'Remotion Video', summary: 'Programmatically create and render videos with React — animations, captions, and dynamic content.', category: 'Media', isOfficial: true },
-  // Cloud
-  { slug: 'vercel/ai', owner: 'vercel', displayName: 'Vercel AI SDK', summary: 'Build AI-powered Next.js apps — streaming UIs, model switching, and edge-ready deployments.', category: 'Cloud', isOfficial: true },
-  { slug: 'cloudflare/cloudflare', owner: 'cloudflare', displayName: 'Cloudflare Workers', summary: 'Deploy serverless functions globally — edge computing, caching, and KV storage at scale.', category: 'Cloud', isOfficial: true },
-  { slug: 'microsoft/azure-skills', owner: 'microsoft', displayName: 'Azure', summary: 'Full Azure cloud stack — compute, storage, AI services, and infrastructure as code.', category: 'Cloud', isOfficial: true },
-  { slug: 'firebase/firebase-auth-basics', owner: 'firebase', displayName: 'Firebase Auth', summary: 'Add authentication to any app — email/password, OAuth, phone, and anonymous sign-in.', category: 'Cloud', isOfficial: true },
 ]
 
 // ── Local skill card ─────────────────────────────────────────────────────────
