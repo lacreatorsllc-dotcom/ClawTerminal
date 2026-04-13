@@ -831,7 +831,7 @@ function Slug001Screen() {
             <TouchableOpacity
               style={s001.scrollDownBtn}
               onPress={() => {
-                flatRef.current?.scrollToEnd({ animated: true })
+                flatRef.current?.scrollToOffset({ offset: 0, animated: true })
                 setAtBottom(true)
               }}
             >
