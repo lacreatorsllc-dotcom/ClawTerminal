@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
 import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToMessages, addMessage, type PaperAgentState } from '../../lib/firebase'
+import { ShareCardModal } from './share-card'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
 
@@ -663,6 +664,7 @@ function Slug001Screen() {
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState('')
   const [tab, setTab] = useState<'chat' | 'activity' | 'positions'>('chat')
+  const [showShare, setShowShare] = useState(false)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
 
@@ -694,6 +696,17 @@ function Slug001Screen() {
   const pnlColor = isPos ? Colors.accentGreen : Colors.accentRed
   const positions = (state?.positions ?? []) as any[]
 
+  const shareInitialTrade = {
+    pair: 'BTC/USDT',
+    direction: 'GRID',
+    leverage: '',
+    pnl: Math.abs(sessionPnl).toFixed(2),
+    pnlPct: state?.price_change_24h_pct != null ? Math.abs(state.price_change_24h_pct).toFixed(2) : '',
+    entryPrice: state?.grid_center ? `$${Math.round(state.grid_center).toLocaleString()}` : '',
+    markPrice: state?.btc_price ? `$${Math.round(state.btc_price).toLocaleString()}` : '',
+    referralCode: '',
+  }
+
   // Profile header — shown in all tabs
   const profileHeader = (
     <>
@@ -702,7 +715,17 @@ function Slug001Screen() {
         <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
           <Text style={s001.backText}>‹</Text>
         </TouchableOpacity>
+        <TouchableOpacity onPress={() => setShowShare(true)} style={s001.shareBtn}>
+          <Text style={s001.shareBtnText}>Share PnL</Text>
+        </TouchableOpacity>
       </View>
+
+      <ShareCardModal
+        visible={showShare}
+        onClose={() => setShowShare(false)}
+        agentName="Slug #001"
+        initialTrade={shareInitialTrade}
+      />
 
       {/* Identity */}
       <View style={[s001.identityRow, { paddingHorizontal: 20 }]}>
@@ -946,9 +969,11 @@ function Slug001Screen() {
 
 const s001 = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
-  header: { paddingHorizontal: 20, paddingTop: 56, paddingBottom: 8 },
+  header: { paddingHorizontal: 20, paddingTop: 56, paddingBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   backBtn: { padding: 4 },
   backText: { fontSize: 26, color: Colors.accentAmber, lineHeight: 30 },
+  shareBtn: { backgroundColor: 'rgba(217,119,87,0.12)', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 7, borderWidth: 1, borderColor: 'rgba(217,119,87,0.3)' },
+  shareBtnText: { fontSize: 13, fontWeight: '600', color: Colors.accentAmber },
   scroll: { paddingHorizontal: 20, paddingBottom: 120, gap: 16 },
 
   identityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
