@@ -81,21 +81,28 @@ async function writeReply(content: string) {
 export function startChatListener() {
   console.log('[chat] listening for messages...')
 
-  const startTime = new Date()
+  let initialized = false
+  const processed = new Set<string>()
 
   MESSAGES_COL
     .where('direction', '==', 'inbound')
     .onSnapshot(
       async (snap) => {
         const added = snap.docChanges().filter(c => c.type === 'added')
+
+        // On first snapshot, just mark all existing messages as seen
+        if (!initialized) {
+          initialized = true
+          for (const change of added) processed.add(change.doc.id)
+          console.log(`[chat] ready, skipped ${processed.size} existing messages`)
+          return
+        }
+
         for (const change of added) {
+          if (processed.has(change.doc.id)) continue
+          processed.add(change.doc.id)
+
           const msg = change.doc.data()
-
-          // Skip messages that existed before this process started
-          // If created_at is null (serverTimestamp pending), treat as new
-          const createdAt = msg.created_at?.toDate?.()
-          if (createdAt && createdAt < startTime) continue
-
           const userText = msg.content as string
           if (!userText?.trim()) continue
 
