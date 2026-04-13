@@ -290,6 +290,40 @@ export async function searchAgents(prefix: string) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
 }
 
+export async function createTradingBoyAgent(
+  uid: string,
+  name: string,
+  tbAgentId: string,
+  tbTraderId: string,
+  tbApiKey: string,
+): Promise<string> {
+  const ref = await addDoc(collection(db, 'agents'), {
+    user_id: uid,
+    name,
+    status: 'connecting',
+    last_seen: serverTimestamp(),
+    agent_type: 'cabal_trading_boy',
+    tb_agent_id: tbAgentId,
+    tb_trader_id: tbTraderId,
+    tb_api_key: tbApiKey,
+    live_state: null,
+    last_synced: null,
+    created_at: serverTimestamp(),
+  })
+  return ref.id
+}
+
+export function subscribeToDecisions(agentId: string, cb: (decisions: any[]) => void) {
+  const q = query(
+    collection(db, 'agents', agentId, 'decisions'),
+    orderBy('eventTime', 'desc'),
+    limit(50)
+  )
+  return onSnapshot(q, (snap) => {
+    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
+  })
+}
+
 // ── Paper agent (Slug #001) ───────────────────────────────────────────────────
 
 export const SLUG001_ID = 'slug-001'

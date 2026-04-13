@@ -10,12 +10,14 @@ import { useAuthStore } from '../stores/authStore'
 import { createRangeFarmerAgent, createCabalAgent } from '../lib/firebase'
 import { Colors } from '../constants/colors'
 
-type Step = 'pick' | 'range-farmer' | 'cabal' | 'success'
+const TB_BRIDGE_URL = 'https://tb-bridge-1094657124615.us-central1.run.app'
+
+type Step = 'pick' | 'range-farmer' | 'cabal' | 'trading-boy' | 'success'
 
 interface DeployedAgent {
   id: string
   name: string
-  type: 'range_farmer' | 'cabal_blue_chip'
+  type: 'range_farmer' | 'cabal_blue_chip' | 'cabal_trading_boy'
 }
 
 export default function DeployScreen() {
@@ -23,6 +25,7 @@ export default function DeployScreen() {
   const [step, setStep] = useState<Step>('pick')
   const [name, setName] = useState('Range Farmer')
   const [cabalChatId, setCabalChatId] = useState('')
+  const [tbApiKey, setTbApiKey] = useState('')
   const [deploying, setDeploying] = useState(false)
   const [deployed, setDeployed] = useState<DeployedAgent | null>(null)
   const [error, setError] = useState('')
@@ -55,17 +58,41 @@ export default function DeployScreen() {
     setDeploying(false)
   }
 
+  async function connectTradingBoy() {
+    if (!user || !tbApiKey.trim()) return
+    setDeploying(true)
+    setError('')
+    try {
+      const res = await fetch(`${TB_BRIDGE_URL}/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.uid, apiKey: tbApiKey.trim() }),
+      })
+      const data = await res.json() as any
+      if (!res.ok) throw new Error(data.error ?? 'Connect failed')
+      const agents: { id: string; name: string; tbAgentId: string }[] = data.agents ?? []
+      if (agents.length === 0) throw new Error('No agents found for this API key')
+      const first = agents[0]
+      setDeployed({ id: first.id, name: first.name, type: 'cabal_trading_boy' })
+      setStep('success')
+    } catch (e: any) {
+      setError(e.message ?? 'Connect failed')
+    }
+    setDeploying(false)
+  }
+
   return (
     <SafeAreaView style={s.root}>
       {/* Header */}
       <View style={s.header}>
-        <TouchableOpacity onPress={() => step === 'pick' ? router.back() : setStep('pick')} style={s.backBtn}>
+        <TouchableOpacity onPress={() => (step === 'pick' ? router.back() : setStep('pick'))} style={s.backBtn}>
           <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>
           {step === 'pick' ? 'Deploy an Agent' :
            step === 'range-farmer' ? 'Range Farmer' :
            step === 'cabal' ? 'Blue Chip' :
+           step === 'trading-boy' ? 'Trading Boy' :
            'Agent Deployed'}
         </Text>
         <View style={{ width: 36 }} />
@@ -116,6 +143,29 @@ export default function DeployScreen() {
                 <Text style={s.typeDesc}>Connect your existing cabal.ventures bot. Chat with it here instead of Telegram.</Text>
                 <View style={s.typeTags}>
                   {['trading', 'cabal', 'telegram'].map(t => (
+                    <View key={t} style={s.tag}><Text style={s.tagText}>{t}</Text></View>
+                  ))}
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+            </TouchableOpacity>
+
+            {/* Trading Boy card */}
+            <TouchableOpacity style={s.typeCard} onPress={() => setStep('trading-boy')} activeOpacity={0.8}>
+              <View style={[s.typeIcon, { backgroundColor: 'rgba(168,85,247,0.12)', borderColor: Colors.accentPurple }]}>
+                <Text style={{ fontSize: 22 }}>◎</Text>
+              </View>
+              <View style={s.typeInfo}>
+                <View style={s.typeNameRow}>
+                  <Text style={s.typeName}>Trading Boy</Text>
+                  <View style={[s.hostedBadge, { backgroundColor: 'rgba(168,85,247,0.12)', borderColor: Colors.accentPurple }]}>
+                    <Text style={[s.hostedBadgeText, { color: Colors.accentPurple }]}>CABAL</Text>
+                  </View>
+                </View>
+                <Text style={s.typeHandle}>@cabal/trading-boy</Text>
+                <Text style={s.typeDesc}>Connect your Trading Boy agent from cabal.ventures. Live state, decisions feed, and chat.</Text>
+                <View style={s.typeTags}>
+                  {['trading', 'cabal', 'autonomous'].map(t => (
                     <View key={t} style={s.tag}><Text style={s.tagText}>{t}</Text></View>
                   ))}
                 </View>
@@ -225,6 +275,47 @@ export default function DeployScreen() {
           </>
         )}
 
+        {/* ── Step: Trading Boy ── */}
+        {step === 'trading-boy' && (
+          <>
+            <Text style={s.subtitle}>Connect your Trading Boy agent from cabal.ventures using your API key.</Text>
+
+            <View style={s.infoBox}>
+              <Text style={s.infoRow}>◎  Fully autonomous trading agent</Text>
+              <Text style={s.infoRow}>📊  Live state + decisions feed</Text>
+              <Text style={s.infoRow}>💬  Chat with your agent</Text>
+              <Text style={s.infoRow}>⏸  Pause / resume from the app</Text>
+            </View>
+
+            <Text style={s.fieldLabel}>API Key</Text>
+            <TextInput
+              style={s.input}
+              value={tbApiKey}
+              onChangeText={setTbApiKey}
+              placeholder="tb_live_..."
+              placeholderTextColor={Colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry={false}
+            />
+
+            <Text style={s.hintText}>Your API key starts with tb_live_. Find it in your cabal.ventures dashboard.</Text>
+
+            {error ? <Text style={s.errorText}>{error}</Text> : null}
+
+            <TouchableOpacity
+              style={[s.cta, (!tbApiKey.trim() || deploying) && { opacity: 0.5 }]}
+              onPress={connectTradingBoy}
+              disabled={!tbApiKey.trim() || deploying}
+            >
+              {deploying
+                ? <ActivityIndicator color="#000" />
+                : <Text style={s.ctaText}>Connect Agent</Text>
+              }
+            </TouchableOpacity>
+          </>
+        )}
+
         {/* ── Step: Success ── */}
         {step === 'success' && deployed && (
           <View style={s.successBlock}>
@@ -235,6 +326,8 @@ export default function DeployScreen() {
             <Text style={s.successDesc}>
               {deployed.type === 'range_farmer'
                 ? 'Your Range Farmer agent is live. It\'s already trading BTC on a paper grid.'
+                : deployed.type === 'cabal_trading_boy'
+                ? `${deployed.name} is connected. Live state, decisions, and chat are now syncing.`
                 : 'Your Blue Chip bot is connected. Messages will sync between here and Telegram.'}
             </Text>
             <TouchableOpacity

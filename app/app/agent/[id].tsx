@@ -17,7 +17,8 @@ import { useUIStore } from '../../stores/uiStore'
 import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
-import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToMessages, addMessage, type PaperAgentState } from '../../lib/firebase'
+import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToMessages, addMessage, subscribeToDecisions, db, type PaperAgentState } from '../../lib/firebase'
+import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
 
@@ -657,6 +658,313 @@ function formatTime001(ts: string): string {
   return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
+// ── TradingBoyScreen ──────────────────────────────────────────────────────────
+
+type TbTab = 'chat' | 'status' | 'activity'
+
+function TradingBoyScreen({ agentId }: { agentId: string }) {
+  const [activeTab, setActiveTab] = useState<TbTab>('chat')
+  const [messages, setMessages] = useState<any[]>([])
+  const [agentDoc, setAgentDoc] = useState<any>(null)
+  const [decisions, setDecisions] = useState<any[]>([])
+  const [input, setInput] = useState('')
+  const { user } = useAuthStore()
+  const flatRef = useRef<any>(null)
+
+  useEffect(() => subscribeToMessages(agentId, setMessages), [agentId])
+  useEffect(() => subscribeToDecisions(agentId, setDecisions), [agentId])
+  useEffect(() => {
+    const unsub = fsOnSnapshot(doc(db, 'agents', agentId), (snap) => {
+      if (snap.exists()) setAgentDoc(snap.data())
+    })
+    return unsub
+  }, [agentId])
+
+  async function sendChat() {
+    const text = input.trim()
+    if (!text || !user) return
+    setInput('')
+    await addMessage(agentId, {
+      agent_id: agentId,
+      user_id: user.uid ?? (user as any).id,
+      direction: 'inbound',
+      content: text,
+    })
+  }
+
+  async function sendControl(cmd: '/pause' | '/resume') {
+    if (!user) return
+    await addMessage(agentId, {
+      agent_id: agentId,
+      user_id: user.uid ?? (user as any).id,
+      direction: 'inbound',
+      content: cmd,
+    })
+  }
+
+  const reversed = [...messages].reverse()
+  const isConnected = agentDoc?.status === 'connected'
+  const isPaused = agentDoc?.live_admin?.paused === true
+  const agentName = agentDoc?.name ?? 'Agent'
+
+  function decisionColor(actionType: string): string {
+    if (actionType === 'BUY' || actionType?.includes('BUY')) return Colors.accentGreen
+    if (actionType === 'SELL' || actionType?.includes('SELL')) return Colors.accentRed
+    return Colors.textMuted
+  }
+
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: '#0e0e0c' }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
+      {/* Header */}
+      <View style={tb.header}>
+        <TouchableOpacity onPress={() => router.back()} style={tb.backBtn}>
+          <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
+        </TouchableOpacity>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={tb.headerTitle}>{agentName}</Text>
+            <View style={[tb.statusDot, { backgroundColor: isConnected ? Colors.accentGreen : Colors.accentRed }]} />
+          </View>
+          <Text style={{ color: Colors.textMuted, fontSize: 12, marginTop: 1 }}>by Cabal Ventures</Text>
+        </View>
+        <TouchableOpacity
+          style={tb.controlBtn}
+          onPress={() => sendControl(isPaused ? '/resume' : '/pause')}
+        >
+          <Ionicons name={isPaused ? 'play' : 'pause'} size={16} color={Colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Tabs */}
+      <View style={tb.tabBar}>
+        {(['chat', 'status', 'activity'] as TbTab[]).map((t) => (
+          <TouchableOpacity key={t} style={tb.tabBtn} onPress={() => setActiveTab(t)}>
+            <Text style={[tb.tabText, activeTab === t && tb.tabTextActive]}>
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </Text>
+            {activeTab === t && <View style={tb.tabIndicator} />}
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Chat tab */}
+      {activeTab === 'chat' && (
+        <>
+          <FlatList
+            ref={flatRef}
+            data={reversed}
+            keyExtractor={(item) => item.id ?? String(item.created_at)}
+            inverted
+            contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+            renderItem={({ item }) => {
+              const isUser = item.direction === 'inbound'
+              return (
+                <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+                  <View style={{
+                    backgroundColor: isUser ? Colors.accentAmber : '#1a1a1a',
+                    borderRadius: 14,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    maxWidth: '80%',
+                  }}>
+                    <Text style={{ color: isUser ? '#000' : Colors.textPrimary, fontSize: 15, lineHeight: 21 }}>
+                      {item.content}
+                    </Text>
+                  </View>
+                  <Text style={{ color: Colors.textMuted, fontSize: 11, marginTop: 3, marginHorizontal: 4 }}>
+                    {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                  </Text>
+                </View>
+              )
+            }}
+          />
+          <View style={tb.inputRow}>
+            <TextInput
+              style={tb.input}
+              value={input}
+              onChangeText={setInput}
+              placeholder={`Message ${agentName}...`}
+              placeholderTextColor={Colors.textMuted}
+              onSubmitEditing={sendChat}
+              returnKeyType="send"
+              multiline
+            />
+            <TouchableOpacity onPress={sendChat} style={[tb.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]} disabled={!input.trim()}>
+              <Ionicons name="arrow-up" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+
+      {/* Status tab */}
+      {activeTab === 'status' && (
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+          {/* Name + connection */}
+          <View style={tb.card}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={tb.cardTitle}>{agentName}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={[tb.statusDot, { backgroundColor: isConnected ? Colors.accentGreen : Colors.accentRed }]} />
+                <Text style={{ color: isConnected ? Colors.accentGreen : Colors.accentRed, fontSize: 12 }}>
+                  {isConnected ? 'connected' : 'disconnected'}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Live state */}
+          <View style={tb.card}>
+            <Text style={tb.cardLabel}>STATE</Text>
+            <Text style={tb.cardValue}>{agentDoc?.live_state?.state ?? '—'}</Text>
+          </View>
+
+          <View style={tb.cardRow}>
+            <View style={[tb.card, { flex: 1 }]}>
+              <Text style={tb.cardLabel}>DAILY P&L</Text>
+              <Text style={[tb.cardValue, { color: (agentDoc?.live_state?.dailyPnlUsd ?? 0) >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+                ${(agentDoc?.live_state?.dailyPnlUsd ?? 0).toFixed(2)}
+              </Text>
+            </View>
+            <View style={[tb.card, { flex: 1 }]}>
+              <Text style={tb.cardLabel}>OPEN POS.</Text>
+              <Text style={tb.cardValue}>{agentDoc?.live_state?.openPositions?.length ?? 0}</Text>
+            </View>
+          </View>
+
+          <View style={tb.cardRow}>
+            <View style={[tb.card, { flex: 1 }]}>
+              <Text style={tb.cardLabel}>ACTIVE SETUPS</Text>
+              <Text style={tb.cardValue}>{agentDoc?.live_state?.activeConditionalSetups ?? '—'}</Text>
+            </View>
+            <View style={[tb.card, { flex: 1 }]}>
+              <Text style={tb.cardLabel}>PAUSED</Text>
+              <Text style={[tb.cardValue, { color: isPaused ? Colors.accentAmber : Colors.textSecondary }]}>
+                {isPaused ? 'Yes' : 'No'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={tb.card}>
+            <Text style={tb.cardLabel}>LAST TICK</Text>
+            <Text style={tb.cardValue}>
+              {agentDoc?.last_tick_at ? formatTime001(agentDoc.last_tick_at) : '—'}
+            </Text>
+          </View>
+
+          {agentDoc?.watchlist && agentDoc.watchlist.length > 0 && (
+            <View style={tb.card}>
+              <Text style={tb.cardLabel}>WATCHLIST</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                {agentDoc.watchlist.map((sym: string) => (
+                  <View key={sym} style={tb.chip}>
+                    <Text style={tb.chipText}>{sym}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </ScrollView>
+      )}
+
+      {/* Activity tab */}
+      {activeTab === 'activity' && (
+        <FlatList
+          data={decisions}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ padding: 16, gap: 8 }}
+          ListEmptyComponent={
+            <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 32 }}>
+              No decisions yet
+            </Text>
+          }
+          renderItem={({ item }) => (
+            <View style={tb.decisionRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{item.tokenSymbol}</Text>
+                <View style={[tb.actionBadge, { backgroundColor: decisionColor(item.actionType) + '22', borderColor: decisionColor(item.actionType) }]}>
+                  <Text style={{ color: decisionColor(item.actionType), fontSize: 10, fontWeight: '700' }}>{item.actionType}</Text>
+                </View>
+                <Text style={{ color: Colors.textMuted, fontSize: 11, marginLeft: 'auto' }}>
+                  {item.eventTime ? formatTime001(item.eventTime) : ''}
+                </Text>
+              </View>
+              <Text style={{ color: Colors.textSecondary, fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
+                {item.details}
+              </Text>
+            </View>
+          )}
+        />
+      )}
+    </KeyboardAvoidingView>
+  )
+}
+
+const tb = StyleSheet.create({
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 12, paddingTop: 56, paddingBottom: 12,
+    backgroundColor: '#0e0e0c',
+  },
+  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: Colors.textPrimary },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  controlBtn: {
+    width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#1a1a18', borderWidth: 1, borderColor: '#2a2a28',
+  },
+  tabBar: {
+    flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#1e1e1c',
+    backgroundColor: '#0e0e0c',
+  },
+  tabBtn: { flex: 1, alignItems: 'center', paddingVertical: 12, position: 'relative' },
+  tabText: { fontSize: 13, color: Colors.textMuted, fontWeight: '500' },
+  tabTextActive: { color: Colors.textPrimary, fontWeight: '700' },
+  tabIndicator: {
+    position: 'absolute', bottom: 0, left: '20%', right: '20%', height: 2,
+    backgroundColor: Colors.accentAmber, borderRadius: 1,
+  },
+  inputRow: {
+    flexDirection: 'row', alignItems: 'flex-end', gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10, paddingBottom: 28,
+    backgroundColor: '#0e0e0c', borderTopWidth: 1, borderTopColor: '#1e1e1c',
+  },
+  input: {
+    flex: 1, backgroundColor: '#1a1a18', borderRadius: 20, borderWidth: 1,
+    borderColor: '#2a2a28', paddingHorizontal: 16, paddingVertical: 10,
+    fontSize: 15, color: Colors.textPrimary, maxHeight: 100,
+  },
+  sendBtn: {
+    width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.accentAmber,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  card: {
+    backgroundColor: '#1a1a18', borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: '#2a2a28',
+  },
+  cardRow: { flexDirection: 'row', gap: 10 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
+  cardLabel: { fontSize: 10, fontWeight: '700', color: Colors.textMuted, letterSpacing: 0.8, marginBottom: 4 },
+  cardValue: { fontSize: 18, fontWeight: '600', color: Colors.textPrimary },
+  chip: {
+    backgroundColor: '#252522', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: '#333330',
+  },
+  chipText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' },
+  decisionRow: {
+    backgroundColor: '#1a1a18', borderRadius: 12, padding: 12,
+    borderWidth: 1, borderColor: '#2a2a28',
+  },
+  actionBadge: {
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1,
+  },
+})
+
+// ── BlueChipScreen ────────────────────────────────────────────────────────────
+
 function BlueChipScreen({ agentId }: { agentId: string }) {
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState('')
@@ -1210,6 +1518,7 @@ export default function AgentDetailScreen() {
   const agentSnap = useAgentsStore.getState().agents.find((a) => a.id === id) as any
   const isBluechip = agentSnap?.agent_type === 'cabal_blue_chip' || agentSnap?.name === 'Blue Chip'
   if (isBluechip && id) return <BlueChipScreen agentId={id} />
+  if (agentSnap?.agent_type === 'cabal_trading_boy' && id) return <TradingBoyScreen agentId={id} />
 
   const [tab, setTab] = useState<Tab>('chat')
   const [showShareCard, setShowShareCard] = useState(false)
