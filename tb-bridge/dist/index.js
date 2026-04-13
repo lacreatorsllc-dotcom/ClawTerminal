@@ -32,12 +32,17 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const http = __importStar(require("http"));
+const openai_1 = __importDefault(require("openai"));
 const firebase_1 = require("./firebase");
 const api_1 = require("./api");
 const poller_1 = require("./poller");
 const chat_1 = require("./chat");
+const openai = new openai_1.default({ apiKey: process.env.OPENAI_API_KEY });
 process.on('uncaughtException', (err) => {
     console.error('[tb-bridge] uncaughtException:', err);
 });
@@ -82,6 +87,24 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && (url === '/' || url === '/health')) {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         res.end('tb-bridge running');
+        return;
+    }
+    // OpenAI connectivity test
+    if (method === 'GET' && url === '/test-openai') {
+        try {
+            const result = await openai.chat.completions.create({
+                model: 'gpt-4o-mini',
+                messages: [{ role: 'user', content: 'Reply with just: OK' }],
+                max_tokens: 5,
+            }, { timeout: 15000 });
+            const reply = result.choices[0]?.message?.content ?? '?';
+            res.writeHead(200, { 'Content-Type': 'text/plain' });
+            res.end(`OpenAI OK: ${reply}`);
+        }
+        catch (err) {
+            res.writeHead(500, { 'Content-Type': 'text/plain' });
+            res.end(`OpenAI error: ${err?.message} | code: ${err?.code} | type: ${err?.type}`);
+        }
         return;
     }
     // Connect endpoint

@@ -241,10 +241,12 @@ export function startChatListener(
           }
 
           // LLM for everything else (free chat + /help, /pnl, /summary, etc.)
+          console.log(`[chat:${firestoreAgentId}] fetching agent doc`)
           const agentDoc = await db.collection('agents').doc(firestoreAgentId).get()
           const agentData = agentDoc.data() ?? {}
           const liveState = agentData.live_state ?? {}
 
+          console.log(`[chat:${firestoreAgentId}] fetching decisions`)
           const decisionsSnap = await db
             .collection('agents').doc(firestoreAgentId).collection('decisions')
             .orderBy('eventTime', 'desc')
@@ -252,6 +254,7 @@ export function startChatListener(
             .get()
           const decisions = decisionsSnap.docs.map((d) => d.data())
 
+          console.log(`[chat:${firestoreAgentId}] calling OpenAI`)
           const completion = await openai.chat.completions.create({
             model: 'gpt-4o',
             messages: [
@@ -259,12 +262,12 @@ export function startChatListener(
               { role: 'user', content: text },
             ],
             max_tokens: 400,
-          })
+          }, { timeout: 30_000 })
 
           const reply = completion.choices[0]?.message?.content ?? 'No response.'
           await writeReply(firestoreAgentId, reply)
         } catch (err: any) {
-          console.error(`[chat:${firestoreAgentId}] error processing message:`, err?.message ?? err)
+          console.error(`[chat:${firestoreAgentId}] error:`, err?.message, '| code:', err?.code, '| status:', err?.status, '| type:', err?.type, '| cause:', err?.cause?.message)
           await writeReply(firestoreAgentId, 'Error processing your message. Please try again.').catch(() => {})
         }
       }
