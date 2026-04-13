@@ -286,6 +286,9 @@ export function ShareCardModal({ visible, onClose, agentName, initialTrade }: Pr
   )
 }
 
+// Required by expo-router — this file is a component module, not a screen
+export default function ShareCardRoute() { return null }
+
 // ── Card styles (fixed-size, captured by ViewShot) ────────────────────────────
 
 const CARD_W = 380

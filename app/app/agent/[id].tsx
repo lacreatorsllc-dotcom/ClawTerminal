@@ -17,6 +17,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
+import { subscribeToSlug001, subscribeToSlug001Feed, type PaperAgentState } from '../../lib/firebase'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
 
@@ -591,8 +592,368 @@ const STATUS_COLOR: Record<AgentStatus, string> = {
   disconnected: Colors.textSecondary,
 }
 
+// ── Slug #001 Profile Screen ──────────────────────────────────────────────────
+
+const SLUG001_STATUS: Record<string, { color: string; label: string }> = {
+  active:     { color: Colors.accentGreen, label: 'Active' },
+  paused:     { color: Colors.accentAmber, label: 'Paused' },
+  cooldown:   { color: Colors.accentTeal,  label: 'Cooldown' },
+  'no-trade': { color: Colors.textMuted,   label: 'No Trade' },
+}
+
+function Sparkline({ history }: { history: number[] }) {
+  if (!history || history.length < 2) return null
+  const W = 200, H = 48
+  const min = Math.min(...history), max = Math.max(...history)
+  const range = max - min || 1
+  const pts = history.map((v, i) => {
+    const x = (i / (history.length - 1)) * W
+    const y = H - ((v - min) / range) * H
+    return `${x},${y}`
+  }).join(' ')
+  const isPositive = history[history.length - 1] >= history[0]
+  const color = isPositive ? Colors.accentGreen : Colors.accentRed
+  return (
+    <View style={s001.sparklineWrap}>
+      {/* SVG-style polyline via absolute positioned views — React Native has no SVG built-in */}
+      <View style={[s001.sparklineLine, { width: W, height: H }]}>
+        {history.map((v, i) => {
+          if (i === 0) return null
+          const prev = history[i - 1]
+          const x1 = ((i - 1) / (history.length - 1)) * W
+          const y1 = H - ((prev - min) / range) * (H - 8) - 4
+          const x2 = (i / (history.length - 1)) * W
+          const y2 = H - ((v - min) / range) * (H - 8) - 4
+          const dx = x2 - x1, dy = y2 - y1
+          const len = Math.sqrt(dx * dx + dy * dy)
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI)
+          return (
+            <View
+              key={i}
+              style={{
+                position: 'absolute',
+                left: x1,
+                top: y1,
+                width: len,
+                height: 1.5,
+                backgroundColor: color,
+                opacity: 0.7,
+                transform: [{ rotate: `${angle}deg` }],
+                transformOrigin: '0 50%',
+              }}
+            />
+          )
+        })}
+      </View>
+    </View>
+  )
+}
+
+function formatTime001(ts: string): string {
+  const diff = (Date.now() - new Date(ts).getTime()) / 1000
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
+function Slug001Screen() {
+  const [state, setState] = useState<PaperAgentState | null>(null)
+  const [feed, setFeed] = useState<any[]>([])
+  const [tab, setTab] = useState<'activity' | 'positions'>('activity')
+
+  useEffect(() => { return subscribeToSlug001(setState) }, [])
+  useEffect(() => { return subscribeToSlug001Feed((events) => setFeed(events)) }, [])
+
+  const s = state?.status ?? 'active'
+  const { color: statusColor, label: statusLabel } = SLUG001_STATUS[s] ?? SLUG001_STATUS.active
+  const sessionPnl = state?.session_pnl ?? 0
+  const isPos = sessionPnl >= 0
+  const pnlColor = isPos ? Colors.accentGreen : Colors.accentRed
+  const positions = (state?.positions ?? []) as any[]
+
+  return (
+    <View style={s001.container}>
+      {/* Header */}
+      <View style={s001.header}>
+        <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
+          <Text style={s001.backText}>‹</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView contentContainerStyle={s001.scroll} showsVerticalScrollIndicator={false}>
+        {/* Identity */}
+        <View style={s001.identityRow}>
+          <View style={s001.avatar}>
+            <Text style={s001.avatarText}>⬡</Text>
+          </View>
+          <View style={{ flex: 1, gap: 3 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={s001.name}>Slug #001</Text>
+              <View style={s001.paperBadge}><Text style={s001.paperBadgeText}>PAPER</Text></View>
+            </View>
+            <Text style={s001.handle}>@slugs/range-farmer</Text>
+            <View style={s001.statusRow}>
+              <View style={[s001.statusDot, { backgroundColor: statusColor }]} />
+              <Text style={[s001.statusLabel, { color: statusColor }]}>{statusLabel}</Text>
+              <Text style={s001.bullet}>·</Text>
+              <Text style={s001.strategy}>{state?.strategy ?? 'Dynamic Grid'}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Description */}
+        <Text style={s001.desc}>
+          Farming BTC volatility with a dynamic grid strategy. Places buy and sell orders across a range, capturing spreads as price oscillates. Adjusts grid center and spacing based on market regime.
+        </Text>
+
+        {/* PnL strip */}
+        <View style={s001.pnlStrip}>
+          <View style={s001.pnlMain}>
+            <Text style={[s001.pnlValue, { color: pnlColor }]}>
+              {isPos ? '+$' : '-$'}{Math.abs(sessionPnl).toFixed(2)}
+            </Text>
+            <Text style={s001.pnlLabel}>session pnl</Text>
+          </View>
+          <View style={s001.stripDivider} />
+          <View style={s001.stripStat}>
+            <Text style={s001.stripValue}>{state?.total_fills ?? 0}</Text>
+            <Text style={s001.stripLabel}>fills</Text>
+          </View>
+          <View style={s001.stripDivider} />
+          <View style={s001.stripStat}>
+            <Text style={s001.stripValue}>
+              {state?.btc_price ? `$${Math.round(state.btc_price).toLocaleString()}` : '—'}
+            </Text>
+            <Text style={s001.stripLabel}>btc price</Text>
+          </View>
+          <View style={s001.stripDivider} />
+          <View style={s001.stripStat}>
+            <Text style={[s001.stripValue, { color: (state?.price_change_24h_pct ?? 0) >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+              {(state?.price_change_24h_pct ?? 0) >= 0 ? '+' : ''}{(state?.price_change_24h_pct ?? 0).toFixed(2)}%
+            </Text>
+            <Text style={s001.stripLabel}>24h change</Text>
+          </View>
+        </View>
+
+        {/* Sparkline */}
+        {state?.pnl_history && state.pnl_history.length > 2 && (
+          <View style={s001.chartCard}>
+            <Text style={s001.chartLabel}>PnL History</Text>
+            <Sparkline history={state.pnl_history} />
+          </View>
+        )}
+
+        {/* Grid info */}
+        <View style={s001.gridCard}>
+          <View style={s001.gridRow}>
+            <View style={s001.gridStat}>
+              <Text style={s001.gridLabel}>REGIME</Text>
+              <Text style={s001.gridValue}>{state?.regime ?? '—'}</Text>
+            </View>
+            <View style={s001.gridStat}>
+              <Text style={s001.gridLabel}>CENTER</Text>
+              <Text style={s001.gridValue}>
+                {state?.grid_center ? `$${Math.round(state.grid_center).toLocaleString()}` : '—'}
+              </Text>
+            </View>
+            <View style={s001.gridStat}>
+              <Text style={s001.gridLabel}>LEVELS</Text>
+              <Text style={s001.gridValue}>{state?.grid_levels ?? '—'}</Text>
+            </View>
+            <View style={s001.gridStat}>
+              <Text style={s001.gridLabel}>SPACING</Text>
+              <Text style={s001.gridValue}>{state?.grid_spacing_pct ?? '—'}%</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Tab toggle */}
+        <View style={s001.tabRow}>
+          {(['activity', 'positions'] as const).map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[s001.tabPill, tab === t && s001.tabPillActive]}
+              onPress={() => setTab(t)}
+            >
+              <Text style={[s001.tabPillText, tab === t && s001.tabPillTextActive]}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Activity tab */}
+        {tab === 'activity' && (
+          <View style={{ gap: 8 }}>
+            {feed.length === 0 && (
+              <View style={s001.emptyTab}>
+                <Text style={s001.emptyTabText}>No activity yet — waiting for first trade.</Text>
+              </View>
+            )}
+            {feed.map((item) => {
+              const isPnl = item.type === 'pnl'
+              const dotColor = isPnl ? (item.payload?.pnl >= 0 ? Colors.accentGreen : Colors.accentRed) : Colors.accentAmber
+              return (
+                <View key={item.id} style={s001.activityCard}>
+                  <View style={s001.activityTop}>
+                    <View style={[s001.activityDot, { backgroundColor: dotColor }]} />
+                    <Text style={s001.activityTime}>{formatTime001(item.created_at)}</Text>
+                  </View>
+                  {isPnl && item.payload?.pnl != null && (
+                    <Text style={[s001.activityPnl, { color: item.payload.pnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+                      {item.payload.pnl >= 0 ? '+$' : '-$'}{Math.abs(item.payload.pnl).toFixed(2)}
+                    </Text>
+                  )}
+                  <Text style={s001.activityContent}>{item.content}</Text>
+                </View>
+              )
+            })}
+          </View>
+        )}
+
+        {/* Positions tab */}
+        {tab === 'positions' && (
+          <View style={{ gap: 8 }}>
+            {positions.length === 0 && (
+              <View style={s001.emptyTab}>
+                <Text style={s001.emptyTabText}>No open positions.</Text>
+              </View>
+            )}
+            {positions.map((p: any, i: number) => {
+              const pnl = (p.currentPrice - p.fillPrice) * p.qty * (p.side === 'sell' ? -1 : 1)
+              const isPosP = pnl >= 0
+              return (
+                <View key={i} style={s001.positionCard}>
+                  <View style={s001.positionTop}>
+                    <View style={[s001.sideBadge, { backgroundColor: p.side === 'buy' ? 'rgba(0,200,150,0.12)' : 'rgba(255,69,58,0.12)' }]}>
+                      <Text style={[s001.sideText, { color: p.side === 'buy' ? Colors.accentGreen : Colors.accentRed }]}>
+                        {p.side.toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={s001.positionPair}>BTC/USDT</Text>
+                    <View style={{ flex: 1 }} />
+                    <Text style={[s001.positionPnl, { color: isPosP ? Colors.accentGreen : Colors.accentRed }]}>
+                      {isPosP ? '+$' : '-$'}{Math.abs(pnl).toFixed(4)}
+                    </Text>
+                  </View>
+                  <View style={s001.positionPriceRow}>
+                    <View>
+                      <Text style={s001.positionPriceLabel}>Entry</Text>
+                      <Text style={s001.positionPriceValue}>${p.fillPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+                    </View>
+                    <View>
+                      <Text style={s001.positionPriceLabel}>Current</Text>
+                      <Text style={s001.positionPriceValue}>${(p.currentPrice ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+                    </View>
+                    <View>
+                      <Text style={s001.positionPriceLabel}>Qty</Text>
+                      <Text style={s001.positionPriceValue}>{p.qty} BTC</Text>
+                    </View>
+                  </View>
+                </View>
+              )
+            })}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  )
+}
+
+const s001 = StyleSheet.create({
+  container: { flex: 1, backgroundColor: Colors.bgPrimary },
+  header: { paddingHorizontal: 20, paddingTop: 56, paddingBottom: 8 },
+  backBtn: { padding: 4 },
+  backText: { fontSize: 26, color: Colors.accentAmber, lineHeight: 30 },
+  scroll: { paddingHorizontal: 20, paddingBottom: 120, gap: 16 },
+
+  identityRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  avatar: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(217,119,87,0.12)',
+    borderWidth: 2, borderColor: Colors.accentAmber,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  avatarText: { fontSize: 26, color: Colors.accentAmber },
+  name: { fontSize: 22, fontWeight: '800', color: Colors.textPrimary },
+  handle: { fontSize: 12, color: Colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  bullet: { color: Colors.textMuted, fontSize: 11 },
+  strategy: { fontSize: 11, color: Colors.textMuted, fontWeight: '500' },
+  paperBadge: {
+    backgroundColor: 'rgba(217,119,87,0.12)', borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 2,
+    borderWidth: 1, borderColor: 'rgba(217,119,87,0.3)',
+  },
+  paperBadgeText: { fontSize: 9, fontWeight: '700', color: Colors.accentAmber, letterSpacing: 0.8 },
+
+  desc: { fontSize: 14, color: Colors.textSecondary, lineHeight: 21 },
+
+  pnlStrip: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#0d0d0d', borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: 'rgba(217,119,87,0.15)',
+  },
+  pnlMain: { gap: 2 },
+  pnlValue: { fontSize: 28, fontWeight: '800', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: -0.5 },
+  pnlLabel: { fontSize: 9, color: Colors.textMuted, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  stripDivider: { width: 1, height: 36, backgroundColor: Colors.bgBorder, marginHorizontal: 12 },
+  stripStat: { gap: 2, alignItems: 'center' },
+  stripValue: { fontSize: 13, fontWeight: '700', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  stripLabel: { fontSize: 9, color: Colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
+
+  chartCard: { backgroundColor: '#0d0d0d', borderRadius: 16, padding: 16, gap: 12 },
+  chartLabel: { fontSize: 10, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2, textTransform: 'uppercase' },
+  sparklineWrap: { alignItems: 'flex-start' },
+  sparklineLine: { position: 'relative' },
+
+  gridCard: { backgroundColor: '#0d0d0d', borderRadius: 14, padding: 14 },
+  gridRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  gridStat: { alignItems: 'center', gap: 4 },
+  gridLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1, textTransform: 'uppercase' },
+  gridValue: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+
+  tabRow: { flexDirection: 'row', gap: 8 },
+  tabPill: {
+    paddingHorizontal: 16, paddingVertical: 7,
+    borderRadius: 20, backgroundColor: Colors.bgElevated,
+    borderWidth: 1, borderColor: Colors.bgBorder,
+  },
+  tabPillActive: { backgroundColor: 'rgba(217,119,87,0.12)', borderColor: Colors.accentAmber },
+  tabPillText: { fontSize: 12, fontWeight: '600', color: Colors.textMuted },
+  tabPillTextActive: { color: Colors.accentAmber },
+
+  activityCard: { backgroundColor: '#0f0f0f', borderRadius: 14, padding: 14, gap: 6 },
+  activityTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  activityDot: { width: 6, height: 6, borderRadius: 3 },
+  activityTime: { fontSize: 11, color: Colors.textMuted },
+  activityPnl: { fontSize: 22, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  activityContent: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
+
+  positionCard: { backgroundColor: '#0f0f0f', borderRadius: 14, padding: 14, gap: 10 },
+  positionTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sideBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  sideText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  positionPair: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary },
+  positionPnl: { fontSize: 14, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  positionPriceRow: { flexDirection: 'row', gap: 20 },
+  positionPriceLabel: { fontSize: 10, color: Colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.8 },
+  positionPriceValue: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+
+  emptyTab: { paddingVertical: 32, alignItems: 'center' },
+  emptyTabText: { fontSize: 13, color: Colors.textMuted },
+})
+
+// ── Main Agent Detail Screen ───────────────────────────────────────────────────
+
 export default function AgentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+
+  // Slug #001 gets its own dedicated screen
+  if (id === 'slug-001') return <Slug001Screen />
   const [tab, setTab] = useState<Tab>('chat')
   const [showShareCard, setShowShareCard] = useState(false)
   const [selectedTrade, setSelectedTrade] = useState<TradeData | null>(null)

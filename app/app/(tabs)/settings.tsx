@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native'
 import { router } from 'expo-router'
-import { supabase } from '../../lib/supabase'
+import { auth, signOut } from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
 import { Colors } from '../../constants/colors'
 
@@ -8,7 +8,7 @@ export default function SettingsScreen() {
   const { user } = useAuthStore()
 
   async function handleSignOut() {
-    await supabase.auth.signOut()
+    await signOut(auth)
     router.replace('/auth')
   }
 

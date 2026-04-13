@@ -5,44 +5,23 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
+import { router } from 'expo-router'
+import {
+  subscribeToSlug001, subscribeToUserAgents, createAgent,
+  type PaperAgentState,
+} from '../../lib/firebase'
+import { useAgentsStore } from '../../stores/agentsStore'
+import { useAuthStore } from '../../stores/authStore'
+import { Colors } from '../../constants/colors'
+import type { Agent, AgentStatus } from '../../lib/types'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function agentColor(name: string): string {
   const palette = ['#f59e0b', '#2dd4bf', '#a78bfa', '#60a5fa', '#34d399']
   let h = 0
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h)
   return palette[Math.abs(h) % palette.length]
-}
-import { router } from 'expo-router'
-import { supabase } from '../../lib/supabase'
-import { useAgentsStore } from '../../stores/agentsStore'
-import { useAuthStore } from '../../stores/authStore'
-import { Colors } from '../../constants/colors'
-import type { Agent, AgentStatus } from '../../lib/types'
-
-const STATUS_COLOR: Record<AgentStatus, string> = {
-  connected: Colors.accentGreen,
-  connecting: Colors.accentTeal,
-  stale: Colors.accentAmber,
-  error: Colors.accentRed,
-  disconnected: Colors.textSecondary,
-}
-
-const STATUS_LABEL: Record<AgentStatus, string> = {
-  connected: 'Active',
-  connecting: 'Connecting',
-  stale: 'Stale',
-  error: 'Error',
-  disconnected: 'Offline',
-}
-
-const SKELETON_MIN_MS = 1200
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
-  return String(n)
 }
 
 function timeAgo(iso: string | null): string {
@@ -56,6 +35,118 @@ function timeAgo(iso: string | null): string {
   const h = Math.floor(m / 60)
   if (h < 24) return `${h}h ago`
   return `${Math.floor(h / 24)}d ago`
+}
+
+const AGENT_STATUS_COLOR: Record<AgentStatus, string> = {
+  connected: Colors.accentGreen,
+  connecting: Colors.accentTeal,
+  stale: Colors.accentAmber,
+  error: Colors.accentRed,
+  disconnected: Colors.textSecondary,
+}
+
+const AGENT_STATUS_LABEL: Record<AgentStatus, string> = {
+  connected: 'Active',
+  connecting: 'Connecting',
+  stale: 'Stale',
+  error: 'Error',
+  disconnected: 'Offline',
+}
+
+const SLUG001_STATUS: Record<string, { color: string; label: string }> = {
+  active:    { color: Colors.accentGreen, label: 'Active' },
+  paused:    { color: Colors.accentAmber, label: 'Paused' },
+  cooldown:  { color: Colors.accentTeal,  label: 'Cooldown' },
+  'no-trade':{ color: Colors.textMuted,   label: 'No Trade' },
+}
+
+// ── Slug #001 Hero Card ───────────────────────────────────────────────────────
+
+function Slug001HeroCard({ state }: { state: PaperAgentState | null }) {
+  const s = state?.status ?? 'active'
+  const { color, label } = SLUG001_STATUS[s] ?? SLUG001_STATUS.active
+
+  const btcPrice = state?.btc_price ?? 0
+  const sessionPnl = state?.session_pnl ?? 0
+  const isPositive = sessionPnl >= 0
+  const fills = state?.total_fills ?? 0
+  const pct24h = state?.price_change_24h_pct ?? 0
+  const gridLevels = state?.grid_levels ?? 10
+  const gridSpacing = state?.grid_spacing_pct ?? 0.8
+
+  return (
+    <TouchableOpacity
+      style={styles.heroCard}
+      onPress={() => router.push('/agent/slug-001' as any)}
+      activeOpacity={0.85}
+    >
+      {/* Top row */}
+      <View style={styles.heroTop}>
+        <View style={styles.heroTitleRow}>
+          <View style={styles.heroAvatar}>
+            <Text style={styles.heroAvatarText}>⬡</Text>
+          </View>
+          <View style={{ gap: 2 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={styles.heroName}>Slug #001</Text>
+              <View style={styles.paperBadge}>
+                <Text style={styles.paperBadgeText}>PAPER</Text>
+              </View>
+            </View>
+            <Text style={styles.heroHandle}>@slugs/range-farmer</Text>
+          </View>
+        </View>
+        <View style={styles.heroStatusBadge}>
+          <View style={[styles.heroDot, { backgroundColor: color }]} />
+          <Text style={[styles.heroStatusText, { color }]}>{label}</Text>
+        </View>
+      </View>
+
+      {/* PnL */}
+      <View style={styles.heroPnlRow}>
+        <Text style={[styles.heroPnl, { color: isPositive ? Colors.accentGreen : Colors.accentRed }]}>
+          {isPositive ? '+$' : '-$'}{Math.abs(sessionPnl).toFixed(2)}
+        </Text>
+        <Text style={styles.heroPnlLabel}>session pnl</Text>
+      </View>
+
+      {/* Stats */}
+      <View style={styles.heroStatsRow}>
+        <View style={styles.heroStat}>
+          <Text style={styles.heroStatLabel}>BTC</Text>
+          <Text style={styles.heroStatValue}>
+            {btcPrice > 0 ? `$${btcPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'}
+          </Text>
+        </View>
+        <View style={styles.heroStatDivider} />
+        <View style={styles.heroStat}>
+          <Text style={styles.heroStatLabel}>24H</Text>
+          <Text style={[styles.heroStatValue, { color: pct24h >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+            {pct24h >= 0 ? '+' : ''}{pct24h.toFixed(2)}%
+          </Text>
+        </View>
+        <View style={styles.heroStatDivider} />
+        <View style={styles.heroStat}>
+          <Text style={styles.heroStatLabel}>FILLS</Text>
+          <Text style={styles.heroStatValue}>{fills}</Text>
+        </View>
+        <View style={{ flex: 1 }} />
+        <View style={styles.heroTag}>
+          <Text style={styles.heroTagText}>{gridLevels}L · {gridSpacing}%</Text>
+        </View>
+      </View>
+
+      {/* Description */}
+      <Text style={styles.heroDesc}>
+        Farming BTC volatility with a dynamic grid. Buys dips, sells bounces, holds the range.
+      </Text>
+
+      <View style={styles.heroFooter}>
+        <Text style={styles.heroStrategy}>Dynamic Grid</Text>
+        <Text style={styles.heroChevron}>View →</Text>
+      </View>
+    </TouchableOpacity>
+  )
 }
 
 // ── Shimmer skeleton ──────────────────────────────────────────────────────────
@@ -91,31 +182,25 @@ function SkeletonCard() {
   )
 }
 
-// ── Agent card ────────────────────────────────────────────────────────────────
+// ── User Agent card ───────────────────────────────────────────────────────────
 
 function AgentCard({ agent, username }: { agent: Agent; username: string | null }) {
   const getConnectionStatus = useAgentsStore((s) => s.getConnectionStatus)
   const status = getConnectionStatus(agent.id)
   const meta = agent.metadata ?? {}
-
-  const inputTokens: number = (meta.last_input_tokens as number) ?? 0
-  const outputTokens: number = (meta.last_output_tokens as number) ?? 0
-  const hasTokens = inputTokens > 0 || outputTokens > 0
-  const storageMode = meta.storage_mode as string | undefined
-  const poweredBy = meta.powered_by as string | undefined
-  const agentPlatform = meta.platform as string | undefined
-  const slugHandle = username ? `@${username}/${agent.name.toLowerCase().replace(/\s+/g, '-')}` : agent.name
+  const slugHandle = username
+    ? `@${username}/${agent.name.toLowerCase().replace(/\s+/g, '-')}`
+    : agent.name
 
   return (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => router.push(`/agent/${agent.id}`)}
+      onPress={() => router.push(`/agent/${agent.id}` as any)}
       activeOpacity={0.8}
     >
-      {/* Top row */}
       <View style={styles.cardTop}>
         <View style={styles.cardTopLeft}>
-          <View style={[styles.avatar, { borderColor: STATUS_COLOR[status], backgroundColor: agentColor(agent.name) + '22' }]}>
+          <View style={[styles.avatar, { borderColor: AGENT_STATUS_COLOR[status], backgroundColor: agentColor(agent.name) + '22' }]}>
             <Text style={[styles.avatarInitial, { color: agentColor(agent.name) }]}>{agent.name[0].toUpperCase()}</Text>
           </View>
           <View>
@@ -124,51 +209,21 @@ function AgentCard({ agent, username }: { agent: Agent; username: string | null 
           </View>
         </View>
         <View style={styles.statusBadge}>
-          <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[status] }]} />
-          <Text style={[styles.statusText, { color: STATUS_COLOR[status] }]}>{STATUS_LABEL[status]}</Text>
+          <View style={[styles.statusDot, { backgroundColor: AGENT_STATUS_COLOR[status] }]} />
+          <Text style={[styles.statusText, { color: AGENT_STATUS_COLOR[status] }]}>{AGENT_STATUS_LABEL[status]}</Text>
         </View>
       </View>
-
-      {/* Stats row */}
       <View style={styles.statsRow}>
         <View style={styles.stat}>
-          <Text style={styles.statLabel}>HEARTBEAT</Text>
+          <Text style={styles.statLabel}>LAST SEEN</Text>
           <Text style={styles.statValue}>{timeAgo(agent.last_seen)}</Text>
         </View>
-        {hasTokens && (
-          <>
-            <View style={styles.statDivider} />
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>IN</Text>
-              <Text style={styles.statValue}>{formatTokens(inputTokens)}</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>OUT</Text>
-              <Text style={styles.statValue}>{formatTokens(outputTokens)}</Text>
-            </View>
-          </>
-        )}
         <View style={{ flex: 1 }} />
-        <View style={styles.tagRow}>
-          {agentPlatform && (
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>{agentPlatform}</Text>
-            </View>
-          )}
-          {storageMode && storageMode !== 'cloud' && (
-            <View style={[styles.tag, styles.tagPrivate]}>
-              <Text style={[styles.tagText, styles.tagPrivateText]}>
-                {storageMode === 'relay' ? 'relay' : 'local'}
-              </Text>
-            </View>
-          )}
-          {poweredBy && (
-            <View style={[styles.tag, styles.tagPowered]}>
-              <Text style={[styles.tagText, styles.tagPoweredText]}>{poweredBy}</Text>
-            </View>
-          )}
-        </View>
+        {(meta.platform as string) && (
+          <View style={styles.tag}>
+            <Text style={styles.tagText}>{meta.platform as string}</Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   )
@@ -176,12 +231,10 @@ function AgentCard({ agent, username }: { agent: Agent; username: string | null 
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-type FilterStatus = 'all' | 'active' | 'offline'
-
 export default function SlugsScreen() {
   const { agents, setAgents, upsertAgent, loading, setLoading } = useAgentsStore()
   const { user, username } = useAuthStore()
-  const [filter, setFilter] = useState<FilterStatus>('all')
+  const [slug001, setSlug001] = useState<PaperAgentState | null>(null)
 
   // Deploy modal
   const [deployVisible, setDeployVisible] = useState(false)
@@ -190,22 +243,39 @@ export default function SlugsScreen() {
   const [deployedAgent, setDeployedAgent] = useState<{ id: string; name: string } | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // Subscribe to Slug #001 live state
+  useEffect(() => {
+    return subscribeToSlug001((state) => setSlug001(state))
+  }, [])
+
+  // Subscribe to user's own agents
+  useEffect(() => {
+    if (!user) return
+    setLoading(true)
+    const unsub = subscribeToUserAgents(user.uid, (data) => {
+      setAgents(data as Agent[])
+      setLoading(false)
+    })
+    return unsub
+  }, [user?.uid])
+
   async function handleDeploy() {
     if (!user || !deployName.trim()) return
     setDeploying(true)
-    const { data, error } = await supabase
-      .from('agents')
-      .insert({ name: deployName.trim(), status: 'disconnected', user_id: user.id, metadata: { protocol_version: '1.1', env: 'node', storage_mode: 'local' } })
-      .select()
-      .single()
-    setDeploying(false)
-    if (!error && data) {
-      upsertAgent(data as Agent)
-      setDeployedAgent({ id: data.id, name: data.name })
+    try {
+      const id = await createAgent(user.uid, deployName.trim(), {
+        protocol_version: '1.1',
+        env: 'node',
+        storage_mode: 'local',
+      })
+      setDeployedAgent({ id, name: deployName.trim() })
+    } catch (e) {
+      console.warn('[deploy]', e)
     }
+    setDeploying(false)
   }
 
-  const connectCmd = user ? `npx slugs-connector connect --token ${user.id}` : ''
+  const connectCmd = user ? `npx slugs-connector connect --token ${user.uid}` : ''
 
   async function handleCopy() {
     await Clipboard.setStringAsync(connectCmd)
@@ -220,44 +290,9 @@ export default function SlugsScreen() {
     setCopied(false)
   }
 
-  useEffect(() => {
-    if (!user) return
-
-    const fetchAgents = async () => {
-      const start = Date.now()
-      const { data } = await supabase
-        .from('agents')
-        .select('*')
-        .eq('user_id', user.id)
-
-      setAgents(data ?? [])
-
-      const elapsed = Date.now() - start
-      const delay = Math.max(0, SKELETON_MIN_MS - elapsed)
-      setTimeout(() => setLoading(false), delay)
-    }
-
-    fetchAgents()
-    const poll = setInterval(fetchAgents, 15_000)
-
-    const channel = supabase
-      .channel(`user:${user.id}:agents`)
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'agents',
-        filter: `user_id=eq.${user.id}`,
-      }, (payload) => {
-        if (payload.eventType === 'INSERT') upsertAgent(payload.new as Agent)
-        if (payload.eventType === 'UPDATE') upsertAgent(payload.new as Agent)
-      })
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel); clearInterval(poll) }
-  }, [user])
-
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <RNImage
@@ -265,36 +300,28 @@ export default function SlugsScreen() {
             style={styles.logoImage}
             resizeMode="contain"
           />
-          {username && (
-            <Text style={styles.handleText}>@{username}</Text>
-          )}
+          {username && <Text style={styles.handleText}>@{username}</Text>}
         </View>
         <View style={styles.headerBtns}>
-          <TouchableOpacity style={styles.deployBtn} onPress={() => setDeployVisible(true)}>
-            <Text style={styles.deployBtnText}>⚡ Deploy</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={styles.connectBtn} onPress={() => router.push('/connect')}>
             <Text style={styles.connectBtnText}>+ Connect</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* ── Deploy modal ── */}
+      {/* Deploy modal */}
       <Modal visible={deployVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeDeploy}>
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>
-              {deployedAgent ? 'Agent Deployed' : 'Deploy a Slug'}
-            </Text>
+            <Text style={styles.modalTitle}>{deployedAgent ? 'Agent Deployed' : 'Deploy a Slug'}</Text>
             <TouchableOpacity onPress={closeDeploy} style={styles.modalCloseBtn}>
               <Ionicons name="close" size={20} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
-
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
             {!deployedAgent ? (
               <>
-                <Text style={styles.modalDesc}>Name your agent. It will appear in your slug list immediately — then connect it to a live process whenever you're ready.</Text>
+                <Text style={styles.modalDesc}>Name your agent. It will appear in your slug list immediately.</Text>
                 <View style={styles.fieldBlock}>
                   <Text style={styles.fieldLabel}>Agent Name</Text>
                   <TextInput
@@ -326,8 +353,7 @@ export default function SlugsScreen() {
                   <Ionicons name="checkmark-circle" size={56} color={Colors.accentGreen} />
                 </View>
                 <Text style={styles.successName}>{deployedAgent.name}</Text>
-                <Text style={styles.successSub}>Agent created. Run this command to connect it to a live process:</Text>
-
+                <Text style={styles.successSub}>Agent created. Run this to connect it:</Text>
                 <View style={styles.cmdBox}>
                   <View style={styles.cmdBoxHeader}>
                     <View style={styles.cmdDots}>
@@ -344,10 +370,9 @@ export default function SlugsScreen() {
                     <Text style={styles.cmdText}>{connectCmd}</Text>
                   </ScrollView>
                 </View>
-
                 <TouchableOpacity
                   style={styles.viewAgentBtn}
-                  onPress={() => { closeDeploy(); router.push(`/agent/${deployedAgent.id}`) }}
+                  onPress={() => { closeDeploy(); router.push(`/agent/${deployedAgent.id}` as any) }}
                 >
                   <Text style={styles.viewAgentBtnText}>Open Agent →</Text>
                 </TouchableOpacity>
@@ -357,56 +382,42 @@ export default function SlugsScreen() {
         </View>
       </Modal>
 
-      {/* Filter pills */}
-      {!loading && agents.length > 0 && (
-        <View style={styles.filterRow}>
-          {(['all', 'active', 'offline'] as FilterStatus[]).map((f) => (
-            <TouchableOpacity
-              key={f}
-              style={[styles.filterPill, filter === f && styles.filterPillActive]}
-              onPress={() => setFilter(f)}
-            >
-              <Text style={[styles.filterPillText, filter === f && styles.filterPillTextActive]}>
-                {f.charAt(0).toUpperCase() + f.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-
-      {loading ? (
-        <View style={styles.list}>
-          {[0, 1, 2].map((i) => <SkeletonCard key={i} />)}
-        </View>
-      ) : agents.length === 0 ? (
-        <View style={styles.empty}>
-          <View style={styles.emptyIconWrap}>
-            <Ionicons name="hardware-chip-outline" size={48} color={Colors.textMuted} />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Featured: Slug #001 */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionLabel}>FEATURED</Text>
+          <View style={styles.livePill}>
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>Live</Text>
           </View>
-          <Text style={styles.emptyTitle}>No slugs yet</Text>
-          <Text style={styles.emptySubtitle}>Connect your first agent in one command — Claude Code, Telegram, or any terminal.</Text>
-          <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/connect')}>
-            <Ionicons name="add" size={18} color={Colors.bgPrimary} />
-            <Text style={styles.emptyBtnText}>Connect a slug</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/feed')}>
-            <Text style={styles.emptySecondary}>Explore the feed first →</Text>
-          </TouchableOpacity>
         </View>
-      ) : (
-        <FlatList
-          data={agents.filter((a) => {
-            if (filter === 'all') return true
-            const s = a.status ?? 'disconnected'
-            if (filter === 'active') return ['connected', 'connecting', 'stale'].includes(s)
-            return ['disconnected', 'error'].includes(s)
-          })}
-          keyExtractor={(a) => a.id}
-          renderItem={({ item }) => <AgentCard agent={item} username={username} />}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+        <Slug001HeroCard state={slug001} />
+
+        {/* User's own agents */}
+        {loading ? (
+          <View style={{ gap: 10, marginTop: 24 }}>
+            <Text style={styles.sectionLabel}>YOUR SLUGS</Text>
+            {[0, 1].map((i) => <SkeletonCard key={i} />)}
+          </View>
+        ) : agents.length > 0 ? (
+          <View style={{ gap: 10, marginTop: 24 }}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>YOUR SLUGS</Text>
+              <TouchableOpacity onPress={() => setDeployVisible(true)}>
+                <Text style={styles.deployLink}>+ Deploy</Text>
+              </TouchableOpacity>
+            </View>
+            {agents.map((a) => <AgentCard key={a.id} agent={a} username={username} />)}
+          </View>
+        ) : (
+          <View style={styles.connectPrompt}>
+            <TouchableOpacity style={styles.connectPromptBtn} onPress={() => router.push('/connect')}>
+              <Ionicons name="add" size={16} color={Colors.accentAmber} />
+              <Text style={styles.connectPromptText}>Connect your own agent</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
     </View>
   )
 }
@@ -425,22 +436,8 @@ const styles = StyleSheet.create({
   },
   headerLeft: { gap: 2 },
   logoImage: { width: 90, height: 27, tintColor: Colors.accentAmber },
-  handleText: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    fontWeight: '500',
-    letterSpacing: 0.3,
-  },
+  handleText: { fontSize: 11, color: Colors.textMuted, fontWeight: '500', letterSpacing: 0.3 },
   headerBtns: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  deployBtn: {
-    backgroundColor: 'rgba(99,102,241,0.12)',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(99,102,241,0.25)',
-  },
-  deployBtnText: { color: '#a5b4fc', fontSize: 13, fontWeight: '600' },
   connectBtn: {
     backgroundColor: 'rgba(217,119,87,0.1)',
     borderRadius: 20,
@@ -449,7 +446,105 @@ const styles = StyleSheet.create({
   },
   connectBtnText: { color: Colors.accentAmber, fontSize: 13, fontWeight: '600' },
 
-  // Deploy modal
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 120 },
+
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  sectionLabel: { fontSize: 10, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.5 },
+  livePill: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accentGreen },
+  liveText: { fontSize: 11, fontWeight: '700', color: Colors.accentGreen },
+  deployLink: { fontSize: 12, fontWeight: '600', color: Colors.accentAmber },
+
+  // Hero card
+  heroCard: {
+    backgroundColor: '#0d0d0d',
+    borderRadius: 20,
+    padding: 20,
+    gap: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,87,0.2)',
+  },
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heroAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(217,119,87,0.12)',
+    borderWidth: 1.5,
+    borderColor: Colors.accentAmber,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroAvatarText: { fontSize: 22, color: Colors.accentAmber },
+  heroName: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary },
+  heroHandle: { fontSize: 11, color: Colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  paperBadge: {
+    backgroundColor: 'rgba(217,119,87,0.12)',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,87,0.3)',
+  },
+  paperBadgeText: { fontSize: 9, fontWeight: '700', color: Colors.accentAmber, letterSpacing: 0.8 },
+  heroStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
+  heroDot: { width: 7, height: 7, borderRadius: 4 },
+  heroStatusText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+
+  heroPnlRow: { gap: 2 },
+  heroPnl: { fontSize: 36, fontWeight: '800', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: -1 },
+  heroPnlLabel: { fontSize: 11, color: Colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
+
+  heroStatsRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  heroStat: { gap: 3 },
+  heroStatLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2 },
+  heroStatValue: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  heroStatDivider: { width: 1, height: 28, backgroundColor: Colors.bgBorder },
+  heroTag: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  heroTagText: { fontSize: 10, fontWeight: '600', color: Colors.textMuted },
+
+  heroDesc: { fontSize: 13, color: Colors.textSecondary, lineHeight: 20 },
+  heroFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  heroStrategy: { fontSize: 11, fontWeight: '700', color: Colors.accentAmber, letterSpacing: 0.5 },
+  heroChevron: { fontSize: 13, color: Colors.textMuted, fontWeight: '600' },
+
+  // User agent card
+  card: { backgroundColor: '#0f0f0f', borderRadius: 16, padding: 16, gap: 14 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardTopLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: {
+    width: 40, height: 40, borderRadius: 20, borderWidth: 1.5,
+    backgroundColor: '#000', justifyContent: 'center', alignItems: 'center',
+  },
+  avatarInitial: { fontSize: 16, fontWeight: '700' },
+  agentName: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
+  agentSlug: { color: Colors.textMuted, fontSize: 11, marginTop: 1, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  statsRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stat: { gap: 2 },
+  statLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2 },
+  statValue: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  tag: { backgroundColor: '#1a1a1a', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
+  tagText: { fontSize: 9, color: Colors.textMuted, fontWeight: '600', letterSpacing: 0.5 },
+
+  // Connect prompt
+  connectPrompt: { marginTop: 24, alignItems: 'center' },
+  connectPromptBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderWidth: 1, borderColor: 'rgba(217,119,87,0.2)',
+    borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12,
+  },
+  connectPromptText: { color: Colors.accentAmber, fontSize: 13, fontWeight: '600' },
+
+  // Modal
   modalContainer: { flex: 1, backgroundColor: Colors.bgPrimary },
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -485,126 +580,9 @@ const styles = StyleSheet.create({
   cmdText: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, color: Colors.accentGreen, lineHeight: 18 },
   viewAgentBtn: { backgroundColor: Colors.bgElevated, borderRadius: 12, paddingVertical: 14, alignItems: 'center', borderWidth: 1, borderColor: Colors.bgBorder },
   viewAgentBtnText: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  filterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: Colors.bgElevated,
-    borderWidth: 1,
-    borderColor: Colors.bgBorder,
-  },
-  filterPillActive: {
-    backgroundColor: 'rgba(217,119,87,0.12)',
-    borderColor: Colors.accentAmber,
-  },
-  filterPillText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.textMuted,
-  },
-  filterPillTextActive: {
-    color: Colors.accentAmber,
-  },
-  list: { paddingHorizontal: 16, gap: 10, paddingBottom: 100 },
-
-  // Card
-  card: {
-    backgroundColor: '#0f0f0f',
-    borderRadius: 16,
-    padding: 16,
-    gap: 14,
-  },
-  cardTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  cardTopLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1.5,
-    backgroundColor: '#000',
-    justifyContent: 'center',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  avatarInitial: { fontSize: 18, fontWeight: '700' },
-  agentName: { color: Colors.textPrimary, fontSize: 16, fontWeight: '600' },
-  agentSlug: {
-    color: Colors.textMuted,
-    fontSize: 11,
-    marginTop: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
-
-  // Stats row
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  stat: { gap: 2 },
-  statLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: Colors.textMuted,
-    letterSpacing: 1.2,
-  },
-  statValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textSecondary,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  statDivider: {
-    width: 1,
-    height: 24,
-    backgroundColor: Colors.bgBorder,
-  },
-  tagRow: { flexDirection: 'row', gap: 4, flexWrap: 'wrap' },
-  tag: {
-    backgroundColor: Colors.bgElevated,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-  },
-  tagText: { fontSize: 9, color: Colors.textMuted, fontWeight: '600', letterSpacing: 0.5 },
-  tagPrivate: { backgroundColor: 'rgba(0,200,150,0.08)' },
-  tagPrivateText: { color: Colors.accentGreen },
-  tagPowered: { backgroundColor: 'rgba(168,85,247,0.08)' },
-  tagPoweredText: { color: Colors.accentPurple },
-
-  // Empty
-  empty: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40, gap: 12 },
-  emptyIconWrap: {
-    width: 88, height: 88, borderRadius: 24,
-    backgroundColor: Colors.bgElevated,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 4,
-  },
-  emptyTitle: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
-  emptySubtitle: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', lineHeight: 21 },
-  emptyBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: Colors.accentAmber,
-    borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14, marginTop: 4,
-  },
-  emptyBtnText: { color: Colors.bgPrimary, fontSize: 15, fontWeight: '700' },
-  emptySecondary: { fontSize: 13, color: Colors.textMuted, marginTop: 4 },
 
   // Skeleton
-  skeletonAvatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.bgElevated },
+  skeletonAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.bgElevated },
   skeletonNameBar: { width: 120, height: 14, borderRadius: 7, backgroundColor: Colors.bgElevated },
   skeletonMetaBar: { width: 80, height: 10, borderRadius: 5, backgroundColor: Colors.bgElevated },
   skeletonBadge: { width: 56, height: 18, borderRadius: 9, backgroundColor: Colors.bgElevated },

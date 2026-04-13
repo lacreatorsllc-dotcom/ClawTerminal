@@ -1,18 +1,26 @@
 import { create } from 'zustand'
-import type { Session, User } from '@supabase/supabase-js'
+import type { User } from 'firebase/auth'
 
 interface AuthState {
-  session: Session | null
   user: User | null
+  username: string | null
+  walletAddress: string | null
+  walletProvider: string | null
   isLoading: boolean
-  setSession: (session: Session | null) => void
+  setUser: (user: User | null) => void
+  setUsername: (username: string | null) => void
+  setWallet: (address: string, provider: string) => void
   setLoading: (loading: boolean) => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  session: null,
   user: null,
+  username: null,
+  walletAddress: null,
+  walletProvider: null,
   isLoading: true,
-  setSession: (session) => set({ session, user: session?.user ?? null }),
+  setUser: (user) => set({ user }),
+  setUsername: (username) => set({ username }),
+  setWallet: (walletAddress, walletProvider) => set({ walletAddress, walletProvider }),
   setLoading: (isLoading) => set({ isLoading }),
 }))
