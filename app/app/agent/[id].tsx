@@ -18,7 +18,6 @@ import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
 import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToMessages, addMessage, type PaperAgentState } from '../../lib/firebase'
-import { ShareCardModal } from './share-card'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
 
