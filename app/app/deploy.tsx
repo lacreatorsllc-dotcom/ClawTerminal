@@ -305,18 +305,18 @@ export default function DeployScreen() {
             />
             <Text style={s.hintText}>Starts with tb_live_. Find it in your cabal.ventures dashboard.</Text>
 
-            <Text style={[s.fieldLabel, { marginTop: 20 }]}>OpenAI API Key</Text>
+            <Text style={[s.fieldLabel, { marginTop: 20 }]}>AI API Key</Text>
             <TextInput
               style={s.input}
               value={openaiKey}
               onChangeText={setOpenaiKey}
-              placeholder="sk-..."
+              placeholder="AIzaSy... or sk-..."
               placeholderTextColor={Colors.textMuted}
               autoCapitalize="none"
               autoCorrect={false}
               secureTextEntry
             />
-            <Text style={s.hintText}>For agent chat. Get yours at platform.openai.com/api-keys.</Text>
+            <Text style={s.hintText}>For agent chat. Supports Gemini (AIzaSy...) or OpenAI (sk-...).</Text>
 
             {error ? <Text style={s.errorText}>{error}</Text> : null}
 

@@ -7,6 +7,24 @@ exports.startChatListener = startChatListener;
 const openai_1 = __importDefault(require("openai"));
 const firebase_1 = require("./firebase");
 const api_1 = require("./api");
+function makeAIClient(apiKey) {
+    if (apiKey.startsWith('AIza')) {
+        // Google Gemini — uses OpenAI-compatible endpoint
+        return {
+            client: new openai_1.default({
+                apiKey,
+                baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+            }),
+            model: 'gemini-2.0-flash',
+        };
+    }
+    if (apiKey.startsWith('sk-ant-')) {
+        // Anthropic Claude via their OpenAI-compatible layer (if available)
+        return { client: new openai_1.default({ apiKey }), model: 'gpt-4o' };
+    }
+    // Default: OpenAI
+    return { client: new openai_1.default({ apiKey }), model: 'gpt-4o' };
+}
 async function writeReply(firestoreAgentId, content) {
     await firebase_1.db.collection('agents').doc(firestoreAgentId).collection('messages').add({
         direction: 'outbound',
@@ -194,7 +212,7 @@ function handleHelp(firestoreAgentId, agentName) {
     return writeReply(firestoreAgentId, msg);
 }
 function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, openaiApiKey) {
-    const openai = openaiApiKey ? new openai_1.default({ apiKey: openaiApiKey }) : null;
+    const ai = openaiApiKey ? makeAIClient(openaiApiKey) : null;
     const processedIds = new Set();
     let initialized = false;
     const messagesRef = firebase_1.db.collection('agents').doc(firestoreAgentId).collection('messages');
@@ -262,7 +280,7 @@ function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, opena
                     continue;
                 }
                 // Free-form text — use LLM if key available
-                if (!openai) {
+                if (!ai) {
                     await writeReply(firestoreAgentId, `Use /help to see available commands.`);
                     continue;
                 }
@@ -285,8 +303,8 @@ RECENT DECISIONS:
 ${decisions.length > 0 ? decisions.map((d) => `[${d.eventTime}] ${d.tokenSymbol} ${d.actionType} (${d.confidence}%): ${d.details}`).join('\n') : 'None.'}
 
 Be concise and data-driven. Plain text only. Never fabricate data.`;
-                const completion = await openai.chat.completions.create({
-                    model: 'gpt-4o',
+                const completion = await ai.client.chat.completions.create({
+                    model: ai.model,
                     messages: [{ role: 'system', content: system }, { role: 'user', content: text }],
                     max_tokens: 400,
                 }, { timeout: 30000 });

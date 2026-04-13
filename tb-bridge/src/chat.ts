@@ -2,6 +2,25 @@ import OpenAI from 'openai'
 import { db, FieldValue } from './firebase'
 import { pauseAgent, resumeAgent } from './api'
 
+function makeAIClient(apiKey: string): { client: OpenAI; model: string } {
+  if (apiKey.startsWith('AIza')) {
+    // Google Gemini — uses OpenAI-compatible endpoint
+    return {
+      client: new OpenAI({
+        apiKey,
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      }),
+      model: 'gemini-2.0-flash',
+    }
+  }
+  if (apiKey.startsWith('sk-ant-')) {
+    // Anthropic Claude via their OpenAI-compatible layer (if available)
+    return { client: new OpenAI({ apiKey }), model: 'gpt-4o' }
+  }
+  // Default: OpenAI
+  return { client: new OpenAI({ apiKey }), model: 'gpt-4o' }
+}
+
 async function writeReply(firestoreAgentId: string, content: string): Promise<void> {
   await db.collection('agents').doc(firestoreAgentId).collection('messages').add({
     direction: 'outbound',
@@ -229,7 +248,7 @@ export function startChatListener(
   agentName: string,
   openaiApiKey?: string,
 ): void {
-  const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null
+  const ai = openaiApiKey ? makeAIClient(openaiApiKey) : null
   const processedIds = new Set<string>()
   let initialized = false
 
@@ -302,7 +321,7 @@ export function startChatListener(
           }
 
           // Free-form text — use LLM if key available
-          if (!openai) {
+          if (!ai) {
             await writeReply(firestoreAgentId, `Use /help to see available commands.`)
             continue
           }
@@ -329,8 +348,8 @@ ${decisions.length > 0 ? decisions.map((d) => `[${d.eventTime}] ${d.tokenSymbol}
 
 Be concise and data-driven. Plain text only. Never fabricate data.`
 
-          const completion = await openai.chat.completions.create({
-            model: 'gpt-4o',
+          const completion = await ai.client.chat.completions.create({
+            model: ai.model,
             messages: [{ role: 'system', content: system }, { role: 'user', content: text }],
             max_tokens: 400,
           }, { timeout: 30_000 })
