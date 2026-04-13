@@ -9,11 +9,8 @@
     "dev": "ts-node src/index.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
-    "@notionhq/client": "^5.18.0",
-    "@supabase/supabase-js": "^2.45.0",
-    "commander": "^12.1.0",
-    "openai": "^6.34.0"
+    "firebase-admin": "^13.0.0",
+    "openai": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
