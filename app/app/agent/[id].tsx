@@ -17,7 +17,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
-import { subscribeToSlug001, subscribeToSlug001Feed, type PaperAgentState } from '../../lib/firebase'
+import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToMessages, addMessage, type PaperAgentState } from '../../lib/firebase'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
 
@@ -660,10 +660,32 @@ function formatTime001(ts: string): string {
 function Slug001Screen() {
   const [state, setState] = useState<PaperAgentState | null>(null)
   const [feed, setFeed] = useState<any[]>([])
-  const [tab, setTab] = useState<'activity' | 'positions'>('activity')
+  const [messages, setMessages] = useState<any[]>([])
+  const [input, setInput] = useState('')
+  const [tab, setTab] = useState<'chat' | 'activity' | 'positions'>('chat')
+  const { user } = useAuthStore()
+  const flatRef = useRef<any>(null)
 
   useEffect(() => { return subscribeToSlug001(setState) }, [])
   useEffect(() => { return subscribeToSlug001Feed((events) => setFeed(events)) }, [])
+  useEffect(() => { return subscribeToMessages('slug-001', setMessages) }, [])
+  useEffect(() => {
+    if (tab === 'chat' && messages.length > 0) {
+      setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100)
+    }
+  }, [messages, tab])
+
+  async function sendChat() {
+    const text = input.trim()
+    if (!text) return
+    setInput('')
+    await addMessage('slug-001', {
+      agent_id: 'slug-001',
+      user_id: user?.id ?? 'anonymous',
+      direction: 'inbound',
+      content: text,
+    })
+  }
 
   const s = state?.status ?? 'active'
   const { color: statusColor, label: statusLabel } = SLUG001_STATUS[s] ?? SLUG001_STATUS.active
@@ -672,8 +694,9 @@ function Slug001Screen() {
   const pnlColor = isPos ? Colors.accentGreen : Colors.accentRed
   const positions = (state?.positions ?? []) as any[]
 
-  return (
-    <View style={s001.container}>
+  // Profile header — shown in all tabs
+  const profileHeader = (
+    <>
       {/* Header */}
       <View style={s001.header}>
         <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
@@ -681,60 +704,135 @@ function Slug001Screen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={s001.scroll} showsVerticalScrollIndicator={false}>
-        {/* Identity */}
-        <View style={s001.identityRow}>
-          <View style={s001.avatar}>
-            <Text style={s001.avatarText}>⬡</Text>
+      {/* Identity */}
+      <View style={[s001.identityRow, { paddingHorizontal: 20 }]}>
+        <View style={s001.avatar}>
+          <Text style={s001.avatarText}>⬡</Text>
+        </View>
+        <View style={{ flex: 1, gap: 3 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={s001.name}>Slug #001</Text>
+            <View style={s001.paperBadge}><Text style={s001.paperBadgeText}>PAPER</Text></View>
           </View>
-          <View style={{ flex: 1, gap: 3 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={s001.name}>Slug #001</Text>
-              <View style={s001.paperBadge}><Text style={s001.paperBadgeText}>PAPER</Text></View>
-            </View>
-            <Text style={s001.handle}>@slugs/range-farmer</Text>
-            <View style={s001.statusRow}>
-              <View style={[s001.statusDot, { backgroundColor: statusColor }]} />
-              <Text style={[s001.statusLabel, { color: statusColor }]}>{statusLabel}</Text>
-              <Text style={s001.bullet}>·</Text>
-              <Text style={s001.strategy}>{state?.strategy ?? 'Dynamic Grid'}</Text>
-            </View>
+          <Text style={s001.handle}>@slugs/range-farmer</Text>
+          <View style={s001.statusRow}>
+            <View style={[s001.statusDot, { backgroundColor: statusColor }]} />
+            <Text style={[s001.statusLabel, { color: statusColor }]}>{statusLabel}</Text>
+            <Text style={s001.bullet}>·</Text>
+            <Text style={s001.strategy}>{state?.strategy ?? 'Dynamic Grid'}</Text>
           </View>
         </View>
+      </View>
 
+      {/* PnL strip */}
+      <View style={[s001.pnlStrip, { marginHorizontal: 20, marginTop: 12 }]}>
+        <View style={s001.pnlMain}>
+          <Text style={[s001.pnlValue, { color: pnlColor }]}>
+            {isPos ? '+$' : '-$'}{Math.abs(sessionPnl).toFixed(2)}
+          </Text>
+          <Text style={s001.pnlLabel}>session pnl</Text>
+        </View>
+        <View style={s001.stripDivider} />
+        <View style={s001.stripStat}>
+          <Text style={s001.stripValue}>{state?.total_fills ?? 0}</Text>
+          <Text style={s001.stripLabel}>fills</Text>
+        </View>
+        <View style={s001.stripDivider} />
+        <View style={s001.stripStat}>
+          <Text style={s001.stripValue}>
+            {state?.btc_price ? `$${Math.round(state.btc_price).toLocaleString()}` : '—'}
+          </Text>
+          <Text style={s001.stripLabel}>btc price</Text>
+        </View>
+        <View style={s001.stripDivider} />
+        <View style={s001.stripStat}>
+          <Text style={[s001.stripValue, { color: (state?.price_change_24h_pct ?? 0) >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+            {(state?.price_change_24h_pct ?? 0) >= 0 ? '+' : ''}{(state?.price_change_24h_pct ?? 0).toFixed(2)}%
+          </Text>
+          <Text style={s001.stripLabel}>24h change</Text>
+        </View>
+      </View>
+
+      {/* Tab toggle */}
+      <View style={[s001.tabRow, { paddingHorizontal: 20, marginTop: 16, marginBottom: 4 }]}>
+        {(['chat', 'activity', 'positions'] as const).map((t) => (
+          <TouchableOpacity
+            key={t}
+            style={[s001.tabPill, tab === t && s001.tabPillActive]}
+            onPress={() => setTab(t)}
+          >
+            <Text style={[s001.tabPillText, tab === t && s001.tabPillTextActive]}>
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </>
+  )
+
+  // ── Chat tab ──────────────────────────────────────────────────────────────
+  if (tab === 'chat') {
+    return (
+      <KeyboardAvoidingView
+        style={s001.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        {profileHeader}
+        <FlatList
+          ref={flatRef}
+          data={messages}
+          keyExtractor={(m) => m.id}
+          contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 16 }}
+          ListEmptyComponent={
+            <View style={s001.emptyTab}>
+              <Text style={s001.emptyTabText}>No messages yet. Say something.</Text>
+            </View>
+          }
+          renderItem={({ item }) => {
+            const isMe = item.direction === 'inbound'
+            return (
+              <View style={[s001.bubble, isMe ? s001.bubbleMe : s001.bubbleAgent]}>
+                <Text style={[s001.bubbleText, isMe ? s001.bubbleTextMe : s001.bubbleTextAgent]}>
+                  {item.content}
+                </Text>
+                <Text style={s001.bubbleTime}>{formatTime001(item.created_at)}</Text>
+              </View>
+            )
+          }}
+        />
+        <View style={s001.inputBar}>
+          <TextInput
+            style={s001.inputField}
+            value={input}
+            onChangeText={setInput}
+            placeholder="Message Slug #001..."
+            placeholderTextColor={Colors.textMuted}
+            multiline
+            returnKeyType="send"
+            onSubmitEditing={sendChat}
+          />
+          <TouchableOpacity
+            style={[s001.sendBtn, !input.trim() && { opacity: 0.4 }]}
+            onPress={sendChat}
+            disabled={!input.trim()}
+          >
+            <Text style={s001.sendBtnText}>↑</Text>
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    )
+  }
+
+  // ── Activity / Positions tabs ─────────────────────────────────────────────
+  return (
+    <View style={s001.container}>
+      {profileHeader}
+      <ScrollView contentContainerStyle={s001.scroll} showsVerticalScrollIndicator={false}>
         {/* Description */}
         <Text style={s001.desc}>
           Farming BTC volatility with a dynamic grid strategy. Places buy and sell orders across a range, capturing spreads as price oscillates. Adjusts grid center and spacing based on market regime.
         </Text>
-
-        {/* PnL strip */}
-        <View style={s001.pnlStrip}>
-          <View style={s001.pnlMain}>
-            <Text style={[s001.pnlValue, { color: pnlColor }]}>
-              {isPos ? '+$' : '-$'}{Math.abs(sessionPnl).toFixed(2)}
-            </Text>
-            <Text style={s001.pnlLabel}>session pnl</Text>
-          </View>
-          <View style={s001.stripDivider} />
-          <View style={s001.stripStat}>
-            <Text style={s001.stripValue}>{state?.total_fills ?? 0}</Text>
-            <Text style={s001.stripLabel}>fills</Text>
-          </View>
-          <View style={s001.stripDivider} />
-          <View style={s001.stripStat}>
-            <Text style={s001.stripValue}>
-              {state?.btc_price ? `$${Math.round(state.btc_price).toLocaleString()}` : '—'}
-            </Text>
-            <Text style={s001.stripLabel}>btc price</Text>
-          </View>
-          <View style={s001.stripDivider} />
-          <View style={s001.stripStat}>
-            <Text style={[s001.stripValue, { color: (state?.price_change_24h_pct ?? 0) >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-              {(state?.price_change_24h_pct ?? 0) >= 0 ? '+' : ''}{(state?.price_change_24h_pct ?? 0).toFixed(2)}%
-            </Text>
-            <Text style={s001.stripLabel}>24h change</Text>
-          </View>
-        </View>
 
         {/* Sparkline */}
         {state?.pnl_history && state.pnl_history.length > 2 && (
@@ -766,21 +864,6 @@ function Slug001Screen() {
               <Text style={s001.gridValue}>{state?.grid_spacing_pct ?? '—'}%</Text>
             </View>
           </View>
-        </View>
-
-        {/* Tab toggle */}
-        <View style={s001.tabRow}>
-          {(['activity', 'positions'] as const).map((t) => (
-            <TouchableOpacity
-              key={t}
-              style={[s001.tabPill, tab === t && s001.tabPillActive]}
-              onPress={() => setTab(t)}
-            >
-              <Text style={[s001.tabPillText, tab === t && s001.tabPillTextActive]}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
         </View>
 
         {/* Activity tab */}
@@ -945,6 +1028,35 @@ const s001 = StyleSheet.create({
 
   emptyTab: { paddingVertical: 32, alignItems: 'center' },
   emptyTabText: { fontSize: 13, color: Colors.textMuted },
+
+  bubble: { maxWidth: '80%', borderRadius: 16, padding: 12, gap: 4 },
+  bubbleMe: { alignSelf: 'flex-end', backgroundColor: Colors.accentAmber },
+  bubbleAgent: { alignSelf: 'flex-start', backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: Colors.bgBorder },
+  bubbleText: { fontSize: 14, lineHeight: 20 },
+  bubbleTextMe: { color: '#000', fontWeight: '500' },
+  bubbleTextAgent: { color: Colors.textPrimary },
+  bubbleTime: { fontSize: 10, color: 'rgba(0,0,0,0.4)', alignSelf: 'flex-end' },
+
+  inputBar: {
+    flexDirection: 'row', alignItems: 'flex-end', gap: 10,
+    paddingHorizontal: 16, paddingVertical: 12,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    borderTopWidth: 1, borderTopColor: Colors.bgBorder,
+    backgroundColor: Colors.bgPrimary,
+  },
+  inputField: {
+    flex: 1, minHeight: 40, maxHeight: 120,
+    backgroundColor: '#1a1a1a', borderRadius: 20,
+    paddingHorizontal: 16, paddingVertical: 10,
+    fontSize: 15, color: Colors.textPrimary,
+    borderWidth: 1, borderColor: Colors.bgBorder,
+  },
+  sendBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: Colors.accentAmber,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  sendBtnText: { fontSize: 18, color: '#000', fontWeight: '700', lineHeight: 22 },
 })
 
 // ── Main Agent Detail Screen ───────────────────────────────────────────────────

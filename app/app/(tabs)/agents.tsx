@@ -60,90 +60,51 @@ const SLUG001_STATUS: Record<string, { color: string; label: string }> = {
   'no-trade':{ color: Colors.textMuted,   label: 'No Trade' },
 }
 
-// ── Slug #001 Hero Card ───────────────────────────────────────────────────────
+// ── Slug #001 Card ────────────────────────────────────────────────────────────
 
-function Slug001HeroCard({ state }: { state: PaperAgentState | null }) {
+function Slug001Card({ state }: { state: PaperAgentState | null }) {
   const s = state?.status ?? 'active'
   const { color, label } = SLUG001_STATUS[s] ?? SLUG001_STATUS.active
-
-  const btcPrice = state?.btc_price ?? 0
   const sessionPnl = state?.session_pnl ?? 0
   const isPositive = sessionPnl >= 0
-  const fills = state?.total_fills ?? 0
-  const pct24h = state?.price_change_24h_pct ?? 0
-  const gridLevels = state?.grid_levels ?? 10
-  const gridSpacing = state?.grid_spacing_pct ?? 0.8
 
   return (
     <TouchableOpacity
-      style={styles.heroCard}
+      style={styles.card}
       onPress={() => router.push('/agent/slug-001' as any)}
-      activeOpacity={0.85}
+      activeOpacity={0.8}
     >
-      {/* Top row */}
-      <View style={styles.heroTop}>
-        <View style={styles.heroTitleRow}>
-          <View style={styles.heroAvatar}>
-            <Text style={styles.heroAvatarText}>⬡</Text>
+      <View style={styles.cardTop}>
+        <View style={styles.cardTopLeft}>
+          <View style={[styles.avatar, { borderColor: color, backgroundColor: 'rgba(217,119,87,0.1)' }]}>
+            <Text style={[styles.avatarInitial, { color: Colors.accentAmber }]}>⬡</Text>
           </View>
           <View style={{ gap: 2 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Text style={styles.heroName}>Slug #001</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+              <Text style={styles.agentName}>Slug #001</Text>
               <View style={styles.paperBadge}>
                 <Text style={styles.paperBadgeText}>PAPER</Text>
               </View>
             </View>
-            <Text style={styles.heroHandle}>@slugs/range-farmer</Text>
+            <Text style={styles.agentSlug}>@slugs/range-farmer</Text>
           </View>
         </View>
-        <View style={styles.heroStatusBadge}>
-          <View style={[styles.heroDot, { backgroundColor: color }]} />
-          <Text style={[styles.heroStatusText, { color }]}>{label}</Text>
+        <View style={styles.statusBadge}>
+          <View style={[styles.statusDot, { backgroundColor: color }]} />
+          <Text style={[styles.statusText, { color }]}>{label}</Text>
         </View>
       </View>
-
-      {/* PnL */}
-      <View style={styles.heroPnlRow}>
-        <Text style={[styles.heroPnl, { color: isPositive ? Colors.accentGreen : Colors.accentRed }]}>
-          {isPositive ? '+$' : '-$'}{Math.abs(sessionPnl).toFixed(2)}
-        </Text>
-        <Text style={styles.heroPnlLabel}>session pnl</Text>
-      </View>
-
-      {/* Stats */}
-      <View style={styles.heroStatsRow}>
-        <View style={styles.heroStat}>
-          <Text style={styles.heroStatLabel}>BTC</Text>
-          <Text style={styles.heroStatValue}>
-            {btcPrice > 0 ? `$${btcPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'}
+      <View style={styles.statsRow}>
+        <View style={styles.stat}>
+          <Text style={styles.statLabel}>SESSION PNL</Text>
+          <Text style={[styles.statValue, { color: isPositive ? Colors.accentGreen : Colors.accentRed }]}>
+            {isPositive ? '+$' : '-$'}{Math.abs(sessionPnl).toFixed(2)}
           </Text>
-        </View>
-        <View style={styles.heroStatDivider} />
-        <View style={styles.heroStat}>
-          <Text style={styles.heroStatLabel}>24H</Text>
-          <Text style={[styles.heroStatValue, { color: pct24h >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-            {pct24h >= 0 ? '+' : ''}{pct24h.toFixed(2)}%
-          </Text>
-        </View>
-        <View style={styles.heroStatDivider} />
-        <View style={styles.heroStat}>
-          <Text style={styles.heroStatLabel}>FILLS</Text>
-          <Text style={styles.heroStatValue}>{fills}</Text>
         </View>
         <View style={{ flex: 1 }} />
-        <View style={styles.heroTag}>
-          <Text style={styles.heroTagText}>{gridLevels}L · {gridSpacing}%</Text>
+        <View style={styles.tag}>
+          <Text style={styles.tagText}>grid</Text>
         </View>
-      </View>
-
-      {/* Description */}
-      <Text style={styles.heroDesc}>
-        Farming BTC volatility with a dynamic grid. Buys dips, sells bounces, holds the range.
-      </Text>
-
-      <View style={styles.heroFooter}>
-        <Text style={styles.heroStrategy}>Dynamic Grid</Text>
-        <Text style={styles.heroChevron}>View →</Text>
       </View>
     </TouchableOpacity>
   )
@@ -391,7 +352,7 @@ export default function SlugsScreen() {
             <Text style={styles.liveText}>Live</Text>
           </View>
         </View>
-        <Slug001HeroCard state={slug001} />
+        <Slug001Card state={slug001} />
 
         {/* User's own agents */}
         {loading ? (
@@ -455,30 +416,6 @@ const styles = StyleSheet.create({
   liveText: { fontSize: 11, fontWeight: '700', color: Colors.accentGreen },
   deployLink: { fontSize: 12, fontWeight: '600', color: Colors.accentAmber },
 
-  // Hero card
-  heroCard: {
-    backgroundColor: '#0d0d0d',
-    borderRadius: 20,
-    padding: 20,
-    gap: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(217,119,87,0.2)',
-  },
-  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  heroTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  heroAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(217,119,87,0.12)',
-    borderWidth: 1.5,
-    borderColor: Colors.accentAmber,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  heroAvatarText: { fontSize: 22, color: Colors.accentAmber },
-  heroName: { fontSize: 18, fontWeight: '700', color: Colors.textPrimary },
-  heroHandle: { fontSize: 11, color: Colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   paperBadge: {
     backgroundColor: 'rgba(217,119,87,0.12)',
     borderRadius: 6,
@@ -488,32 +425,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(217,119,87,0.3)',
   },
   paperBadgeText: { fontSize: 9, fontWeight: '700', color: Colors.accentAmber, letterSpacing: 0.8 },
-  heroStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
-  heroDot: { width: 7, height: 7, borderRadius: 4 },
-  heroStatusText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
-
-  heroPnlRow: { gap: 2 },
-  heroPnl: { fontSize: 36, fontWeight: '800', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: -1 },
-  heroPnlLabel: { fontSize: 11, color: Colors.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-
-  heroStatsRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  heroStat: { gap: 3 },
-  heroStatLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2 },
-  heroStatValue: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  heroStatDivider: { width: 1, height: 28, backgroundColor: Colors.bgBorder },
-  heroTag: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  heroTagText: { fontSize: 10, fontWeight: '600', color: Colors.textMuted },
-
-  heroDesc: { fontSize: 13, color: Colors.textSecondary, lineHeight: 20 },
-  heroFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  heroStrategy: { fontSize: 11, fontWeight: '700', color: Colors.accentAmber, letterSpacing: 0.5 },
-  heroChevron: { fontSize: 13, color: Colors.textMuted, fontWeight: '600' },
-
   // User agent card
   card: { backgroundColor: '#0f0f0f', borderRadius: 16, padding: 16, gap: 14 },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
