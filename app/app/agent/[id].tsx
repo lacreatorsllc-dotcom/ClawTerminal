@@ -662,12 +662,23 @@ function formatTime001(ts: string): string {
 
 type TbTab = 'chat' | 'status' | 'activity'
 
+const TB_SLASH_COMMANDS = [
+  { cmd: '/help',      desc: 'Show available commands' },
+  { cmd: '/status',    desc: 'Agent status & health' },
+  { cmd: '/positions', desc: 'Open positions with live P&L' },
+  { cmd: '/pnl',       desc: 'Session P&L summary' },
+  { cmd: '/summary',   desc: 'Daily market briefing' },
+  { cmd: '/pause',     desc: 'Pause the agent' },
+  { cmd: '/resume',    desc: 'Resume the agent' },
+]
+
 function TradingBoyScreen({ agentId }: { agentId: string }) {
   const [activeTab, setActiveTab] = useState<TbTab>('chat')
   const [messages, setMessages] = useState<any[]>([])
   const [agentDoc, setAgentDoc] = useState<any>(null)
   const [decisions, setDecisions] = useState<any[]>([])
   const [input, setInput] = useState('')
+  const [cmdPickerVisible, setCmdPickerVisible] = useState(false)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
 
@@ -782,11 +793,40 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               )
             }}
           />
+          {cmdPickerVisible && (
+            <ScrollView style={styles.cmdPicker} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {TB_SLASH_COMMANDS.filter(c => c.cmd.startsWith(input)).map((c) => (
+                <TouchableOpacity
+                  key={c.cmd}
+                  style={styles.cmdPickerRow}
+                  onPress={async () => {
+                    setCmdPickerVisible(false)
+                    setInput('')
+                    if (!user) return
+                    await addMessage(agentId, {
+                      agent_id: agentId,
+                      user_id: user.uid ?? (user as any).id,
+                      direction: 'inbound',
+                      content: c.cmd,
+                    })
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.cmdPickerCmd}>{c.cmd}</Text>
+                  <Text style={styles.cmdPickerDesc}>{c.desc}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
           <View style={tb.inputRow}>
             <TextInput
               style={tb.input}
               value={input}
-              onChangeText={setInput}
+              onChangeText={(v) => {
+                setInput(v)
+                const matches = TB_SLASH_COMMANDS.filter(c => c.cmd.startsWith(v))
+                setCmdPickerVisible(v.startsWith('/') && !v.includes(' ') && !(matches.length === 1 && matches[0].cmd === v))
+              }}
               placeholder={`Message ${agentName}...`}
               placeholderTextColor={Colors.textMuted}
               onSubmitEditing={sendChat}
@@ -965,9 +1005,19 @@ const tb = StyleSheet.create({
 
 // ── BlueChipScreen ────────────────────────────────────────────────────────────
 
+const BC_SLASH_COMMANDS = [
+  { cmd: '/help',      desc: 'Show available commands' },
+  { cmd: '/status',    desc: 'Agent status & health' },
+  { cmd: '/positions', desc: 'Open positions with live P&L' },
+  { cmd: '/pnl',       desc: 'Session P&L summary' },
+  { cmd: '/summary',   desc: 'Daily market briefing' },
+  { cmd: '/agents',    desc: 'List connected agents' },
+]
+
 function BlueChipScreen({ agentId }: { agentId: string }) {
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState('')
+  const [cmdPickerVisible, setCmdPickerVisible] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
@@ -1036,12 +1086,43 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
         }}
       />
 
+      {/* Slash command picker */}
+      {cmdPickerVisible && (
+        <ScrollView style={styles.cmdPicker} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {BC_SLASH_COMMANDS.filter(c => c.cmd.startsWith(input)).map((c) => (
+            <TouchableOpacity
+              key={c.cmd}
+              style={styles.cmdPickerRow}
+              onPress={async () => {
+                setCmdPickerVisible(false)
+                setInput('')
+                if (!user) return
+                await addMessage(agentId, {
+                  agent_id: agentId,
+                  user_id: (user as any).id ?? (user as any).uid,
+                  direction: 'inbound',
+                  content: c.cmd,
+                })
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cmdPickerCmd}>{c.cmd}</Text>
+              <Text style={styles.cmdPickerDesc}>{c.desc}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
       {/* Input */}
       <View style={s001.inputRow}>
         <TextInput
           style={s001.input}
           value={input}
-          onChangeText={setInput}
+          onChangeText={(v) => {
+            setInput(v)
+            const matches = BC_SLASH_COMMANDS.filter(c => c.cmd.startsWith(v))
+            setCmdPickerVisible(v.startsWith('/') && !v.includes(' ') && !(matches.length === 1 && matches[0].cmd === v))
+          }}
           placeholder="Message Blue Chip..."
           placeholderTextColor={Colors.textMuted}
           onSubmitEditing={sendChat}

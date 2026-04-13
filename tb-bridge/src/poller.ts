@@ -1,6 +1,13 @@
 import { db, FieldValue } from './firebase'
 import { fetchAgentStatus, fetchDecisions } from './api'
 
+// Strip undefined values — Firestore rejects them (null is fine)
+function sanitize(obj: Record<string, any>): Record<string, any> {
+  return Object.fromEntries(
+    Object.entries(obj).map(([k, v]) => [k, v === undefined ? null : v])
+  )
+}
+
 export function startPoller(
   firestoreAgentId: string,
   apiKey: string,
@@ -36,7 +43,7 @@ export function startPoller(
           .doc(decision.id)
         batch.set(
           ref,
-          {
+          sanitize({
             id: decision.id,
             traderId: decision.traderId,
             eventTime: decision.eventTime,
@@ -52,7 +59,7 @@ export function startPoller(
             emotionalTag: decision.emotionalTag,
             thesisAccuracy: decision.thesisAccuracy,
             synced_at: FieldValue.serverTimestamp(),
-          },
+          }),
           { merge: true },
         )
       }

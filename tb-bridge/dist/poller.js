@@ -3,6 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.startPoller = startPoller;
 const firebase_1 = require("./firebase");
 const api_1 = require("./api");
+// Strip undefined values — Firestore rejects them (null is fine)
+function sanitize(obj) {
+    return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, v === undefined ? null : v]));
+}
 function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId) {
     async function poll() {
         try {
@@ -29,7 +33,7 @@ function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId) {
                     .doc(firestoreAgentId)
                     .collection('decisions')
                     .doc(decision.id);
-                batch.set(ref, {
+                batch.set(ref, sanitize({
                     id: decision.id,
                     traderId: decision.traderId,
                     eventTime: decision.eventTime,
@@ -45,7 +49,7 @@ function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId) {
                     emotionalTag: decision.emotionalTag,
                     thesisAccuracy: decision.thesisAccuracy,
                     synced_at: firebase_1.FieldValue.serverTimestamp(),
-                }, { merge: true });
+                }), { merge: true });
             }
             await batch.commit();
             console.log(`[poller:${firestoreAgentId}] synced`);

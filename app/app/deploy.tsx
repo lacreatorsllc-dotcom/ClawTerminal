@@ -72,8 +72,8 @@ export default function DeployScreen() {
       if (!res.ok) throw new Error(data.error ?? 'Connect failed')
       const agents: { id: string; name: string; tbAgentId: string }[] = data.agents ?? []
       if (agents.length === 0) throw new Error('No agents found for this API key')
-      const first = agents[0]
-      setDeployed({ id: first.id, name: first.name, type: 'cabal_trading_boy' })
+      // Use first agent name for success screen; all agents now visible in agents tab
+      setDeployed({ id: agents[0].id, name: agents.map(a => a.name).join(', '), type: 'cabal_trading_boy' })
       setStep('success')
     } catch (e: any) {
       setError(e.message ?? 'Connect failed')
@@ -333,10 +333,12 @@ export default function DeployScreen() {
             <TouchableOpacity
               style={s.cta}
               onPress={() => {
-                router.replace(`/agent/${deployed.id}` as any)
+                deployed.type === 'cabal_trading_boy'
+                  ? router.replace('/(tabs)/agents' as any)
+                  : router.replace(`/agent/${deployed.id}` as any)
               }}
             >
-              <Text style={s.ctaText}>Open Agent</Text>
+              <Text style={s.ctaText}>{deployed.type === 'cabal_trading_boy' ? 'View Agents' : 'Open Agent'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.secondaryBtn} onPress={() => router.back()}>
               <Text style={s.secondaryBtnText}>Back to Agents</Text>

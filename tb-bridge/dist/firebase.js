@@ -8,3 +8,4 @@ if ((0, app_1.getApps)().length === 0) {
     (0, app_1.initializeApp)(); // ADC — works automatically on Cloud Run
 }
 exports.db = (0, firestore_1.getFirestore)();
+exports.db.settings({ ignoreUndefinedProperties: true });
