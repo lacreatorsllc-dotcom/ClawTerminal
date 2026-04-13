@@ -111,6 +111,55 @@ export async function createAgent(uid: string, name: string, metadata?: Record<s
   return ref.id
 }
 
+export async function createRangeFarmerAgent(uid: string, name: string): Promise<string> {
+  const ref = await addDoc(collection(db, 'agents'), {
+    user_id: uid,
+    name,
+    status: 'connected',
+    last_seen: serverTimestamp(),
+    agent_type: 'range_farmer',
+    hosted: true,
+    paper_mode: true,
+    deployment_status: 'active',
+    metadata: { agent_type: 'range_farmer', hosted: true, paper_mode: true, platform: 'grid' },
+    created_at: serverTimestamp(),
+  })
+  // Create per-user instance state
+  await setDoc(doc(db, 'agent_types', 'range_farmer', 'instances', ref.id), {
+    user_id: uid,
+    agent_id: ref.id,
+    session_pnl: 0,
+    total_fills: 0,
+    positions: [],
+    pnl_history: [],
+    created_at: serverTimestamp(),
+  })
+  return ref.id
+}
+
+export async function createCabalAgent(uid: string, cabalChatId: string): Promise<string> {
+  const ref = await addDoc(collection(db, 'agents'), {
+    user_id: uid,
+    name: 'Blue Chip',
+    status: 'connected',
+    last_seen: serverTimestamp(),
+    agent_type: 'cabal_blue_chip',
+    hosted: false,
+    paper_mode: false,
+    cabal_chat_id: cabalChatId,
+    deployment_status: 'active',
+    metadata: { agent_type: 'cabal_blue_chip', hosted: false, platform: 'cabal', cabal_chat_id: cabalChatId },
+    created_at: serverTimestamp(),
+  })
+  return ref.id
+}
+
+export function subscribeToRangeFarmerInstance(agentId: string, cb: (state: any) => void) {
+  return onSnapshot(doc(db, 'agent_types', 'range_farmer', 'instances', agentId), (snap) => {
+    if (snap.exists()) cb({ id: snap.id, ...snap.data() })
+  })
+}
+
 export async function updateAgentStatus(agentId: string, status: string, metadata?: Record<string, unknown>) {
   const data: Record<string, unknown> = { status, last_seen: serverTimestamp() }
   if (metadata) data.metadata = metadata

@@ -264,8 +264,8 @@ export default function SlugsScreen() {
           {username && <Text style={styles.handleText}>@{username}</Text>}
         </View>
         <View style={styles.headerBtns}>
-          <TouchableOpacity style={styles.connectBtn} onPress={() => router.push('/connect')}>
-            <Text style={styles.connectBtnText}>+ Connect</Text>
+          <TouchableOpacity style={styles.connectBtn} onPress={() => router.push('/deploy' as any)}>
+            <Text style={styles.connectBtnText}>+ Deploy</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -354,6 +354,44 @@ export default function SlugsScreen() {
         </View>
         <Slug001Card state={slug001} />
 
+        {/* Marketplace */}
+        <View style={{ marginTop: 24 }}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionLabel}>MARKETPLACE</Text>
+          </View>
+          <View style={{ gap: 10 }}>
+            <TouchableOpacity style={styles.marketCard} onPress={() => router.push('/deploy' as any)} activeOpacity={0.8}>
+              <View style={[styles.marketIcon, { borderColor: Colors.accentAmber, backgroundColor: 'rgba(217,119,87,0.1)' }]}>
+                <Text style={{ fontSize: 18 }}>⬡</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.marketName}>Range Farmer</Text>
+                  <View style={styles.paperBadge}><Text style={styles.paperBadgeText}>PAPER</Text></View>
+                  <View style={styles.hostedBadge}><Text style={styles.hostedBadgeText}>HOSTED</Text></View>
+                </View>
+                <Text style={styles.marketDesc}>BTC grid trading · we host it 24/7</Text>
+              </View>
+              <Ionicons name="add-circle-outline" size={22} color={Colors.accentAmber} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.marketCard} onPress={() => router.push('/deploy' as any)} activeOpacity={0.8}>
+              <View style={[styles.marketIcon, { borderColor: '#6a9bcc', backgroundColor: 'rgba(106,155,204,0.1)' }]}>
+                <Text style={{ fontSize: 18 }}>◈</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.marketName}>Blue Chip</Text>
+                  <View style={[styles.hostedBadge, { borderColor: '#6a9bcc', backgroundColor: 'rgba(106,155,204,0.1)' }]}>
+                    <Text style={[styles.hostedBadgeText, { color: '#6a9bcc' }]}>CABAL</Text>
+                  </View>
+                </View>
+                <Text style={styles.marketDesc}>cabal.ventures trading bot · connect via chat ID</Text>
+              </View>
+              <Ionicons name="add-circle-outline" size={22} color="#6a9bcc" />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* User's own agents */}
         {loading ? (
           <View style={{ gap: 10, marginTop: 24 }}>
@@ -364,7 +402,7 @@ export default function SlugsScreen() {
           <View style={{ gap: 10, marginTop: 24 }}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionLabel}>YOUR SLUGS</Text>
-              <TouchableOpacity onPress={() => setDeployVisible(true)}>
+              <TouchableOpacity onPress={() => router.push('/deploy' as any)}>
                 <Text style={styles.deployLink}>+ Deploy</Text>
               </TouchableOpacity>
             </View>
@@ -372,9 +410,9 @@ export default function SlugsScreen() {
           </View>
         ) : (
           <View style={styles.connectPrompt}>
-            <TouchableOpacity style={styles.connectPromptBtn} onPress={() => router.push('/connect')}>
+            <TouchableOpacity style={styles.connectPromptBtn} onPress={() => router.push('/deploy' as any)}>
               <Ionicons name="add" size={16} color={Colors.accentAmber} />
-              <Text style={styles.connectPromptText}>Connect your own agent</Text>
+              <Text style={styles.connectPromptText}>Deploy your first agent</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -445,6 +483,23 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   tag: { backgroundColor: '#1a1a1a', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
   tagText: { fontSize: 9, color: Colors.textMuted, fontWeight: '600', letterSpacing: 0.5 },
+
+  hostedBadge: {
+    backgroundColor: 'rgba(52,211,153,0.1)', borderWidth: 1, borderColor: Colors.accentGreen,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5,
+  },
+  hostedBadgeText: { fontSize: 9, fontWeight: '700', color: Colors.accentGreen, letterSpacing: 0.5 },
+  marketCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#0f0f0f', borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: '#1a1a1a',
+  },
+  marketIcon: {
+    width: 44, height: 44, borderRadius: 12, borderWidth: 1.5,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  marketName: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
+  marketDesc: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
 
   // Connect prompt
   connectPrompt: { marginTop: 24, alignItems: 'center' },
