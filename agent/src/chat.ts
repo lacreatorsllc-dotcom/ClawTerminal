@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI, FunctionDeclaration, SchemaType } from '@google/generative-ai'
+import { Timestamp } from 'firebase-admin/firestore'
 import { MESSAGES_COL, FieldValue } from './firebase'
 import { getState, placePaperTrade, pause, resume } from './trading'
 
@@ -81,22 +82,17 @@ async function writeReply(content: string) {
 export function startChatListener() {
   console.log('[chat] listening for messages...')
 
-  let initialized = false
+  // Only listen to messages created from this moment forward
+  const startTimestamp = Timestamp.now()
   const processed = new Set<string>()
 
   MESSAGES_COL
     .where('direction', '==', 'inbound')
+    .where('created_at', '>=', startTimestamp)
     .onSnapshot(
       async (snap) => {
         const added = snap.docChanges().filter(c => c.type === 'added')
-
-        // On first snapshot, just mark all existing messages as seen
-        if (!initialized) {
-          initialized = true
-          for (const change of added) processed.add(change.doc.id)
-          console.log(`[chat] ready, skipped ${processed.size} existing messages`)
-          return
-        }
+        console.log(`[chat] snapshot: ${added.length} new messages`)
 
         for (const change of added) {
           if (processed.has(change.doc.id)) continue

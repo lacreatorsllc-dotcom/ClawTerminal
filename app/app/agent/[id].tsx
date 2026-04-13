@@ -671,9 +671,13 @@ function Slug001Screen() {
   useEffect(() => { return subscribeToSlug001(setState) }, [])
   useEffect(() => { return subscribeToSlug001Feed((events) => setFeed(events)) }, [])
   useEffect(() => { return subscribeToMessages('slug-001', setMessages) }, [])
+  const prevMessageCount = useRef(0)
   useEffect(() => {
-    if (tab === 'chat' && messages.length > 0 && atBottom) {
-      setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100)
+    if (tab !== 'chat' || messages.length === 0) return
+    const isInitialLoad = prevMessageCount.current === 0
+    prevMessageCount.current = messages.length
+    if (isInitialLoad || atBottom) {
+      setTimeout(() => flatRef.current?.scrollToEnd({ animated: !isInitialLoad }), 100)
     }
   }, [messages, tab])
 
