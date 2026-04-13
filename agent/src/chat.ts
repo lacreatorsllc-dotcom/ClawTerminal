@@ -81,55 +81,62 @@ async function writeReply(content: string) {
 export function startChatListener() {
   console.log('[chat] listening for messages...')
 
+  const startTime = new Date()
+
   MESSAGES_COL
     .where('direction', '==', 'inbound')
-    .orderBy('created_at', 'desc')
-    .limit(1)
-    .onSnapshot(async (snap) => {
-      if (snap.empty) return
-      const change = snap.docChanges().find(c => c.type === 'added')
-      if (!change) return
+    .onSnapshot(
+      async (snap) => {
+        const added = snap.docChanges().filter(c => c.type === 'added')
+        for (const change of added) {
+          const msg = change.doc.data()
 
-      const msg = change.doc.data()
-      const userText = msg.content as string
-      if (!userText?.trim()) return
+          // Skip messages that existed before this process started
+          const createdAt = msg.created_at?.toDate?.() ?? new Date(0)
+          if (createdAt < startTime) continue
 
-      console.log(`[chat] user: ${userText}`)
+          const userText = msg.content as string
+          if (!userText?.trim()) continue
 
-      try {
-        const model = genai.getGenerativeModel({
-          model: 'gemini-2.0-flash',
-          systemInstruction: SYSTEM_PROMPT,
-          tools: [{ functionDeclarations: tools }],
-        })
+          console.log(`[chat] user: ${userText}`)
 
-        const chat = model.startChat()
-        let response = await chat.sendMessage(userText)
-        let candidate = response.response
+          try {
+            const model = genai.getGenerativeModel({
+              model: 'gemini-2.0-flash',
+              systemInstruction: SYSTEM_PROMPT,
+              tools: [{ functionDeclarations: tools }],
+            })
 
-        // Handle tool calls in a loop
-        while (candidate.functionCalls()?.length) {
-          const calls = candidate.functionCalls()!
-          const toolResults = await Promise.all(
-            calls.map(async (call) => ({
-              functionResponse: {
-                name: call.name,
-                response: { result: await executeTool(call.name, call.args as Record<string, unknown>) },
-              },
-            }))
-          )
-          response = await chat.sendMessage(toolResults)
-          candidate = response.response
+            const chat = model.startChat()
+            let response = await chat.sendMessage(userText)
+            let candidate = response.response
+
+            // Handle tool calls in a loop
+            while (candidate.functionCalls()?.length) {
+              const calls = candidate.functionCalls()!
+              const toolResults = await Promise.all(
+                calls.map(async (call) => ({
+                  functionResponse: {
+                    name: call.name,
+                    response: { result: await executeTool(call.name, call.args as Record<string, unknown>) },
+                  },
+                }))
+              )
+              response = await chat.sendMessage(toolResults)
+              candidate = response.response
+            }
+
+            const reply = candidate.text()
+            if (reply?.trim()) {
+              console.log(`[chat] agent: ${reply}`)
+              await writeReply(reply.trim())
+            }
+          } catch (err) {
+            console.error('[chat error]', err)
+            await writeReply('Error processing your message. Try again.')
+          }
         }
-
-        const reply = candidate.text()
-        if (reply?.trim()) {
-          console.log(`[chat] agent: ${reply}`)
-          await writeReply(reply.trim())
-        }
-      } catch (err) {
-        console.error('[chat error]', err)
-        await writeReply('Error processing your message. Try again.')
-      }
-    })
+      },
+      (err) => console.error('[chat] snapshot error:', err)
+    )
 }
