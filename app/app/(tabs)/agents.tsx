@@ -354,44 +354,6 @@ export default function SlugsScreen() {
         </View>
         <Slug001Card state={slug001} />
 
-        {/* Marketplace */}
-        <View style={{ marginTop: 24 }}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionLabel}>MARKETPLACE</Text>
-          </View>
-          <View style={{ gap: 10 }}>
-            <TouchableOpacity style={styles.marketCard} onPress={() => router.push('/deploy' as any)} activeOpacity={0.8}>
-              <View style={[styles.marketIcon, { borderColor: Colors.accentAmber, backgroundColor: 'rgba(217,119,87,0.1)' }]}>
-                <Text style={{ fontSize: 18 }}>⬡</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.marketName}>Range Farmer</Text>
-                  <View style={styles.paperBadge}><Text style={styles.paperBadgeText}>PAPER</Text></View>
-                  <View style={styles.hostedBadge}><Text style={styles.hostedBadgeText}>HOSTED</Text></View>
-                </View>
-                <Text style={styles.marketDesc}>BTC grid trading · we host it 24/7</Text>
-              </View>
-              <Ionicons name="add-circle-outline" size={22} color={Colors.accentAmber} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.marketCard} onPress={() => router.push('/deploy' as any)} activeOpacity={0.8}>
-              <View style={[styles.marketIcon, { borderColor: '#6a9bcc', backgroundColor: 'rgba(106,155,204,0.1)' }]}>
-                <Text style={{ fontSize: 18 }}>◈</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <Text style={styles.marketName}>Blue Chip</Text>
-                  <View style={[styles.hostedBadge, { borderColor: '#6a9bcc', backgroundColor: 'rgba(106,155,204,0.1)' }]}>
-                    <Text style={[styles.hostedBadgeText, { color: '#6a9bcc' }]}>CABAL</Text>
-                  </View>
-                </View>
-                <Text style={styles.marketDesc}>cabal.ventures trading bot · connect via chat ID</Text>
-              </View>
-              <Ionicons name="add-circle-outline" size={22} color="#6a9bcc" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
         {/* User's own agents */}
         {loading ? (
           <View style={{ gap: 10, marginTop: 24 }}>

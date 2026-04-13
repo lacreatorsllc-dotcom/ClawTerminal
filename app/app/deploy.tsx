@@ -170,18 +170,31 @@ export default function DeployScreen() {
         {/* ── Step: Cabal ── */}
         {step === 'cabal' && (
           <>
-            <Text style={s.subtitle}>Connect your existing Blue Chip bot from cabal.ventures.</Text>
+            <Text style={s.subtitle}>Blue Chip is a trading bot by our partners at cabal.ventures. Connect yours or get started.</Text>
+
+            {/* New to cabal */}
+            <View style={s.cabalBanner}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cabalBannerTitle}>New to cabal.ventures?</Text>
+                <Text style={s.cabalBannerDesc}>Get a Blue Chip trading bot and manage it right here in the app.</Text>
+              </View>
+              <TouchableOpacity style={s.cabalBannerBtn} onPress={() => Linking.openURL('https://cabal.ventures')}>
+                <Text style={s.cabalBannerBtnText}>Get Started</Text>
+                <Ionicons name="open-outline" size={12} color="#6a9bcc" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.dividerRow}>
+              <View style={s.dividerLine} />
+              <Text style={s.dividerText}>already have one?</Text>
+              <View style={s.dividerLine} />
+            </View>
 
             <View style={s.stepList}>
               <Text style={s.stepItem}>1. Open your Blue Chip bot on Telegram</Text>
               <Text style={s.stepItem}>2. Send <Text style={s.code}>/whoami</Text> to the bot</Text>
               <Text style={s.stepItem}>3. Copy your Chat ID and paste it below</Text>
             </View>
-
-            <TouchableOpacity style={s.telegramBtn} onPress={() => Linking.openURL('https://cabal.ventures')}>
-              <Text style={s.telegramBtnText}>Open cabal.ventures</Text>
-              <Ionicons name="open-outline" size={14} color={Colors.accentAmber} />
-            </TouchableOpacity>
 
             <Text style={s.fieldLabel}>Chat ID</Text>
             <TextInput
@@ -194,7 +207,7 @@ export default function DeployScreen() {
               autoCapitalize="none"
             />
 
-            <Text style={s.hintText}>The Chat ID links your bot to this app. Messages you send here are forwarded to your bot.</Text>
+            <Text style={s.hintText}>Links your bot to this app. Chat here instead of Telegram — same bot, all your slash commands work.</Text>
 
             {error ? <Text style={s.errorText}>{error}</Text> : null}
 
@@ -323,6 +336,24 @@ const s = StyleSheet.create({
 
   secondaryBtn: { alignItems: 'center', paddingVertical: 12 },
   secondaryBtnText: { fontSize: 14, color: Colors.textMuted },
+
+  cabalBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: 'rgba(106,155,204,0.08)', borderRadius: 14,
+    borderWidth: 1, borderColor: 'rgba(106,155,204,0.25)', padding: 16,
+  },
+  cabalBannerTitle: { fontSize: 14, fontWeight: '600', color: Colors.textPrimary, marginBottom: 3 },
+  cabalBannerDesc: { fontSize: 12, color: Colors.textSecondary, lineHeight: 17 },
+  cabalBannerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(106,155,204,0.12)', borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(106,155,204,0.3)',
+    paddingHorizontal: 12, paddingVertical: 8,
+  },
+  cabalBannerBtnText: { fontSize: 12, fontWeight: '700', color: '#6a9bcc' },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: Colors.borderSubtle },
+  dividerText: { fontSize: 11, color: Colors.textMuted },
 
   successBlock: { alignItems: 'center', gap: 16, paddingTop: 32 },
   successIcon: {
