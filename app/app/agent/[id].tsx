@@ -666,15 +666,22 @@ function Slug001Screen() {
   const [showShare, setShowShare] = useState(false)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
+  const [atBottom, setAtBottom] = useState(true)
 
   useEffect(() => { return subscribeToSlug001(setState) }, [])
   useEffect(() => { return subscribeToSlug001Feed((events) => setFeed(events)) }, [])
   useEffect(() => { return subscribeToMessages('slug-001', setMessages) }, [])
   useEffect(() => {
-    if (tab === 'chat' && messages.length > 0) {
+    if (tab === 'chat' && messages.length > 0 && atBottom) {
       setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100)
     }
   }, [messages, tab])
+
+  function handleScroll(e: any) {
+    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent
+    const distFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y
+    setAtBottom(distFromBottom < 40)
+  }
 
   async function sendChat() {
     const text = input.trim()
@@ -801,28 +808,43 @@ function Slug001Screen() {
         keyboardVerticalOffset={0}
       >
         {profileHeader}
-        <FlatList
-          ref={flatRef}
-          data={messages}
-          keyExtractor={(m) => m.id}
-          contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 16 }}
-          ListEmptyComponent={
-            <View style={s001.emptyTab}>
-              <Text style={s001.emptyTabText}>No messages yet. Say something.</Text>
-            </View>
-          }
-          renderItem={({ item }) => {
-            const isMe = item.direction === 'inbound'
-            return (
-              <View style={[s001.bubble, isMe ? s001.bubbleMe : s001.bubbleAgent]}>
-                <Text style={[s001.bubbleText, isMe ? s001.bubbleTextMe : s001.bubbleTextAgent]}>
-                  {item.content}
-                </Text>
-                <Text style={s001.bubbleTime}>{formatTime001(item.created_at)}</Text>
+        <View style={{ flex: 1 }}>
+          <FlatList
+            ref={flatRef}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 16 }}
+            onScroll={handleScroll}
+            scrollEventThrottle={100}
+            ListEmptyComponent={
+              <View style={s001.emptyTab}>
+                <Text style={s001.emptyTabText}>No messages yet. Say something.</Text>
               </View>
-            )
-          }}
-        />
+            }
+            renderItem={({ item }) => {
+              const isMe = item.direction === 'inbound'
+              return (
+                <View style={[s001.bubble, isMe ? s001.bubbleMe : s001.bubbleAgent]}>
+                  <Text style={[s001.bubbleText, isMe ? s001.bubbleTextMe : s001.bubbleTextAgent]}>
+                    {item.content}
+                  </Text>
+                  <Text style={s001.bubbleTime}>{formatTime001(item.created_at)}</Text>
+                </View>
+              )
+            }}
+          />
+          {!atBottom && (
+            <TouchableOpacity
+              style={s001.scrollDownBtn}
+              onPress={() => {
+                flatRef.current?.scrollToEnd({ animated: true })
+                setAtBottom(true)
+              }}
+            >
+              <Text style={s001.scrollDownText}>↓</Text>
+            </TouchableOpacity>
+          )}
+        </View>
         <View style={s001.inputBar}>
           <TextInput
             style={s001.inputField}
@@ -1081,6 +1103,14 @@ const s001 = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   sendBtnText: { fontSize: 18, color: '#000', fontWeight: '700', lineHeight: 22 },
+  scrollDownBtn: {
+    position: 'absolute', bottom: 12, alignSelf: 'center',
+    backgroundColor: Colors.accentAmber,
+    width: 36, height: 36, borderRadius: 18,
+    justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 4, shadowOffset: { width: 0, height: 2 },
+  },
+  scrollDownText: { fontSize: 18, color: '#000', fontWeight: '700', lineHeight: 22 },
 })
 
 // ── Main Agent Detail Screen ───────────────────────────────────────────────────

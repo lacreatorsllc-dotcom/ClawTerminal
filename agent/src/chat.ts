@@ -103,7 +103,7 @@ export function startChatListener() {
 
           try {
             const model = genai.getGenerativeModel({
-              model: 'gemini-1.5-flash',
+              model: process.env.GEMINI_MODEL ?? 'gemini-1.5-flash',
               systemInstruction: SYSTEM_PROMPT,
               tools: [{ functionDeclarations: tools }],
             })
