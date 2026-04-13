@@ -124,16 +124,7 @@ export async function createRangeFarmerAgent(uid: string, name: string): Promise
     metadata: { agent_type: 'range_farmer', hosted: true, paper_mode: true, platform: 'grid' },
     created_at: serverTimestamp(),
   })
-  // Create per-user instance state
-  await setDoc(doc(db, 'agent_types', 'range_farmer', 'instances', ref.id), {
-    user_id: uid,
-    agent_id: ref.id,
-    session_pnl: 0,
-    total_fills: 0,
-    positions: [],
-    pnl_history: [],
-    created_at: serverTimestamp(),
-  })
+  // Instance doc is created server-side by Cloud Run agent when it detects this agent
   return ref.id
 }
 

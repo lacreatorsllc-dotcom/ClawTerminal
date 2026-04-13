@@ -4,7 +4,9 @@
       "Bash(git -C /Users/mememarketer/Pentagon/ClawTerminal log --oneline -10)",
       "Bash(ls /Users/mememarketer/Pentagon/ClawTerminal/app/app/\\\\\\(tabs\\\\\\)/)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''''skills'''', d.get\\(''''mcpServers'''', {}\\)\\), indent=2\\)\\)\")",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "mcp__plugin_firebase_firebase__firebase_get_security_rules",
+      "mcp__plugin_firebase_firebase__firebase_update_environment"
     ]
   },
   "hooks": {
