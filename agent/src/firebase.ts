@@ -6,7 +6,7 @@ if (!getApps().length) {
   if (serviceAccount) {
     initializeApp({ credential: cert(JSON.parse(serviceAccount)) })
   } else {
-    // Local dev: uses GOOGLE_APPLICATION_CREDENTIALS env var
+    // Cloud Run: use Application Default Credentials (no key needed)
     initializeApp({ projectId: 'slugs-run' })
   }
 }
