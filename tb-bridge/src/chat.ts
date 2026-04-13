@@ -1,8 +1,5 @@
-import OpenAI from 'openai'
 import { db, FieldValue } from './firebase'
 import { pauseAgent, resumeAgent } from './api'
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 
 async function writeReply(firestoreAgentId: string, content: string): Promise<void> {
   await db.collection('agents').doc(firestoreAgentId).collection('messages').add({
@@ -146,34 +143,83 @@ async function handleDecisions(firestoreAgentId: string, limit = 5): Promise<voi
   await writeReply(firestoreAgentId, lines.join('\n\n'))
 }
 
-function buildSystemPrompt(agentName: string, liveState: any, decisions: any[]): string {
-  const state = liveState.state ?? 'UNKNOWN'
-  const positions = liveState.openPositions ?? []
-  const pnl = liveState.dailyPnlUsd ?? 0
-  const trades = liveState.dailyTradeCount ?? 0
+async function handlePnl(firestoreAgentId: string, agentName: string): Promise<void> {
+  const doc = await db.collection('agents').doc(firestoreAgentId).get()
+  const d = doc.data() ?? {}
+  const live = d.live_state ?? {}
+  const pnl = live.dailyPnlUsd ?? 0
+  const trades = live.dailyTradeCount ?? 0
+  const positions: any[] = live.openPositions ?? []
 
-  return `You are ${agentName}, a fully autonomous crypto trading agent on the Cabal Ventures platform.
+  let unrealized = 0
+  for (const p of positions) {
+    unrealized += Number(p.unrealizedPnl ?? p.pnl ?? 0)
+  }
 
-CURRENT STATE:
-- Status: ${state}
-- Open positions: ${positions.length}
-- Daily PnL: $${Number(pnl).toFixed(2)}
-- Daily trades: ${trades}
-${positions.length > 0 ? `\nPOSITIONS:\n${JSON.stringify(positions, null, 2)}` : ''}
+  const sign = (n: number) => (n >= 0 ? '+' : '')
+  const reply =
+    `💰 ${agentName} PnL\n\n` +
+    `Daily realized: ${sign(pnl)}$${Number(pnl).toFixed(2)}\n` +
+    `Unrealized: ${sign(unrealized)}$${unrealized.toFixed(2)}\n` +
+    `Daily trades: ${trades}\n` +
+    `Open positions: ${positions.length}`
 
-RECENT DECISIONS (last 10):
-${decisions.length > 0
-  ? decisions.map((d) => `[${d.eventTime}] ${d.tokenSymbol} ${d.actionType} (${d.confidence}%): ${d.details}`).join('\n')
-  : 'No recent decisions.'}
-
-Behavior:
-- Be concise and data-driven. Use plain text (no markdown).
-- Answer questions about your state, positions, and reasoning.
-- For /help, list the available commands: /status, /agents, /positions, /decisions, /pnl, /pause, /resume.
-- For /pnl, summarize PnL from your state above.
-- For /summary, give a brief daily summary of activity and performance.
-- Never fabricate data not in your context.`
+  await writeReply(firestoreAgentId, reply)
 }
+
+async function handleSummary(firestoreAgentId: string, agentName: string): Promise<void> {
+  const doc = await db.collection('agents').doc(firestoreAgentId).get()
+  const d = doc.data() ?? {}
+  const live = d.live_state ?? {}
+  const state = live.state ?? 'UNKNOWN'
+  const pnl = live.dailyPnlUsd ?? 0
+  const trades = live.dailyTradeCount ?? 0
+  const setups = live.activeConditionalSetups ?? 0
+  const positions: any[] = live.openPositions ?? []
+  const watchlist: string[] = d.watchlist ?? []
+  const paused = d.live_admin?.paused === true
+
+  const decisionsSnap = await db
+    .collection('agents').doc(firestoreAgentId).collection('decisions')
+    .orderBy('eventTime', 'desc').limit(3).get()
+
+  const latestDecisions = decisionsSnap.docs.map((dd) => {
+    const dec = dd.data()
+    return `  · ${dec.actionType ?? '?'} ${dec.tokenSymbol ?? ''} (${dec.confidence ?? '?'}%)`
+  })
+
+  const lines = [
+    `📋 ${agentName} Daily Summary`,
+    ``,
+    `State: ${paused ? 'PAUSED' : state}`,
+    `Watchlist: ${watchlist.length} tokens`,
+    `Trades today: ${trades}`,
+    `Daily PnL: $${Number(pnl).toFixed(2)}`,
+    `Open positions: ${positions.length}`,
+    `Active setups: ${setups}`,
+  ]
+  if (latestDecisions.length > 0) {
+    lines.push(`\nRecent decisions:`)
+    lines.push(...latestDecisions)
+  }
+
+  await writeReply(firestoreAgentId, lines.join('\n'))
+}
+
+function handleHelp(firestoreAgentId: string, agentName: string): Promise<void> {
+  const msg =
+    `🤖 ${agentName} Commands\n\n` +
+    `/status — Agent status & health\n` +
+    `/agents — All your active agents\n` +
+    `/positions — Open positions\n` +
+    `/decisions — Recent trade decisions\n` +
+    `/pnl — Daily profit & loss\n` +
+    `/summary — Daily activity summary\n` +
+    `/pause — Pause this agent\n` +
+    `/resume — Resume this agent`
+  return writeReply(firestoreAgentId, msg)
+}
+
 
 export function startChatListener(
   firestoreAgentId: string,
@@ -239,33 +285,24 @@ export function startChatListener(
             await handleDecisions(firestoreAgentId)
             continue
           }
+          if (text === '/pnl') {
+            await handlePnl(firestoreAgentId, agentName)
+            continue
+          }
+          if (text === '/summary') {
+            await handleSummary(firestoreAgentId, agentName)
+            continue
+          }
+          if (text === '/help') {
+            await handleHelp(firestoreAgentId, agentName)
+            continue
+          }
 
-          // LLM for everything else (free chat + /help, /pnl, /summary, etc.)
-          console.log(`[chat:${firestoreAgentId}] fetching agent doc`)
-          const agentDoc = await db.collection('agents').doc(firestoreAgentId).get()
-          const agentData = agentDoc.data() ?? {}
-          const liveState = agentData.live_state ?? {}
-
-          console.log(`[chat:${firestoreAgentId}] fetching decisions`)
-          const decisionsSnap = await db
-            .collection('agents').doc(firestoreAgentId).collection('decisions')
-            .orderBy('eventTime', 'desc')
-            .limit(10)
-            .get()
-          const decisions = decisionsSnap.docs.map((d) => d.data())
-
-          console.log(`[chat:${firestoreAgentId}] calling OpenAI`)
-          const completion = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: [
-              { role: 'system', content: buildSystemPrompt(agentName, liveState, decisions) },
-              { role: 'user', content: text },
-            ],
-            max_tokens: 400,
-          }, { timeout: 30_000 })
-
-          const reply = completion.choices[0]?.message?.content ?? 'No response.'
-          await writeReply(firestoreAgentId, reply)
+          // Free-form text — no LLM configured yet
+          await writeReply(
+            firestoreAgentId,
+            `Use /help to see available commands.`,
+          )
         } catch (err: any) {
           console.error(`[chat:${firestoreAgentId}] error:`, err?.message, '| code:', err?.code, '| status:', err?.status, '| type:', err?.type, '| cause:', err?.cause?.message)
           await writeReply(firestoreAgentId, 'Error processing your message. Please try again.').catch(() => {})
