@@ -1,5 +1,4 @@
 import OpenAI from 'openai'
-import { Timestamp } from 'firebase-admin/firestore'
 import { db, FieldValue } from './firebase'
 import { pauseAgent, resumeAgent } from './api'
 
@@ -21,20 +20,37 @@ export function startChatListener(
   tbAgentId: string,
   agentName: string,
 ): void {
-  const startTime = Timestamp.now()
+  // Track IDs we've already processed (or that pre-existed at startup)
+  const processedIds = new Set<string>()
+  let initialized = false
 
   const messagesRef = db.collection('agents').doc(firestoreAgentId).collection('messages')
-  const q = messagesRef
-    .where('direction', '==', 'inbound')
-    .where('created_at', '>=', startTime)
-    .orderBy('created_at', 'asc')
+  // Simple orderBy — only needs auto-created single-field index, no composite required
+  const q = messagesRef.orderBy('created_at', 'asc')
+
+  console.log(`[chat:${firestoreAgentId}] listener starting for ${agentName}`)
 
   q.onSnapshot(
     async (snap) => {
+      if (!initialized) {
+        // First snapshot: mark all pre-existing messages as already seen
+        for (const doc of snap.docs) {
+          processedIds.add(doc.id)
+        }
+        initialized = true
+        console.log(`[chat:${firestoreAgentId}] initialized, skipped ${processedIds.size} existing messages`)
+        return
+      }
+
       for (const change of snap.docChanges()) {
         if (change.type !== 'added') continue
+        if (processedIds.has(change.doc.id)) continue
+        processedIds.add(change.doc.id)
 
         const msgData = change.doc.data()
+        // Only respond to inbound messages
+        if (msgData.direction !== 'inbound') continue
+
         const text: string = (msgData.content ?? '').trim()
         if (!text) continue
 

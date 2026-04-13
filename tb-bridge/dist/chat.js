@@ -5,7 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.startChatListener = startChatListener;
 const openai_1 = __importDefault(require("openai"));
-const firestore_1 = require("firebase-admin/firestore");
 const firebase_1 = require("./firebase");
 const api_1 = require("./api");
 const openai = new openai_1.default({ apiKey: process.env.OPENAI_API_KEY });
@@ -19,17 +18,33 @@ async function writeReply(firestoreAgentId, content) {
     });
 }
 function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName) {
-    const startTime = firestore_1.Timestamp.now();
+    // Track IDs we've already processed (or that pre-existed at startup)
+    const processedIds = new Set();
+    let initialized = false;
     const messagesRef = firebase_1.db.collection('agents').doc(firestoreAgentId).collection('messages');
-    const q = messagesRef
-        .where('direction', '==', 'inbound')
-        .where('created_at', '>=', startTime)
-        .orderBy('created_at', 'asc');
+    // Simple orderBy — only needs auto-created single-field index, no composite required
+    const q = messagesRef.orderBy('created_at', 'asc');
+    console.log(`[chat:${firestoreAgentId}] listener starting for ${agentName}`);
     q.onSnapshot(async (snap) => {
+        if (!initialized) {
+            // First snapshot: mark all pre-existing messages as already seen
+            for (const doc of snap.docs) {
+                processedIds.add(doc.id);
+            }
+            initialized = true;
+            console.log(`[chat:${firestoreAgentId}] initialized, skipped ${processedIds.size} existing messages`);
+            return;
+        }
         for (const change of snap.docChanges()) {
             if (change.type !== 'added')
                 continue;
+            if (processedIds.has(change.doc.id))
+                continue;
+            processedIds.add(change.doc.id);
             const msgData = change.doc.data();
+            // Only respond to inbound messages
+            if (msgData.direction !== 'inbound')
+                continue;
             const text = (msgData.content ?? '').trim();
             if (!text)
                 continue;
