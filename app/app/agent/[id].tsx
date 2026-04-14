@@ -3086,7 +3086,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   bubbleCmdOut: {
-    color: '#281e1a',
+    color: '#4c1d95',
     fontWeight: '700',
   },
   bubblePnlPos: { color: Colors.accentGreen, fontWeight: '700' },
