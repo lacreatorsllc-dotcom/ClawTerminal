@@ -795,13 +795,11 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
                 const isUser = item.direction === 'inbound'
                 const isAlert = item.alert === true
                 const bubbleBg = isUser
-                  ? '#0e0a09'
+                  ? '#281e1a'
                   : (isAlert ? '#1a1500' : '#1a1a1a')
-                const bubbleBorder = isUser ? 1 : (isAlert ? 1 : 0)
-                const bubbleBorderColor = isUser
-                  ? Colors.accentCrimson
-                  : (isAlert ? Colors.accentAmber : 'transparent')
-                const textColor = isUser ? Colors.accentCrimson : Colors.textPrimary
+                const bubbleBorder = isAlert ? 1 : 0
+                const bubbleBorderColor = isAlert ? Colors.accentAmber : 'transparent'
+                const textColor = isUser ? '#d77556' : Colors.textPrimary
                 return (
                   <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                     <View style={{
@@ -3076,14 +3074,12 @@ const styles = StyleSheet.create({
   },
   bubbleOut: {
     alignSelf: 'flex-end',
-    backgroundColor: '#0e0a09',
-    borderWidth: 1,
-    borderColor: Colors.accentCrimson,
+    backgroundColor: '#281e1a',
   },
   bubbleImage: { width: IMG_W, height: 200, borderRadius: 10, marginBottom: 6, overflow: 'hidden', backgroundColor: Colors.bgSurface },
   bubblePressed: { opacity: 0.6 },
   bubbleText: { color: Colors.textPrimary, fontSize: 15, lineHeight: 20 },
-  bubbleTextOut: { color: Colors.accentCrimson },
+  bubbleTextOut: { color: '#d77556' },
   bubbleLink: { color: Colors.accentTeal, textDecorationLine: 'underline' },
   bubbleCmd: {
     color: '#a78bfa',
