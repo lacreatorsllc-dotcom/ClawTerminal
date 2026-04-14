@@ -64,6 +64,8 @@ async function handleAgents(firestoreAgentId: string): Promise<void> {
     return
   }
 
+  const fmt = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`
+
   const lines: string[] = ['🤖 Active Agents\n']
   for (const doc of snap.docs) {
     const d = doc.data()
@@ -72,6 +74,7 @@ async function handleAgents(firestoreAgentId: string): Promise<void> {
     const watchlist = d.watchlist ?? []
     const positions = live.openPositions ?? []
     const pnl = live.dailyPnlUsd ?? 0
+    const unrealized = live.unrealizedPnlUsd ?? 0
     const paused = d.live_admin?.paused === true
 
     lines.push(
@@ -80,7 +83,8 @@ async function handleAgents(firestoreAgentId: string): Promise<void> {
       `\n  State: ${paused ? 'PAUSED' : state}` +
       `\n  Watchlist: ${watchlist.length} tokens` +
       `\n  Open: ${positions.length} positions` +
-      `\n  Daily PnL: $${Number(pnl).toFixed(2)}`,
+      `\n  Daily PnL: ${fmt(Number(pnl))}` +
+      `\n  Unrealized: ${fmt(unrealized)}`,
     )
   }
 

@@ -68,6 +68,7 @@ async function handleAgents(firestoreAgentId) {
         await writeReply(firestoreAgentId, 'No active agents found.');
         return;
     }
+    const fmt = (n) => `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
     const lines = ['🤖 Active Agents\n'];
     for (const doc of snap.docs) {
         const d = doc.data();
@@ -76,13 +77,15 @@ async function handleAgents(firestoreAgentId) {
         const watchlist = d.watchlist ?? [];
         const positions = live.openPositions ?? [];
         const pnl = live.dailyPnlUsd ?? 0;
+        const unrealized = live.unrealizedPnlUsd ?? 0;
         const paused = d.live_admin?.paused === true;
         lines.push(`${stateEmoji(paused ? 'PAUSED' : state)} ${d.name ?? 'Agent'}` +
             (paused ? ' (paused)' : '') +
             `\n  State: ${paused ? 'PAUSED' : state}` +
             `\n  Watchlist: ${watchlist.length} tokens` +
             `\n  Open: ${positions.length} positions` +
-            `\n  Daily PnL: $${Number(pnl).toFixed(2)}`);
+            `\n  Daily PnL: ${fmt(Number(pnl))}` +
+            `\n  Unrealized: ${fmt(unrealized)}`);
     }
     await writeReply(firestoreAgentId, lines.join('\n\n'));
 }
