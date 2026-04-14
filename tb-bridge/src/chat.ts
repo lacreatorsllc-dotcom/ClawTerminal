@@ -126,14 +126,14 @@ async function handleStatus(
   const lastSync = freshData ? 'just now' : (getCached(firestoreAgentId) ? new Date(getCached(firestoreAgentId)!.updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown')
 
   const unrealized = positions.reduce((sum, p) => sum + calcUnrealized(p, prices), 0)
-  const sign = (n: number) => (n >= 0 ? '+' : '')
+  const fmt = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`
 
   const reply =
     `${stateEmoji(paused ? 'PAUSED' : state)} ${agentName} — ${paused ? 'PAUSED' : state}\n\n` +
     `📋 Watchlist: ${watchlist.length} tokens\n` +
     `📊 Open positions: ${positions.length}\n` +
-    `📈 Daily PnL: ${sign(Number(pnl))}$${Number(pnl).toFixed(2)}\n` +
-    `💸 Unrealized PnL: ${sign(unrealized)}$${unrealized.toFixed(2)}\n` +
+    `📈 Daily PnL: ${fmt(Number(pnl))}\n` +
+    `💸 Unrealized PnL: ${fmt(unrealized)}\n` +
     `🔢 Daily trades: ${trades}\n` +
     `🎯 Active setups: ${setups}\n` +
     `🕐 Last sync: ${lastSync}`
@@ -229,11 +229,11 @@ async function handlePnl(
   const prices = await getCurrentPrices(syms)
   const unrealized = positions.reduce((sum, p) => sum + calcUnrealized(p, prices), 0)
 
-  const sign = (n: number) => (n >= 0 ? '+' : '')
+  const fmt = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`
   const reply =
     `💰 ${agentName} PnL\n\n` +
-    `Daily realized: ${sign(pnl)}$${Number(pnl).toFixed(2)}\n` +
-    `Unrealized: ${sign(unrealized)}$${unrealized.toFixed(2)}\n` +
+    `Daily realized: ${fmt(Number(pnl))}\n` +
+    `Unrealized: ${fmt(unrealized)}\n` +
     `Daily trades: ${trades}\n` +
     `Open positions: ${positions.length}`
 

@@ -1,6 +1,7 @@
 import { db, FieldValue } from './firebase'
 import { fetchAgentStatus, fetchDecisions } from './api'
 import { setCached } from './cache'
+import { getCurrentPrices, calcUnrealized } from './prices'
 import type { TbDecision } from './types'
 
 // ── Shared decisions cache ────────────────────────────────────────────────────
@@ -85,6 +86,20 @@ export function startPoller(
       // 1 API call per agent per poll
       const { agent, live } = await fetchAgentStatus(apiKey, tbAgentId)
 
+      // Enrich positions with live unrealized PnL from CoinGecko
+      const positions: any[] = live.state?.openPositions ?? []
+      let enrichedUnrealizedPnl = 0
+      if (positions.length > 0) {
+        const symbols = positions.map((p: any) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean)
+        const prices = await getCurrentPrices(symbols)
+        enrichedUnrealizedPnl = positions.reduce((sum: number, p: any) => sum + calcUnrealized(p, prices), 0)
+      }
+
+      const enrichedLiveState = {
+        ...live.state,
+        unrealizedPnlUsd: enrichedUnrealizedPnl,
+      }
+
       await db.collection('agents').doc(firestoreAgentId).update({
         name: agent.name,
         status: agent.status === 'active' ? 'connected' : 'disconnected',
@@ -93,7 +108,7 @@ export function startPoller(
         tick_count: agent.tickCount,
         last_tick_at: agent.lastTickAt,
         next_scan_at: agent.nextScanAt,
-        live_state: live.state,
+        live_state: enrichedLiveState,
         live_admin: live.admin,
         last_synced: FieldValue.serverTimestamp(),
       })

@@ -926,13 +926,12 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
           </View>
 
           {(() => {
-            const positions: any[] = agentDoc?.live_state?.openPositions ?? []
-            const unrealized = positions.reduce((sum: number, p: any) => sum + Number(p.unrealizedPnl ?? p.pnl ?? 0), 0)
+            const unrealized = agentDoc?.live_state?.unrealizedPnlUsd ?? 0
             return (
               <View style={tb.card}>
                 <Text style={tb.cardLabel}>UNREALIZED P&L</Text>
                 <Text style={[tb.cardValue, { color: unrealized >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-                  {unrealized >= 0 ? '+' : ''}${unrealized.toFixed(2)}
+                  {unrealized >= 0 ? '+' : '-'}${Math.abs(unrealized).toFixed(2)}
                 </Text>
               </View>
             )
