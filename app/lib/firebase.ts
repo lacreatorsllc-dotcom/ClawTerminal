@@ -206,6 +206,22 @@ export function subscribeToSlug001Feed(cb: (events: any[]) => void) {
   })
 }
 
+// All trade/pnl events across all agents — for global trades view
+export function subscribeToAllTrades(cb: (events: any[]) => void) {
+  const q = query(
+    collection(db, 'feed_events'),
+    where('type', 'in', ['pnl', 'trade']),
+    orderBy('created_at', 'desc'),
+    limit(100)
+  )
+  return onSnapshot(q, (snap) => {
+    cb(snap.docs.map((d) => ({
+      id: d.id, ...d.data(),
+      created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
+    })))
+  })
+}
+
 export async function addFeedEvent(data: {
   agent_id: string
   user_id: string

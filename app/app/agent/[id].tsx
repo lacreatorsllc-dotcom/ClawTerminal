@@ -1171,7 +1171,7 @@ function Slug001Screen() {
   const [feed, setFeed] = useState<any[]>([])
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState('')
-  const [tab, setTab] = useState<'chat' | 'activity' | 'positions'>('chat')
+  const [tab, setTab] = useState<'chat' | 'trades' | 'positions'>('chat')
   const [showShare, setShowShare] = useState(false)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
@@ -1286,7 +1286,7 @@ function Slug001Screen() {
 
       {/* Tab toggle */}
       <View style={[s001.tabRow, { paddingHorizontal: 20, marginTop: 16, marginBottom: 4 }]}>
-        {(['chat', 'activity', 'positions'] as const).map((t) => (
+        {(['chat', 'trades', 'positions'] as const).map((t) => (
           <TouchableOpacity
             key={t}
             style={[s001.tabPill, tab === t && s001.tabPillActive]}
@@ -1413,32 +1413,64 @@ function Slug001Screen() {
           </View>
         </View>
 
-        {/* Activity tab */}
-        {tab === 'activity' && (
+        {/* Trades tab */}
+        {tab === 'trades' && (
           <View style={{ gap: 8 }}>
             {feed.length === 0 && (
               <View style={s001.emptyTab}>
-                <Text style={s001.emptyTabText}>No activity yet — waiting for first trade.</Text>
+                <Text style={s001.emptyTabText}>No trades yet — waiting for first fill.</Text>
               </View>
             )}
-            {feed.map((item) => {
-              const isPnl = item.type === 'pnl'
-              const dotColor = isPnl ? (item.payload?.pnl >= 0 ? Colors.accentGreen : Colors.accentRed) : Colors.accentAmber
-              return (
-                <View key={item.id} style={s001.activityCard}>
-                  <View style={s001.activityTop}>
-                    <View style={[s001.activityDot, { backgroundColor: dotColor }]} />
-                    <Text style={s001.activityTime}>{formatTime001(item.created_at)}</Text>
+            {feed
+              .filter((item) => item.type === 'pnl' || item.type === 'trade')
+              .map((item) => {
+                const p = item.payload ?? {}
+                const side: string = p.side ?? 'buy'
+                const isBuy = side === 'buy'
+                const sideColor = isBuy ? Colors.accentGreen : Colors.accentRed
+                const sideBg = isBuy ? 'rgba(0,200,150,0.12)' : 'rgba(255,69,58,0.12)'
+                const pnl: number | null = p.pnl != null ? Number(p.pnl) : null
+                const fillPrice: number | null = p.fillPrice != null ? Number(p.fillPrice) : null
+                const qty: number | null = p.qty != null ? Number(p.qty) : null
+                const pnlColor = pnl != null ? (pnl >= 0 ? Colors.accentGreen : Colors.accentRed) : Colors.textMuted
+                return (
+                  <View key={item.id} style={s001.tradeCard}>
+                    {/* Top row: side badge + pair + agent tag + pnl */}
+                    <View style={s001.tradeTop}>
+                      <View style={[s001.sideBadge, { backgroundColor: sideBg }]}>
+                        <Text style={[s001.sideText, { color: sideColor }]}>{side.toUpperCase()}</Text>
+                      </View>
+                      <Text style={s001.tradePair}>BTC/USDT</Text>
+                      <View style={s001.tradeAgentTag}>
+                        <Text style={s001.tradeAgentText}>Slug #001</Text>
+                      </View>
+                      <View style={{ flex: 1 }} />
+                      {pnl != null && (
+                        <Text style={[s001.tradePnl, { color: pnlColor }]}>
+                          {pnl >= 0 ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
+                        </Text>
+                      )}
+                    </View>
+                    {/* Details row: entry price + qty */}
+                    <View style={s001.tradeDetails}>
+                      {fillPrice != null && (
+                        <View style={s001.tradeDetailCol}>
+                          <Text style={s001.tradeDetailLabel}>ENTRY</Text>
+                          <Text style={s001.tradeDetailValue}>${fillPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+                        </View>
+                      )}
+                      {qty != null && (
+                        <View style={s001.tradeDetailCol}>
+                          <Text style={s001.tradeDetailLabel}>SIZE</Text>
+                          <Text style={s001.tradeDetailValue}>{qty} BTC</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }} />
+                      <Text style={s001.tradeTime}>{formatTime001(item.created_at)}</Text>
+                    </View>
                   </View>
-                  {isPnl && item.payload?.pnl != null && (
-                    <Text style={[s001.activityPnl, { color: item.payload.pnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-                      {item.payload.pnl >= 0 ? '+$' : '-$'}{Math.abs(item.payload.pnl).toFixed(2)}
-                    </Text>
-                  )}
-                  <Text style={s001.activityContent}>{item.content}</Text>
-                </View>
-              )
-            })}
+                )
+              })}
           </View>
         )}
 
@@ -1564,6 +1596,25 @@ const s001 = StyleSheet.create({
   activityTime: { fontSize: 11, color: Colors.textMuted },
   activityPnl: { fontSize: 22, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   activityContent: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
+
+  tradeCard: {
+    backgroundColor: '#0f0f0f', borderRadius: 14, padding: 14, gap: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)',
+  },
+  tradeTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tradePair: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
+  tradeAgentTag: {
+    backgroundColor: 'rgba(217,119,87,0.1)', borderRadius: 6,
+    paddingHorizontal: 7, paddingVertical: 2,
+    borderWidth: 1, borderColor: 'rgba(217,119,87,0.2)',
+  },
+  tradeAgentText: { fontSize: 10, fontWeight: '700', color: Colors.accentAmber, letterSpacing: 0.4 },
+  tradePnl: { fontSize: 15, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  tradeDetails: { flexDirection: 'row', alignItems: 'flex-end', gap: 20 },
+  tradeDetailCol: { gap: 2 },
+  tradeDetailLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1, textTransform: 'uppercase' },
+  tradeDetailValue: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  tradeTime: { fontSize: 10, color: Colors.textMuted, alignSelf: 'flex-end' },
 
   positionCard: { backgroundColor: '#0f0f0f', borderRadius: 14, padding: 14, gap: 10 },
   positionTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
