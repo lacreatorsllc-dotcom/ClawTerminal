@@ -2,28 +2,7 @@ import OpenAI from 'openai'
 import { db, FieldValue } from './firebase'
 import { pauseAgent, resumeAgent, overrideAgent, fetchAgentStatus, fetchAgentPositions } from './api'
 import { getCached } from './cache'
-
-// Extracts unrealized PnL from a position object.
-// Tries all known field names first; if none exist, computes from entry/current price + size.
-function unrealizedPnlOf(p: any): number {
-  // Try every explicit field name the trading-boy API might use
-  for (const key of [
-    'unrealizedPnl', 'unrealizedPnlUsd', 'unrealized_pnl', 'unrealized',
-    'floatingPnl', 'floating_pnl', 'openPnl', 'open_pnl',
-  ]) {
-    if (p[key] !== undefined && p[key] !== null) return Number(p[key])
-  }
-
-  // Fall back to computing from position data
-  const entry   = Number(p.entryPrice   ?? p.entry_price   ?? p.openPrice   ?? 0)
-  const current = Number(p.currentPrice ?? p.markPrice     ?? p.mark_price  ?? p.current_price ?? 0)
-  const size    = Number(p.positionSize ?? p.size          ?? p.sizeUsd     ?? p.notional ?? p.amount ?? 0)
-  const dir     = (p.direction ?? p.side ?? '').toUpperCase()
-
-  if (!entry || !current || !size) return 0
-  const multiplier = dir === 'SHORT' ? -1 : 1
-  return multiplier * ((current - entry) / entry) * size
-}
+import { getCurrentPrices, calcUnrealized } from './prices'
 
 function makeAIClient(apiKey: string): { client: OpenAI; model: string } {
   if (apiKey.startsWith('AIza')) {
@@ -136,21 +115,17 @@ async function handleStatus(
   const state = live.state ?? 'UNKNOWN'
   const paused = admin.paused === true
 
-  // Try dedicated positions endpoint first (has entry/current prices + unrealized PnL)
-  // Fall back to openPositions from agent status (may be empty or lack price fields)
-  let positions: any[] = (await fetchAgentPositions(apiKey, tbAgentId)) ?? live.openPositions ?? []
+  const positions: any[] = (await fetchAgentPositions(apiKey, tbAgentId)) ?? live.openPositions ?? []
 
-  // Debug: log first position's keys so we know the exact field names
-  if (positions.length > 0) {
-    console.log(`[chat:status:${firestoreAgentId}] position keys: ${Object.keys(positions[0]).join(', ')}`)
-    console.log(`[chat:status:${firestoreAgentId}] first position: ${JSON.stringify(positions[0])}`)
-  }
+  // Fetch live prices for all position tokens
+  const symbols = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? p.token ?? '').toUpperCase()).filter(Boolean)
+  const prices = await getCurrentPrices(symbols)
   const pnl = live.dailyPnlUsd ?? 0
   const trades = live.dailyTradeCount ?? 0
   const setups = live.activeConditionalSetups ?? 0
   const lastSync = freshData ? 'just now' : (getCached(firestoreAgentId) ? new Date(getCached(firestoreAgentId)!.updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown')
 
-  const unrealized = positions.reduce((sum, p) => sum + unrealizedPnlOf(p), 0)
+  const unrealized = positions.reduce((sum, p) => sum + calcUnrealized(p, prices), 0)
   const sign = (n: number) => (n >= 0 ? '+' : '')
 
   const reply =
@@ -186,15 +161,19 @@ async function handlePositions(
     return
   }
 
+  const syms = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean)
+  const prices = await getCurrentPrices(syms)
+
   const lines = ['📊 Open Positions\n']
   for (const p of positions) {
-    const pnl = unrealizedPnlOf(p)
+    const sym = (p.symbol ?? p.tokenSymbol ?? p.token ?? '?').toUpperCase()
+    const currentPrice = prices.get(sym)
+    const pnl = calcUnrealized(p, prices)
     const sign = pnl >= 0 ? '+' : ''
     lines.push(
-      `${p.symbol ?? p.token ?? p.tokenSymbol ?? '?'} ${p.direction ?? p.side ?? ''}\n` +
-      `  Entry: $${p.entryPrice ?? '—'}\n` +
-      `  Current: $${p.currentPrice ?? p.markPrice ?? '—'}\n` +
-      `  Unrealized: ${sign}$${Number(pnl).toFixed(2)}`,
+      `${sym} ${p.direction ?? p.side ?? ''}\n` +
+      `  Entry: $${p.entryPrice ?? '—'} · Current: $${currentPrice?.toFixed(4) ?? '—'}\n` +
+      `  Size: $${p.sizeUsd ?? '—'} · Unrealized: ${sign}$${Number(pnl).toFixed(2)}`,
     )
   }
 
@@ -244,9 +223,11 @@ async function handlePnl(
   }
   const pnl = live.dailyPnlUsd ?? 0
   const trades = live.dailyTradeCount ?? 0
-  const positions: any[] = live.openPositions ?? []
+  const positions: any[] = (await fetchAgentPositions(apiKey, tbAgentId)) ?? live.openPositions ?? []
 
-  const unrealized = positions.reduce((sum, p) => sum + unrealizedPnlOf(p), 0)
+  const syms = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean)
+  const prices = await getCurrentPrices(syms)
+  const unrealized = positions.reduce((sum, p) => sum + calcUnrealized(p, prices), 0)
 
   const sign = (n: number) => (n >= 0 ? '+' : '')
   const reply =
@@ -387,6 +368,77 @@ async function handleAnalyzeSlug001(
 }
 
 
+// ── Per-agent pending trade confirmations ────────────────────────────────────
+interface PendingTrade {
+  token: string
+  type: 'BUY' | 'SELL'
+  size: number
+  instruction: string
+  expiresAt: number // auto-cancel after 2 minutes
+}
+const pendingTrades = new Map<string, PendingTrade>()
+
+// ── Build live agent context for AI system prompt ─────────────────────────────
+async function buildLiveContext(
+  firestoreAgentId: string,
+  agentName: string,
+  apiKey: string,
+  tbAgentId: string,
+): Promise<string> {
+  let live: any = {}
+  let admin: any = {}
+  let watchlist: string[] = []
+  try {
+    const fresh = await fetchAgentStatus(apiKey, tbAgentId)
+    live = fresh.live?.state ?? {}
+    admin = fresh.live?.admin ?? {}
+    watchlist = fresh.agent?.watchlist ?? []
+  } catch {
+    const cached = getCached(firestoreAgentId)
+    live = cached?.liveState ?? {}
+    admin = cached?.liveAdmin ?? {}
+    watchlist = cached?.watchlist ?? []
+  }
+
+  const state = live.state ?? 'UNKNOWN'
+  const paused = admin.paused === true
+  const positions: any[] = (await fetchAgentPositions(apiKey, tbAgentId)) ?? live.openPositions ?? []
+  const pnl = live.dailyPnlUsd ?? 0
+  const trades = live.dailyTradeCount ?? 0
+
+  const syms = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean)
+  const prices = await getCurrentPrices(syms)
+
+  const positionLines = positions.length > 0
+    ? positions.map((p) => {
+        const sym = (p.symbol ?? p.tokenSymbol ?? p.token ?? '?').toUpperCase()
+        const currentPrice = prices.get(sym)
+        const upnl = calcUnrealized(p, prices)
+        const sign = upnl >= 0 ? '+' : ''
+        return `  ${p.direction ?? 'LONG'} ${sym} | Entry: $${p.entryPrice ?? '?'} | Current: $${currentPrice?.toFixed(4) ?? '?'} | Size: $${p.sizeUsd ?? '?'} | Unrealized: ${sign}$${upnl.toFixed(2)} | SL: $${p.stopLoss ?? '?'} | TP: $${p.takeProfit ?? '?'}`
+      }).join('\n')
+    : '  None'
+
+  const decisionsSnap = await db
+    .collection('agents').doc(firestoreAgentId).collection('decisions')
+    .orderBy('eventTime', 'desc').limit(6).get()
+  const decisionLines = decisionsSnap.docs.map((d) => {
+    const dec = d.data()
+    const ts = dec.eventTime ? new Date(dec.eventTime).toLocaleString() : '?'
+    return `  [${ts}] ${dec.actionType ?? dec.decisionType} ${dec.tokenSymbol ?? ''} (${dec.confidence ?? 0}%): ${(dec.details ?? '').slice(0, 120)}`
+  }).join('\n')
+
+  return `AGENT: ${agentName} | STATUS: ${paused ? 'PAUSED' : state}
+WATCHLIST: ${watchlist.join(', ') || 'none'}
+DAILY PnL: $${Number(pnl).toFixed(2)} | DAILY TRADES: ${trades}
+
+OPEN POSITIONS (${positions.length}):
+${positionLines}
+
+RECENT DECISIONS:
+${decisionLines || '  None'}`
+}
+
 export function startChatListener(
   firestoreAgentId: string,
   apiKey: string,
@@ -509,44 +561,69 @@ export function startChatListener(
             continue
           }
 
-          // Free-form text — use LLM if key available
+          // ── Trade confirmation check ──────────────────────────────────────
+          const pending = pendingTrades.get(firestoreAgentId)
+          if (pending) {
+            if (Date.now() > pending.expiresAt) {
+              pendingTrades.delete(firestoreAgentId)
+            } else if (/^(yes|confirm|go|execute|do it|ok|sure|yep|yeah)/i.test(text)) {
+              try {
+                await overrideAgent(apiKey, tbAgentId, pending.instruction)
+                pendingTrades.delete(firestoreAgentId)
+                await writeReply(firestoreAgentId, `✅ Trade sent to ${agentName}: ${pending.type} ${pending.token} $${pending.size}\nThe agent will execute when conditions are met.`)
+              } catch (e: any) {
+                await writeReply(firestoreAgentId, `❌ Trade failed: ${e.message}`)
+              }
+              continue
+            } else if (/^(no|cancel|stop|nevermind|nope|abort)/i.test(text)) {
+              pendingTrades.delete(firestoreAgentId)
+              await writeReply(firestoreAgentId, '↩️ Trade cancelled.')
+              continue
+            }
+          }
+
+          // ── Free-form AI subagent ─────────────────────────────────────────
           if (!ai) {
             await writeReply(firestoreAgentId, `Use /help to see available commands.`)
             continue
           }
 
-          const cached = getCached(firestoreAgentId)
-          const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
-          const agentState = live.state ?? 'UNKNOWN'
-          const positions = live.openPositions ?? []
-          const pnl = live.dailyPnlUsd ?? 0
-          const trades = live.dailyTradeCount ?? 0
+          // Fetch live context (positions, decisions, state)
+          const liveContext = await buildLiveContext(firestoreAgentId, agentName, apiKey, tbAgentId)
 
-          const decisionsSnap = await db
-            .collection('agents').doc(firestoreAgentId).collection('decisions')
-            .orderBy('eventTime', 'desc').limit(10).get()
-          const decisions = decisionsSnap.docs.map((d) => d.data())
-
-          // Load recent conversation history for memory
+          // Load recent conversation history
           const historySnap = await db
             .collection('agents').doc(firestoreAgentId).collection('messages')
             .orderBy('created_at', 'desc').limit(20).get()
           const history = historySnap.docs
             .map((d) => d.data())
-            .reverse() // oldest first
-            .filter((m) => m.content && m.content !== text) // exclude current message
-            .slice(-14) // last 14 messages (7 exchanges)
+            .reverse()
+            .filter((m) => m.content && m.content !== text)
+            .slice(-14)
 
-          const system = `You are ${agentName}, a fully autonomous crypto trading agent on Cabal Ventures.
+          const system = `You are ${agentName}, a fully autonomous crypto trading agent on Cabal Ventures. You have full visibility into your live trading state and can execute trades on behalf of the user.
 
-STATE: ${agentState} | Positions: ${positions.length} | Daily PnL: $${Number(pnl).toFixed(2)} | Trades: ${trades}
+LIVE STATE:
+${liveContext}
 
-RECENT DECISIONS:
-${decisions.length > 0 ? decisions.map((d) => `[${d.eventTime}] ${d.tokenSymbol} ${d.actionType} (${d.confidence}%): ${d.details}`).join('\n') : 'None.'}
+CAPABILITIES:
+You can answer any question about your positions, decisions, market conditions, and strategy using the live data above.
+You can also take actions — when appropriate, append a JSON action block to your response:
 
-Be concise and data-driven. Plain text only. Never fabricate data. Remember prior conversation context.`
+To propose a trade (always ask user to confirm first):
+TRADE_ACTION:{"type":"BUY","token":"SOL","size":250}
+or: TRADE_ACTION:{"type":"SELL","token":"SOL","size":250}
 
-          // Build messages array with conversation history
+To pause yourself: AGENT_ACTION:{"action":"pause"}
+To resume yourself: AGENT_ACTION:{"action":"resume"}
+To send yourself an instruction: AGENT_ACTION:{"action":"override","instruction":"focus on BTC and ETH only"}
+
+Rules:
+- Always confirm trade details with the user before appending TRADE_ACTION
+- Be concise and data-driven. Plain text only. Never fabricate prices or data.
+- If asked about a position or token not in your data, say so honestly.
+- Remember the conversation history above.`
+
           const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
             { role: 'system', content: system },
             ...history.map((m) => ({
@@ -556,11 +633,10 @@ Be concise and data-driven. Plain text only. Never fabricate data. Remember prio
             { role: 'user', content: text },
           ]
 
-          // Attempt with one retry on 429
           let completion: any
           try {
             completion = await ai.client.chat.completions.create(
-              { model: ai.model, messages, max_tokens: 400 },
+              { model: ai.model, messages, max_tokens: 500 },
               { timeout: 30_000 },
             )
           } catch (firstErr: any) {
@@ -568,7 +644,7 @@ Be concise and data-driven. Plain text only. Never fabricate data. Remember prio
               console.warn(`[chat:${firestoreAgentId}] 429 rate limit, retrying in 15s...`)
               await new Promise((r) => setTimeout(r, 15_000))
               completion = await ai.client.chat.completions.create(
-                { model: ai.model, messages, max_tokens: 400 },
+                { model: ai.model, messages, max_tokens: 500 },
                 { timeout: 30_000 },
               )
             } else {
@@ -576,7 +652,50 @@ Be concise and data-driven. Plain text only. Never fabricate data. Remember prio
             }
           }
 
-          await writeReply(firestoreAgentId, completion.choices[0]?.message?.content ?? 'No response.')
+          const rawReply: string = completion.choices[0]?.message?.content ?? 'No response.'
+
+          // ── Parse and execute action blocks ───────────────────────────────
+          const tradeMatch = rawReply.match(/TRADE_ACTION:\{[^}]+\}/)
+          const agentMatch = rawReply.match(/AGENT_ACTION:\{[^}]+\}/)
+
+          if (tradeMatch) {
+            try {
+              const tradeData = JSON.parse(tradeMatch[0].replace('TRADE_ACTION:', ''))
+              const cleanReply = rawReply.replace(tradeMatch[0], '').trim()
+              const instruction = `${tradeData.type} ${tradeData.token} SIZE_USD:${tradeData.size} SOURCE:user_chat`
+              pendingTrades.set(firestoreAgentId, {
+                token: tradeData.token,
+                type: tradeData.type,
+                size: tradeData.size,
+                instruction,
+                expiresAt: Date.now() + 2 * 60 * 1000, // 2-min window to confirm
+              })
+              await writeReply(firestoreAgentId, `${cleanReply}\n\nReply "confirm" to execute or "cancel" to abort.`)
+            } catch {
+              await writeReply(firestoreAgentId, rawReply)
+            }
+          } else if (agentMatch) {
+            try {
+              const actionData = JSON.parse(agentMatch[0].replace('AGENT_ACTION:', ''))
+              const cleanReply = rawReply.replace(agentMatch[0], '').trim()
+              if (actionData.action === 'pause') {
+                await pauseAgent(apiKey, tbAgentId)
+                await writeReply(firestoreAgentId, cleanReply || `⏸️ ${agentName} paused.`)
+              } else if (actionData.action === 'resume') {
+                await resumeAgent(apiKey, tbAgentId)
+                await writeReply(firestoreAgentId, cleanReply || `▶️ ${agentName} resumed.`)
+              } else if (actionData.action === 'override') {
+                await overrideAgent(apiKey, tbAgentId, actionData.instruction)
+                await writeReply(firestoreAgentId, cleanReply || `🎯 Instruction sent: "${actionData.instruction}"`)
+              } else {
+                await writeReply(firestoreAgentId, rawReply)
+              }
+            } catch {
+              await writeReply(firestoreAgentId, rawReply)
+            }
+          } else {
+            await writeReply(firestoreAgentId, rawReply)
+          }
         } catch (err: any) {
           console.error(`[chat:${firestoreAgentId}] error processing message:`, err?.message ?? err)
           await writeReply(firestoreAgentId, 'Error processing your message. Please try again.').catch(() => {})
