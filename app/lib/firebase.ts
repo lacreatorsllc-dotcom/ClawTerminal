@@ -206,18 +206,21 @@ export function subscribeToSlug001Trades(cb: (trades: any[]) => void) {
   })
 }
 
+// Only daily summaries in the feed — filter client-side to avoid composite index requirement
 export function subscribeToSlug001Feed(cb: (events: any[]) => void) {
   const q = query(
     collection(db, 'feed_events'),
     where('agent_id', '==', 'slug-001'),
     orderBy('created_at', 'desc'),
-    limit(60)
+    limit(90)
   )
   return onSnapshot(q, (snap) => {
-    cb(snap.docs.map((d) => ({
+    const all = snap.docs.map((d) => ({
       id: d.id, ...d.data(),
       created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
-    })))
+    }))
+    // Only surface daily summaries — micro fills now live in agents/slug-001/trades subcollection
+    cb(all.filter((e: any) => e.type === 'daily_pnl'))
   })
 }
 
