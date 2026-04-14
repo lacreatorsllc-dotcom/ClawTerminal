@@ -3082,8 +3082,8 @@ const styles = StyleSheet.create({
   bubbleTextOut: { color: '#d77556' },
   bubbleLink: { color: Colors.accentTeal, textDecorationLine: 'underline' },
   bubbleCmd: {
-    color: '#a78bfa',
-    fontWeight: '600',
+    color: '#d77556',
+    fontWeight: '700',
   },
   bubblePnlPos: { color: Colors.accentGreen, fontWeight: '700' },
   bubblePnlNeg: { color: Colors.accentRed, fontWeight: '700' },
