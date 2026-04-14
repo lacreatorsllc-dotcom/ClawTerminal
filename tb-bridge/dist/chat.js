@@ -208,7 +208,8 @@ function handleHelp(firestoreAgentId, agentName) {
         `/pnl — Daily profit & loss\n` +
         `/summary — Daily activity summary\n` +
         `/pause — Pause this agent\n` +
-        `/resume — Resume this agent`;
+        `/resume — Resume this agent\n` +
+        `/override <text> — Send instruction to agent`;
     return writeReply(firestoreAgentId, msg);
 }
 function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, openaiApiKey) {
@@ -249,6 +250,16 @@ function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, opena
                 if (text === '/resume') {
                     await (0, api_1.resumeAgent)(apiKey, tbAgentId);
                     await writeReply(firestoreAgentId, `▶️ ${agentName} resumed.`);
+                    continue;
+                }
+                if (text.startsWith('/override ')) {
+                    const instruction = text.slice('/override '.length).trim();
+                    if (!instruction) {
+                        await writeReply(firestoreAgentId, 'Usage: /override <instruction>');
+                        continue;
+                    }
+                    await (0, api_1.overrideAgent)(apiKey, tbAgentId, instruction);
+                    await writeReply(firestoreAgentId, `🎯 Override sent: "${instruction}"`);
                     continue;
                 }
                 if (text === '/agents') {

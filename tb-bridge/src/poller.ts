@@ -32,8 +32,9 @@ export function startPoller(
         last_synced: FieldValue.serverTimestamp(),
       })
 
-      // Fetch and upsert decisions
-      const decisions = await fetchDecisions(apiKey, tbTraderId)
+      // Fetch all decisions for account, filter to this trader
+      const allDecisions = await fetchDecisions(apiKey, 50)
+      const decisions = allDecisions.filter((d) => d.traderId === tbTraderId)
       const batch = db.batch()
       for (const decision of decisions) {
         const ref = db

@@ -665,11 +665,14 @@ type TbTab = 'chat' | 'status' | 'activity'
 const TB_SLASH_COMMANDS = [
   { cmd: '/help',      desc: 'Show available commands' },
   { cmd: '/status',    desc: 'Agent status & health' },
+  { cmd: '/agents',    desc: 'All active agents' },
   { cmd: '/positions', desc: 'Open positions with live P&L' },
-  { cmd: '/pnl',       desc: 'Session P&L summary' },
-  { cmd: '/summary',   desc: 'Daily market briefing' },
+  { cmd: '/decisions', desc: 'Recent trade decisions' },
+  { cmd: '/pnl',       desc: 'Daily profit & loss' },
+  { cmd: '/summary',   desc: 'Daily activity summary' },
   { cmd: '/pause',     desc: 'Pause the agent' },
   { cmd: '/resume',    desc: 'Resume the agent' },
+  { cmd: '/override',  desc: 'Send instruction to agent' },
 ]
 
 function TradingBoyScreen({ agentId }: { agentId: string }) {

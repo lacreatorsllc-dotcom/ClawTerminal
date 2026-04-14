@@ -24,8 +24,9 @@ function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId) {
                 live_admin: live.admin,
                 last_synced: firebase_1.FieldValue.serverTimestamp(),
             });
-            // Fetch and upsert decisions
-            const decisions = await (0, api_1.fetchDecisions)(apiKey, tbTraderId);
+            // Fetch all decisions for account, filter to this trader
+            const allDecisions = await (0, api_1.fetchDecisions)(apiKey, 50);
+            const decisions = allDecisions.filter((d) => d.traderId === tbTraderId);
             const batch = firebase_1.db.batch();
             for (const decision of decisions) {
                 const ref = firebase_1.db

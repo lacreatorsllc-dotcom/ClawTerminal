@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { db, FieldValue } from './firebase'
-import { pauseAgent, resumeAgent } from './api'
+import { pauseAgent, resumeAgent, overrideAgent } from './api'
 
 function makeAIClient(apiKey: string): { client: OpenAI; model: string } {
   if (apiKey.startsWith('AIza')) {
@@ -236,7 +236,8 @@ function handleHelp(firestoreAgentId: string, agentName: string): Promise<void> 
     `/pnl — Daily profit & loss\n` +
     `/summary — Daily activity summary\n` +
     `/pause — Pause this agent\n` +
-    `/resume — Resume this agent`
+    `/resume — Resume this agent\n` +
+    `/override <text> — Send instruction to agent`
   return writeReply(firestoreAgentId, msg)
 }
 
@@ -289,6 +290,16 @@ export function startChatListener(
           if (text === '/resume') {
             await resumeAgent(apiKey, tbAgentId)
             await writeReply(firestoreAgentId, `▶️ ${agentName} resumed.`)
+            continue
+          }
+          if (text.startsWith('/override ')) {
+            const instruction = text.slice('/override '.length).trim()
+            if (!instruction) {
+              await writeReply(firestoreAgentId, 'Usage: /override <instruction>')
+              continue
+            }
+            await overrideAgent(apiKey, tbAgentId, instruction)
+            await writeReply(firestoreAgentId, `🎯 Override sent: "${instruction}"`)
             continue
           }
           if (text === '/agents') {

@@ -30,9 +30,9 @@ export async function fetchAgentStatus(apiKey: string, agentId: string): Promise
   return res.json() as Promise<TbAgentResponse>
 }
 
-export async function fetchDecisions(apiKey: string, traderId: string, limit = 20): Promise<TbDecision[]> {
-  const url = `${BASE}/api/v1/decisions?traderId=${encodeURIComponent(traderId)}&limit=${limit}`
-  const res = await fetch(url, { headers: headers(apiKey) })
+// Returns all decisions for the account — filter by traderId client-side if needed
+export async function fetchDecisions(apiKey: string, limit = 50): Promise<TbDecision[]> {
+  const res = await fetch(`${BASE}/api/v1/decisions?limit=${limit}`, { headers: headers(apiKey) })
   await checkResponse(res, 'fetchDecisions')
   const data = await res.json() as TbDecisionsResponse
   return data.decisions
@@ -52,4 +52,13 @@ export async function resumeAgent(apiKey: string, agentId: string): Promise<void
     headers: headers(apiKey),
   })
   await checkResponse(res, 'resumeAgent')
+}
+
+export async function overrideAgent(apiKey: string, agentId: string, instruction: string): Promise<void> {
+  const res = await fetch(`${BASE}/api/v1/agents/${agentId}/override`, {
+    method: 'POST',
+    headers: headers(apiKey),
+    body: JSON.stringify({ instruction }),
+  })
+  await checkResponse(res, 'overrideAgent')
 }

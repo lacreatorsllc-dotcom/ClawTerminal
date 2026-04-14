@@ -8,6 +8,7 @@ exports.fetchAgentStatus = fetchAgentStatus;
 exports.fetchDecisions = fetchDecisions;
 exports.pauseAgent = pauseAgent;
 exports.resumeAgent = resumeAgent;
+exports.overrideAgent = overrideAgent;
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const BASE = 'https://api.cabal.ventures';
 function headers(apiKey) {
@@ -33,9 +34,9 @@ async function fetchAgentStatus(apiKey, agentId) {
     await checkResponse(res, 'fetchAgentStatus');
     return res.json();
 }
-async function fetchDecisions(apiKey, traderId, limit = 20) {
-    const url = `${BASE}/api/v1/decisions?traderId=${encodeURIComponent(traderId)}&limit=${limit}`;
-    const res = await (0, node_fetch_1.default)(url, { headers: headers(apiKey) });
+// Returns all decisions for the account — filter by traderId client-side if needed
+async function fetchDecisions(apiKey, limit = 50) {
+    const res = await (0, node_fetch_1.default)(`${BASE}/api/v1/decisions?limit=${limit}`, { headers: headers(apiKey) });
     await checkResponse(res, 'fetchDecisions');
     const data = await res.json();
     return data.decisions;
@@ -53,4 +54,12 @@ async function resumeAgent(apiKey, agentId) {
         headers: headers(apiKey),
     });
     await checkResponse(res, 'resumeAgent');
+}
+async function overrideAgent(apiKey, agentId, instruction) {
+    const res = await (0, node_fetch_1.default)(`${BASE}/api/v1/agents/${agentId}/override`, {
+        method: 'POST',
+        headers: headers(apiKey),
+        body: JSON.stringify({ instruction }),
+    });
+    await checkResponse(res, 'overrideAgent');
 }
