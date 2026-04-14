@@ -3,12 +3,26 @@ import { db, FieldValue } from './firebase'
 import { pauseAgent, resumeAgent, overrideAgent, fetchAgentStatus } from './api'
 import { getCached } from './cache'
 
-// Extracts unrealized PnL from a position object — tries all known field name variants
+// Extracts unrealized PnL from a position object.
+// Tries all known field names first; if none exist, computes from entry/current price + size.
 function unrealizedPnlOf(p: any): number {
-  return Number(
-    p.unrealizedPnl ?? p.unrealizedPnlUsd ?? p.unrealized_pnl ??
-    p.unrealized ?? p.pnl ?? p.pnlUsd ?? 0,
-  )
+  // Try every explicit field name the trading-boy API might use
+  for (const key of [
+    'unrealizedPnl', 'unrealizedPnlUsd', 'unrealized_pnl', 'unrealized',
+    'floatingPnl', 'floating_pnl', 'openPnl', 'open_pnl',
+  ]) {
+    if (p[key] !== undefined && p[key] !== null) return Number(p[key])
+  }
+
+  // Fall back to computing from position data
+  const entry   = Number(p.entryPrice   ?? p.entry_price   ?? p.openPrice   ?? 0)
+  const current = Number(p.currentPrice ?? p.markPrice     ?? p.mark_price  ?? p.current_price ?? 0)
+  const size    = Number(p.positionSize ?? p.size          ?? p.sizeUsd     ?? p.notional ?? p.amount ?? 0)
+  const dir     = (p.direction ?? p.side ?? '').toUpperCase()
+
+  if (!entry || !current || !size) return 0
+  const multiplier = dir === 'SHORT' ? -1 : 1
+  return multiplier * ((current - entry) / entry) * size
 }
 
 function makeAIClient(apiKey: string): { client: OpenAI; model: string } {

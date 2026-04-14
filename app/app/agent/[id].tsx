@@ -135,10 +135,19 @@ const URL_REGEX = /^https?:\/\/[^\s]+$/
 const CMD_ONLY_REGEX = /^\/[a-z][a-z0-9_-]*(\s.*)?$/
 const TOKEN_REGEX = /(https?:\/\/[^\s]+|`\/[a-z][a-z0-9_\s\-\[\]]*`|\/[a-z][a-z0-9_-]*|[+]\$[\d,]+\.?\d*|-\$[\d,]+\.?\d*)/g
 
-const MessageText = memo(function MessageText({ content, outbound }: { content: string; outbound: boolean }) {
+const MessageText = memo(function MessageText({
+  content,
+  outbound,
+  textStyle,
+}: {
+  content: string
+  outbound: boolean
+  textStyle?: object
+}) {
   const parts = useMemo(() => content.split(TOKEN_REGEX), [content])
+  const baseStyle = textStyle ?? [styles.bubbleText, outbound && styles.bubbleTextOut]
   return (
-    <Text style={[styles.bubbleText, outbound && styles.bubbleTextOut]}>
+    <Text style={baseStyle}>
       {parts.map((part, i) => {
         if (URL_REGEX.test(part)) return <Text key={i} style={styles.bubbleLink} onPress={() => Linking.openURL(part)}>{part}</Text>
         if (/^`\//.test(part)) return <Text key={i} style={styles.bubbleCmd}>{part.replace(/`/g, '')}</Text>
@@ -785,20 +794,33 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               renderItem={({ item }) => {
                 const isUser = item.direction === 'inbound'
                 const isAlert = item.alert === true
+                const isCmd = isUser && /^\/[a-z][a-z0-9_-]*/.test((item.content ?? '').trim())
+                const bubbleBg = isUser
+                  ? (isCmd ? 'rgba(109,40,217,0.25)' : Colors.accentAmber)
+                  : (isAlert ? '#1a1500' : '#1a1a1a')
+                const bubbleBorder = isCmd ? 1 : (isAlert ? 1 : 0)
+                const bubbleBorderColor = isCmd
+                  ? 'rgba(167,139,250,0.55)'
+                  : (isAlert ? Colors.accentAmber : 'transparent')
+                const textColor = isUser
+                  ? (isCmd ? '#e9d5ff' : '#000')
+                  : Colors.textPrimary
                 return (
                   <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                     <View style={{
-                      backgroundColor: isUser ? Colors.accentAmber : isAlert ? '#1a1500' : '#1a1a1a',
+                      backgroundColor: bubbleBg,
                       borderRadius: 14,
                       paddingHorizontal: 14,
                       paddingVertical: 10,
                       maxWidth: '88%',
-                      borderWidth: isAlert ? 1 : 0,
-                      borderColor: isAlert ? Colors.accentAmber : 'transparent',
+                      borderWidth: bubbleBorder,
+                      borderColor: bubbleBorderColor,
                     }}>
-                      <Text style={{ color: isUser ? '#000' : Colors.textPrimary, fontSize: 15, lineHeight: 21 }}>
-                        {item.content}
-                      </Text>
+                      <MessageText
+                        content={item.content ?? ''}
+                        outbound={false}
+                        textStyle={{ color: textColor, fontSize: 15, lineHeight: 21 }}
+                      />
                     </View>
                     <Text style={{ color: Colors.textMuted, fontSize: 11, marginTop: 3, marginHorizontal: 4 }}>
                       {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
@@ -3052,8 +3074,13 @@ const styles = StyleSheet.create({
   bubbleText: { color: Colors.textPrimary, fontSize: 15, lineHeight: 20 },
   bubbleTextOut: { color: '#fff' },
   bubbleLink: { color: Colors.accentTeal, textDecorationLine: 'underline' },
-  bubbleCmd: { color: '#a78bfa', fontWeight: '600' },
-  bubbleCmdOut: { color: '#c4b5fd' },
+  bubbleCmd: {
+    color: '#c4b5fd',
+    fontWeight: '700',
+    backgroundColor: 'rgba(109,40,217,0.25)',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
   bubblePnlPos: { color: Colors.accentGreen, fontWeight: '700' },
   bubblePnlNeg: { color: Colors.accentRed, fontWeight: '700' },
   cmdPicker: {
