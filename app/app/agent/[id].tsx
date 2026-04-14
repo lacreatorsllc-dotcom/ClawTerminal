@@ -132,7 +132,8 @@ function getAgentTabs(agentName?: string): Tab[] {
 }
 
 const URL_REGEX = /^https?:\/\/[^\s]+$/
-const TOKEN_REGEX = /(https?:\/\/[^\s]+|`\/[a-z][a-z0-9_\s\-\[\]]*`|\/[a-z][a-z0-9_]*|[+]\$[\d,]+\.?\d*|-\$[\d,]+\.?\d*)/g
+const CMD_ONLY_REGEX = /^\/[a-z][a-z0-9_-]*(\s.*)?$/
+const TOKEN_REGEX = /(https?:\/\/[^\s]+|`\/[a-z][a-z0-9_\s\-\[\]]*`|\/[a-z][a-z0-9_-]*|[+]\$[\d,]+\.?\d*|-\$[\d,]+\.?\d*)/g
 
 const MessageText = memo(function MessageText({ content, outbound }: { content: string; outbound: boolean }) {
   const parts = useMemo(() => content.split(TOKEN_REGEX), [content])
@@ -140,8 +141,8 @@ const MessageText = memo(function MessageText({ content, outbound }: { content: 
     <Text style={[styles.bubbleText, outbound && styles.bubbleTextOut]}>
       {parts.map((part, i) => {
         if (URL_REGEX.test(part)) return <Text key={i} style={styles.bubbleLink} onPress={() => Linking.openURL(part)}>{part}</Text>
-        if (/^`\//.test(part)) return <Text key={i} style={[styles.bubbleCmd, outbound && styles.bubbleCmdOut]}>{part.replace(/`/g, '')}</Text>
-        if (/^\/[a-z]/.test(part)) return <Text key={i} style={[styles.bubbleCmd, outbound && styles.bubbleCmdOut]}>{part}</Text>
+        if (/^`\//.test(part)) return <Text key={i} style={styles.bubbleCmd}>{part.replace(/`/g, '')}</Text>
+        if (/^\/[a-z]/.test(part)) return <Text key={i} style={styles.bubbleCmd}>{part}</Text>
         if (/^\+\$/.test(part)) return <Text key={i} style={styles.bubblePnlPos}>{part}</Text>
         if (/^-\$/.test(part)) return <Text key={i} style={styles.bubblePnlNeg}>{part}</Text>
         return <Text key={i}>{part}</Text>
