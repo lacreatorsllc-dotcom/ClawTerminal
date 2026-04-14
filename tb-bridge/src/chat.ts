@@ -415,7 +415,7 @@ export function startChatListener(
 
           const cached = getCached(firestoreAgentId)
           const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
-          const state = live.state ?? 'UNKNOWN'
+          const agentState = live.state ?? 'UNKNOWN'
           const positions = live.openPositions ?? []
           const pnl = live.dailyPnlUsd ?? 0
           const trades = live.dailyTradeCount ?? 0
@@ -425,20 +425,54 @@ export function startChatListener(
             .orderBy('eventTime', 'desc').limit(10).get()
           const decisions = decisionsSnap.docs.map((d) => d.data())
 
+          // Load recent conversation history for memory
+          const historySnap = await db
+            .collection('agents').doc(firestoreAgentId).collection('messages')
+            .orderBy('created_at', 'desc').limit(20).get()
+          const history = historySnap.docs
+            .map((d) => d.data())
+            .reverse() // oldest first
+            .filter((m) => m.content && m.content !== text) // exclude current message
+            .slice(-14) // last 14 messages (7 exchanges)
+
           const system = `You are ${agentName}, a fully autonomous crypto trading agent on Cabal Ventures.
 
-STATE: ${state} | Positions: ${positions.length} | Daily PnL: $${Number(pnl).toFixed(2)} | Trades: ${trades}
+STATE: ${agentState} | Positions: ${positions.length} | Daily PnL: $${Number(pnl).toFixed(2)} | Trades: ${trades}
 
 RECENT DECISIONS:
 ${decisions.length > 0 ? decisions.map((d) => `[${d.eventTime}] ${d.tokenSymbol} ${d.actionType} (${d.confidence}%): ${d.details}`).join('\n') : 'None.'}
 
-Be concise and data-driven. Plain text only. Never fabricate data.`
+Be concise and data-driven. Plain text only. Never fabricate data. Remember prior conversation context.`
 
-          const completion = await ai.client.chat.completions.create({
-            model: ai.model,
-            messages: [{ role: 'system', content: system }, { role: 'user', content: text }],
-            max_tokens: 400,
-          }, { timeout: 30_000 })
+          // Build messages array with conversation history
+          const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+            { role: 'system', content: system },
+            ...history.map((m) => ({
+              role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
+              content: m.content as string,
+            })),
+            { role: 'user', content: text },
+          ]
+
+          // Attempt with one retry on 429
+          let completion: any
+          try {
+            completion = await ai.client.chat.completions.create(
+              { model: ai.model, messages, max_tokens: 400 },
+              { timeout: 30_000 },
+            )
+          } catch (firstErr: any) {
+            if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
+              console.warn(`[chat:${firestoreAgentId}] 429 rate limit, retrying in 15s...`)
+              await new Promise((r) => setTimeout(r, 15_000))
+              completion = await ai.client.chat.completions.create(
+                { model: ai.model, messages, max_tokens: 400 },
+                { timeout: 30_000 },
+              )
+            } else {
+              throw firstErr
+            }
+          }
 
           await writeReply(firestoreAgentId, completion.choices[0]?.message?.content ?? 'No response.')
         } catch (err: any) {
