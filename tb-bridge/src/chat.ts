@@ -1,7 +1,15 @@
 import OpenAI from 'openai'
 import { db, FieldValue } from './firebase'
-import { pauseAgent, resumeAgent, overrideAgent } from './api'
+import { pauseAgent, resumeAgent, overrideAgent, fetchAgentStatus } from './api'
 import { getCached } from './cache'
+
+// Extracts unrealized PnL from a position object — tries all known field name variants
+function unrealizedPnlOf(p: any): number {
+  return Number(
+    p.unrealizedPnl ?? p.unrealizedPnlUsd ?? p.unrealized_pnl ??
+    p.unrealized ?? p.pnl ?? p.pnlUsd ?? 0,
+  )
+}
 
 function makeAIClient(apiKey: string): { client: OpenAI; model: string } {
   if (apiKey.startsWith('AIza')) {
@@ -86,23 +94,40 @@ async function handleAgents(firestoreAgentId: string): Promise<void> {
   await writeReply(firestoreAgentId, lines.join('\n\n'))
 }
 
-async function handleStatus(firestoreAgentId: string, agentName: string): Promise<void> {
-  const cached = getCached(firestoreAgentId)
-  const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
-  const admin = cached?.liveAdmin ?? {}
+async function handleStatus(
+  firestoreAgentId: string,
+  agentName: string,
+  apiKey: string,
+  tbAgentId: string,
+): Promise<void> {
+  let live: any = {}
+  let admin: any = {}
+  let watchlist: string[] = []
+  let freshData = false
+
+  // Fetch fresh data directly from API for accurate unrealized PnL
+  try {
+    const fresh = await fetchAgentStatus(apiKey, tbAgentId)
+    live = fresh.live?.state ?? {}
+    admin = fresh.live?.admin ?? {}
+    watchlist = fresh.agent?.watchlist ?? []
+    freshData = true
+  } catch {
+    const cached = getCached(firestoreAgentId)
+    live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
+    admin = cached?.liveAdmin ?? {}
+    watchlist = cached?.watchlist ?? []
+  }
+
   const state = live.state ?? 'UNKNOWN'
   const paused = admin.paused === true
   const positions: any[] = live.openPositions ?? []
   const pnl = live.dailyPnlUsd ?? 0
   const trades = live.dailyTradeCount ?? 0
   const setups = live.activeConditionalSetups ?? 0
-  const watchlist = cached?.watchlist ?? []
-  const lastSync = cached ? new Date(cached.updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown'
+  const lastSync = freshData ? 'just now' : (getCached(firestoreAgentId) ? new Date(getCached(firestoreAgentId)!.updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown')
 
-  let unrealized = 0
-  for (const p of positions) {
-    unrealized += Number(p.unrealizedPnl ?? p.pnl ?? 0)
-  }
+  const unrealized = positions.reduce((sum, p) => sum + unrealizedPnlOf(p), 0)
   const sign = (n: number) => (n >= 0 ? '+' : '')
 
   const reply =
@@ -118,10 +143,20 @@ async function handleStatus(firestoreAgentId: string, agentName: string): Promis
   await writeReply(firestoreAgentId, reply)
 }
 
-async function handlePositions(firestoreAgentId: string): Promise<void> {
-  const cached = getCached(firestoreAgentId)
-  const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
-  const positions: any[] = live.openPositions ?? []
+async function handlePositions(
+  firestoreAgentId: string,
+  apiKey: string,
+  tbAgentId: string,
+): Promise<void> {
+  let positions: any[] = []
+  try {
+    const fresh = await fetchAgentStatus(apiKey, tbAgentId)
+    positions = fresh.live?.state?.openPositions ?? []
+  } catch {
+    const cached = getCached(firestoreAgentId)
+    const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
+    positions = live.openPositions ?? []
+  }
 
   if (positions.length === 0) {
     await writeReply(firestoreAgentId, '📊 No open positions.')
@@ -130,13 +165,13 @@ async function handlePositions(firestoreAgentId: string): Promise<void> {
 
   const lines = ['📊 Open Positions\n']
   for (const p of positions) {
-    const pnl = p.unrealizedPnl ?? p.pnl ?? 0
+    const pnl = unrealizedPnlOf(p)
     const sign = pnl >= 0 ? '+' : ''
     lines.push(
-      `${p.symbol ?? p.token} ${p.direction ?? ''}\n` +
+      `${p.symbol ?? p.token ?? p.tokenSymbol ?? '?'} ${p.direction ?? p.side ?? ''}\n` +
       `  Entry: $${p.entryPrice ?? '—'}\n` +
       `  Current: $${p.currentPrice ?? p.markPrice ?? '—'}\n` +
-      `  PnL: ${sign}$${Number(pnl).toFixed(2)}`,
+      `  Unrealized: ${sign}$${Number(pnl).toFixed(2)}`,
     )
   }
 
@@ -170,17 +205,25 @@ async function handleDecisions(firestoreAgentId: string, limit = 5): Promise<voi
   await writeReply(firestoreAgentId, lines.join('\n\n'))
 }
 
-async function handlePnl(firestoreAgentId: string, agentName: string): Promise<void> {
-  const cached = getCached(firestoreAgentId)
-  const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
+async function handlePnl(
+  firestoreAgentId: string,
+  agentName: string,
+  apiKey: string,
+  tbAgentId: string,
+): Promise<void> {
+  let live: any = {}
+  try {
+    const fresh = await fetchAgentStatus(apiKey, tbAgentId)
+    live = fresh.live?.state ?? {}
+  } catch {
+    const cached = getCached(firestoreAgentId)
+    live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
+  }
   const pnl = live.dailyPnlUsd ?? 0
   const trades = live.dailyTradeCount ?? 0
   const positions: any[] = live.openPositions ?? []
 
-  let unrealized = 0
-  for (const p of positions) {
-    unrealized += Number(p.unrealizedPnl ?? p.pnl ?? 0)
-  }
+  const unrealized = positions.reduce((sum, p) => sum + unrealizedPnlOf(p), 0)
 
   const sign = (n: number) => (n >= 0 ? '+' : '')
   const reply =
@@ -349,13 +392,42 @@ export function startChatListener(
       for (const change of snap.docChanges()) {
         if (change.type !== 'added') continue
         if (processedIds.has(change.doc.id)) continue
-        processedIds.add(change.doc.id)
 
         const msgData = change.doc.data()
-        if (msgData.direction !== 'inbound') continue
+        if (msgData.direction !== 'inbound') {
+          processedIds.add(change.doc.id)
+          continue
+        }
 
         const text: string = (msgData.content ?? '').trim()
-        if (!text) continue
+        if (!text) {
+          processedIds.add(change.doc.id)
+          continue
+        }
+
+        // Atomically claim this message — prevents double-processing when two
+        // Cloud Run instances are briefly running during rolling deploy
+        let claimed = false
+        try {
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(change.doc.ref)
+            if (snap.data()?.chat_processed === true) {
+              throw Object.assign(new Error('already_processed'), { skip: true })
+            }
+            tx.update(change.doc.ref, { chat_processed: true })
+          })
+          claimed = true
+        } catch (claimErr: any) {
+          if (claimErr?.skip) {
+            console.log(`[chat:${firestoreAgentId}] skipping already-claimed msg ${change.doc.id}`)
+            processedIds.add(change.doc.id)
+            continue
+          }
+          // Unexpected transaction error — still attempt to process to avoid silent drops
+          claimed = true
+        }
+        if (!claimed) continue
+        processedIds.add(change.doc.id)
 
         console.log(`[chat:${firestoreAgentId}] received: ${text}`)
 
@@ -386,11 +458,11 @@ export function startChatListener(
             continue
           }
           if (text === '/status') {
-            await handleStatus(firestoreAgentId, agentName)
+            await handleStatus(firestoreAgentId, agentName, apiKey, tbAgentId)
             continue
           }
           if (text === '/positions') {
-            await handlePositions(firestoreAgentId)
+            await handlePositions(firestoreAgentId, apiKey, tbAgentId)
             continue
           }
           if (text === '/decisions' || text === '/review') {
@@ -398,7 +470,7 @@ export function startChatListener(
             continue
           }
           if (text === '/pnl') {
-            await handlePnl(firestoreAgentId, agentName)
+            await handlePnl(firestoreAgentId, agentName, apiKey, tbAgentId)
             continue
           }
           if (text === '/summary') {
