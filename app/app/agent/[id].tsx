@@ -780,14 +780,17 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               scrollEventThrottle={100}
               renderItem={({ item }) => {
                 const isUser = item.direction === 'inbound'
+                const isAlert = item.alert === true
                 return (
                   <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                     <View style={{
-                      backgroundColor: isUser ? Colors.accentAmber : '#1a1a1a',
+                      backgroundColor: isUser ? Colors.accentAmber : isAlert ? '#1a1500' : '#1a1a1a',
                       borderRadius: 14,
                       paddingHorizontal: 14,
                       paddingVertical: 10,
-                      maxWidth: '80%',
+                      maxWidth: '88%',
+                      borderWidth: isAlert ? 1 : 0,
+                      borderColor: isAlert ? Colors.accentAmber : 'transparent',
                     }}>
                       <Text style={{ color: isUser ? '#000' : Colors.textPrimary, fontSize: 15, lineHeight: 21 }}>
                         {item.content}
