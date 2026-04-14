@@ -3,20 +3,43 @@ import { fetchAgentStatus, fetchDecisions } from './api'
 import { setCached } from './cache'
 import type { TbDecision } from './types'
 
-// Strip undefined values — Firestore rejects them (null is fine)
+// ── Shared decisions cache ────────────────────────────────────────────────────
+// fetchDecisions is account-level — all agents on the same apiKey share one fetch.
+// Without this, 3 agents × 2 calls/30s = 17,280 API calls/day.
+// With this + 2-min interval: ~2,400 calls/day.
+
+const DECISIONS_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+interface DecisionsCache {
+  data: TbDecision[]
+  fetchedAt: number
+}
+
+const decisionsCache = new Map<string, DecisionsCache>()
+
+async function getDecisions(apiKey: string): Promise<TbDecision[]> {
+  const cached = decisionsCache.get(apiKey)
+  if (cached && Date.now() - cached.fetchedAt < DECISIONS_TTL_MS) {
+    return cached.data
+  }
+  const data = await fetchDecisions(apiKey, 50)
+  decisionsCache.set(apiKey, { data, fetchedAt: Date.now() })
+  return data
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function sanitize(obj: Record<string, any>): Record<string, any> {
   return Object.fromEntries(
     Object.entries(obj).map(([k, v]) => [k, v === undefined ? null : v])
   )
 }
 
-// Decision types that should be posted as chat alerts
 const ALERT_TYPES = new Set(['TRADE_ALERT', 'ENTRY', 'EXIT', 'STOP_HIT', 'TAKE_PROFIT'])
 
 function formatAlert(d: TbDecision): string {
   const action = d.actionType ?? d.decisionType ?? '?'
 
-  // Derive a readable title from actionType
   let title = action
   if (action.includes('LONG')) title = `ENTRY: LONG ${d.tokenSymbol}`
   else if (action.includes('SHORT')) title = `ENTRY: SHORT ${d.tokenSymbol}`
@@ -28,7 +51,6 @@ function formatAlert(d: TbDecision): string {
 
   const lines: string[] = [`🔔 ${title}`]
 
-  // Compact trade params line
   const params: string[] = []
   if (d.direction) params.push(d.direction)
   if (d.tokenSymbol) params.push(d.tokenSymbol)
@@ -36,15 +58,17 @@ function formatAlert(d: TbDecision): string {
   if (d.confidence) params.push(`Confidence: ${d.confidence}%`)
   if (params.length > 0) lines.push(params.join(' | '))
 
-  // Full details / reasoning
   if (d.details) lines.push(`\n${d.details}`)
 
-  // Footer
   const ts = d.eventTime ? new Date(d.eventTime).toLocaleString() : ''
   lines.push(`\n${d.decisionType} · ${ts}`)
 
   return lines.join('\n')
 }
+
+// ── Poller ────────────────────────────────────────────────────────────────────
+
+const POLL_INTERVAL_MS = 2 * 60 * 1000 // 2 minutes — agent status doesn't need sub-minute freshness
 
 export function startPoller(
   firestoreAgentId: string,
@@ -53,13 +77,12 @@ export function startPoller(
   tbTraderId: string,
   openaiApiKey?: string,
 ): void {
-  // Track seen decision IDs — populated on first poll to avoid re-posting history
   const seenIds = new Set<string>()
   let firstPoll = true
 
   async function poll(): Promise<void> {
     try {
-      // Fetch live agent status
+      // 1 API call per agent per poll
       const { agent, live } = await fetchAgentStatus(apiKey, tbAgentId)
 
       await db.collection('agents').doc(firestoreAgentId).update({
@@ -75,7 +98,6 @@ export function startPoller(
         last_synced: FieldValue.serverTimestamp(),
       })
 
-      // Update in-memory cache so chat handler avoids redundant Firestore reads
       setCached(firestoreAgentId, {
         name: agent.name,
         liveState: live.state,
@@ -84,11 +106,10 @@ export function startPoller(
         openaiApiKey,
       })
 
-      // Fetch all decisions for account, filter to this trader
-      const allDecisions = await fetchDecisions(apiKey, 50)
+      // Shared fetch — all agents on the same apiKey reuse cached result for 5 min
+      const allDecisions = await getDecisions(apiKey)
       const decisions = allDecisions.filter((d) => d.traderId === tbTraderId)
 
-      // Upsert decisions to Firestore
       const batch = db.batch()
       for (const decision of decisions) {
         const ref = db
@@ -121,11 +142,9 @@ export function startPoller(
       await batch.commit()
 
       if (firstPoll) {
-        // Seed seenIds with everything already fetched — don't re-post history
         for (const d of decisions) seenIds.add(d.id)
         firstPoll = false
       } else {
-        // Post new TRADE_ALERT decisions as chat messages
         for (const d of decisions) {
           if (seenIds.has(d.id)) continue
           seenIds.add(d.id)
@@ -155,7 +174,6 @@ export function startPoller(
     }
   }
 
-  // Poll immediately then on interval
   poll()
-  setInterval(poll, 30_000)
+  setInterval(poll, POLL_INTERVAL_MS)
 }
