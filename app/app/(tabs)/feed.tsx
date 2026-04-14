@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { View, Text, FlatList, StyleSheet, Platform } from 'react-native'
+import { View, Text, FlatList, StyleSheet, Platform, TouchableOpacity } from 'react-native'
+import { router } from 'expo-router'
 import { subscribeToMyFeed, subscribeToSlug001Feed } from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
 import { Colors } from '../../constants/colors'
@@ -24,6 +25,8 @@ interface FeedItem {
   created_at: string
   cardType: CardType
   pnl?: PnLData | null
+  payload?: Record<string, any>
+  rawType?: string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,13 +43,15 @@ function formatTime(ts: string): string {
 function toFeedItem(raw: any): FeedItem {
   const isSlug001 = raw.agent_id === 'slug-001'
   const cardType: CardType =
-    raw.type === 'pnl' ? 'pnl'
+    raw.type === 'pnl' || raw.type === 'daily_pnl' ? 'pnl'
     : raw.type === 'system' ? 'system'
     : 'update'
 
+  // daily_pnl uses payload.pnl directly; legacy pnl uses payload.pnl too
+  const pnlVal = raw.payload?.pnl ?? null
   const pnl: PnLData | null =
-    cardType === 'pnl' && raw.payload?.pnl != null
-      ? { pnl: raw.payload.pnl, pct: raw.payload.pct ?? 0, symbol: raw.payload.symbol, side: raw.payload.side }
+    cardType === 'pnl' && pnlVal != null
+      ? { pnl: Number(pnlVal), pct: raw.payload?.pct ?? 0, symbol: raw.payload?.symbol, side: raw.payload?.side }
       : null
 
   return {
@@ -58,6 +63,8 @@ function toFeedItem(raw: any): FeedItem {
     created_at: raw.created_at,
     cardType,
     pnl,
+    payload: raw.payload,
+    rawType: raw.type,
   }
 }
 
@@ -92,57 +99,107 @@ function AgentAvatar({ item }: { item: FeedItem }) {
 
 // ── Cards ──────────────────────────────────────────────────────────────────────
 
+function cardDestination(item: FeedItem): string | null {
+  if (item.agentIsSlug001) return '/agent/slug-001'
+  if (item.agent_id) return `/agent/${item.agent_id}`
+  return null
+}
+
+function CardWrapper({ item, children }: { item: FeedItem; children: React.ReactNode }) {
+  const dest = cardDestination(item)
+  if (!dest) return <>{children}</>
+  return (
+    <TouchableOpacity activeOpacity={0.75} onPress={() => router.push(dest as any)}>
+      {children}
+    </TouchableOpacity>
+  )
+}
+
 function PnLCard({ item }: { item: FeedItem }) {
   const data = item.pnl
   const isPositive = !data || data.pnl >= 0
-  const color = isPositive ? Colors.accentGreen : Colors.accentRed
+  const pnlColor = isPositive ? Colors.accentGreen : Colors.accentRed
   const accentColor = item.agentIsSlug001 ? Colors.accentAmber : Colors.accentGreen
+  const isDaily = item.rawType === 'daily_pnl'
 
   return (
-    <View style={[styles.card, item.agentIsSlug001 && styles.cardSlug001]}>
-      <View style={styles.cardTopRow}>
-        <View style={styles.agentRow}>
-          <AgentAvatar item={item} />
-          <View style={{ gap: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Text style={styles.agentName}>{item.agentName}</Text>
-              {data?.symbol && (
-                <View style={styles.symbolBadge}>
-                  <Text style={styles.symbolText}>{data.symbol}</Text>
-                </View>
-              )}
-              {data?.side && (
-                <View style={[styles.sideBadge, { backgroundColor: data.side === 'long' ? 'rgba(0,200,150,0.12)' : 'rgba(255,69,58,0.12)' }]}>
-                  <Text style={[styles.sideText, { color: data.side === 'long' ? Colors.accentGreen : Colors.accentRed }]}>
-                    {data.side.toUpperCase()}
-                  </Text>
-                </View>
-              )}
+    <CardWrapper item={item}>
+      <View style={[styles.card, item.agentIsSlug001 && styles.cardSlug001]}>
+        <View style={styles.cardTopRow}>
+          <View style={styles.agentRow}>
+            <AgentAvatar item={item} />
+            <View style={{ gap: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.agentName}>{item.agentName}</Text>
+                {data?.symbol && (
+                  <View style={styles.symbolBadge}>
+                    <Text style={styles.symbolText}>{data.symbol}</Text>
+                  </View>
+                )}
+                {data?.side && !isDaily && (
+                  <View style={[styles.sideBadge, { backgroundColor: data.side === 'long' ? 'rgba(0,200,150,0.12)' : 'rgba(255,69,58,0.12)' }]}>
+                    <Text style={[styles.sideText, { color: data.side === 'long' ? Colors.accentGreen : Colors.accentRed }]}>
+                      {data.side.toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              {item.agentIsSlug001 && <Text style={styles.agentHandle}>@slugs/range-farmer</Text>}
             </View>
-            {item.agentIsSlug001 && <Text style={styles.agentHandle}>@slugs/range-farmer</Text>}
           </View>
+          <Text style={styles.timestamp}>{formatTime(item.created_at)}</Text>
         </View>
-        <Text style={styles.timestamp}>{formatTime(item.created_at)}</Text>
-      </View>
 
-      {data && (
-        <View style={styles.pnlRow}>
-          <Text style={[styles.pnlDollar, { color }]}>
-            {data.pnl >= 0 ? '+$' : '-$'}{Math.abs(data.pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Text>
-          {data.pct !== 0 && (
-            <Text style={[styles.pnlPct, { color }]}>
-              {data.pct > 0 ? '+' : ''}{data.pct.toFixed(2)}%
+        {/* PnL — highlighted prominently */}
+        {data && (
+          <View style={styles.pnlRow}>
+            <Text style={[styles.pnlDollar, { color: pnlColor }]}>
+              {data.pnl >= 0 ? '+$' : '-$'}{Math.abs(data.pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </Text>
+            {data.pct !== 0 && (
+              <Text style={[styles.pnlPct, { color: pnlColor }]}>
+                {data.pct > 0 ? '+' : ''}{data.pct.toFixed(2)}%
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Daily summary stats row */}
+        {isDaily && item.payload && (
+          <View style={styles.summaryRow}>
+            {item.payload.fills != null && (
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryValue}>{item.payload.fills}</Text>
+                <Text style={styles.summaryLabel}>fills</Text>
+              </View>
+            )}
+            {item.payload.open_positions != null && (
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryValue}>{item.payload.open_positions}</Text>
+                <Text style={styles.summaryLabel}>open</Text>
+              </View>
+            )}
+            {item.payload.btc_price != null && (
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryValue}>${Math.round(item.payload.btc_price).toLocaleString()}</Text>
+                <Text style={styles.summaryLabel}>btc</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {!isDaily && <Text style={styles.cardContent}>{item.content}</Text>}
+
+        <View style={styles.cardTypeRow}>
+          <Text style={[styles.cardTypeText, { color: accentColor }]}>
+            ◆ {isDaily ? 'Daily Summary' : 'Trade Update'}
+          </Text>
+          {cardDestination(item) && (
+            <Text style={styles.cardChevron}>›</Text>
           )}
         </View>
-      )}
-
-      <Text style={styles.cardContent}>{item.content}</Text>
-      <View style={styles.cardTypeTag}>
-        <Text style={[styles.cardTypeText, { color: accentColor }]}>◆ Trade Update</Text>
       </View>
-    </View>
+    </CardWrapper>
   )
 }
 
@@ -150,24 +207,29 @@ function UpdateCard({ item }: { item: FeedItem }) {
   const dotColor = item.agentIsSlug001 ? Colors.accentAmber : Colors.textMuted
 
   return (
-    <View style={[styles.card, item.agentIsSlug001 && styles.cardSlug001]}>
-      <View style={styles.cardTopRow}>
-        <View style={styles.agentRow}>
-          <AgentAvatar item={item} />
-          <View style={{ gap: 1 }}>
-            <Text style={styles.agentName}>{item.agentName}</Text>
-            {item.agentIsSlug001 && <Text style={styles.agentHandle}>@slugs/range-farmer</Text>}
+    <CardWrapper item={item}>
+      <View style={[styles.card, item.agentIsSlug001 && styles.cardSlug001]}>
+        <View style={styles.cardTopRow}>
+          <View style={styles.agentRow}>
+            <AgentAvatar item={item} />
+            <View style={{ gap: 1 }}>
+              <Text style={styles.agentName}>{item.agentName}</Text>
+              {item.agentIsSlug001 && <Text style={styles.agentHandle}>@slugs/range-farmer</Text>}
+            </View>
           </View>
+          <Text style={styles.timestamp}>{formatTime(item.created_at)}</Text>
         </View>
-        <Text style={styles.timestamp}>{formatTime(item.created_at)}</Text>
+        <Text style={styles.cardContent}>{item.content}</Text>
+        <View style={styles.cardTypeRow}>
+          {item.agentIsSlug001 && (
+            <Text style={[styles.cardTypeText, { color: dotColor }]}>◆ Grid Update</Text>
+          )}
+          {cardDestination(item) && (
+            <Text style={styles.cardChevron}>›</Text>
+          )}
+        </View>
       </View>
-      <Text style={styles.cardContent}>{item.content}</Text>
-      {item.agentIsSlug001 && (
-        <View style={styles.cardTypeTag}>
-          <Text style={[styles.cardTypeText, { color: dotColor }]}>◆ Grid Update</Text>
-        </View>
-      )}
-    </View>
+    </CardWrapper>
   )
 }
 
@@ -295,8 +357,14 @@ const styles = StyleSheet.create({
   pnlPct: { fontSize: 16, fontWeight: '600' },
 
   cardContent: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
-  cardTypeTag: { flexDirection: 'row' },
+  cardTypeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTypeText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  cardChevron: { fontSize: 18, color: Colors.textMuted, lineHeight: 20 },
+
+  summaryRow: { flexDirection: 'row', gap: 20 },
+  summaryItem: { gap: 2 },
+  summaryValue: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  summaryLabel: { fontSize: 9, fontWeight: '600', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8 },
 
   systemCard: {
     flexDirection: 'row',

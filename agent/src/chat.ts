@@ -87,7 +87,6 @@ export function startChatListener() {
   const processed = new Set<string>()
 
   MESSAGES_COL
-    .where('direction', '==', 'inbound')
     .where('created_at', '>=', startTimestamp)
     .onSnapshot(
       async (snap) => {
@@ -99,6 +98,8 @@ export function startChatListener() {
           processed.add(change.doc.id)
 
           const msg = change.doc.data()
+          // Filter inbound-only in code — avoids composite index requirement
+          if (msg.direction !== 'inbound') continue
           const userText = msg.content as string
           if (!userText?.trim()) continue
 

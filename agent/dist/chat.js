@@ -88,7 +88,6 @@ function startChatListener() {
     const startTimestamp = firestore_1.Timestamp.now();
     const processed = new Set();
     firebase_1.MESSAGES_COL
-        .where('direction', '==', 'inbound')
         .where('created_at', '>=', startTimestamp)
         .onSnapshot(async (snap) => {
         const added = snap.docChanges().filter(c => c.type === 'added');
@@ -98,6 +97,9 @@ function startChatListener() {
                 continue;
             processed.add(change.doc.id);
             const msg = change.doc.data();
+            // Filter inbound-only in code — avoids composite index requirement
+            if (msg.direction !== 'inbound')
+                continue;
             const userText = msg.content;
             if (!userText?.trim())
                 continue;
