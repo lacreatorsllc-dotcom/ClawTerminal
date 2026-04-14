@@ -794,17 +794,12 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               renderItem={({ item }) => {
                 const isUser = item.direction === 'inbound'
                 const isAlert = item.alert === true
-                const isCmd = isUser && /^\/[a-z][a-z0-9_-]*/.test((item.content ?? '').trim())
                 const bubbleBg = isUser
-                  ? (isCmd ? 'rgba(109,40,217,0.25)' : Colors.accentAmber)
+                  ? Colors.accentAmber
                   : (isAlert ? '#1a1500' : '#1a1a1a')
-                const bubbleBorder = isCmd ? 1 : (isAlert ? 1 : 0)
-                const bubbleBorderColor = isCmd
-                  ? 'rgba(167,139,250,0.55)'
-                  : (isAlert ? Colors.accentAmber : 'transparent')
-                const textColor = isUser
-                  ? (isCmd ? '#e9d5ff' : '#000')
-                  : Colors.textPrimary
+                const bubbleBorder = isAlert ? 1 : 0
+                const bubbleBorderColor = isAlert ? Colors.accentAmber : 'transparent'
+                const textColor = isUser ? '#000' : Colors.textPrimary
                 return (
                   <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
                     <View style={{
@@ -3084,11 +3079,8 @@ const styles = StyleSheet.create({
   bubbleTextOut: { color: '#fff' },
   bubbleLink: { color: Colors.accentTeal, textDecorationLine: 'underline' },
   bubbleCmd: {
-    color: '#c4b5fd',
-    fontWeight: '700',
-    backgroundColor: 'rgba(109,40,217,0.25)',
-    borderRadius: 4,
-    overflow: 'hidden',
+    color: '#a78bfa',
+    fontWeight: '600',
   },
   bubblePnlPos: { color: Colors.accentGreen, fontWeight: '700' },
   bubblePnlNeg: { color: Colors.accentRed, fontWeight: '700' },
