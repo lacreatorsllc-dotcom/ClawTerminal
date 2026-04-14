@@ -8,6 +8,7 @@ exports.fetchAgentStatus = fetchAgentStatus;
 exports.fetchDecisions = fetchDecisions;
 exports.pauseAgent = pauseAgent;
 exports.resumeAgent = resumeAgent;
+exports.fetchAgentPositions = fetchAgentPositions;
 exports.overrideAgent = overrideAgent;
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const BASE = 'https://api.cabal.ventures';
@@ -54,6 +55,21 @@ async function resumeAgent(apiKey, agentId) {
         headers: headers(apiKey),
     });
     await checkResponse(res, 'resumeAgent');
+}
+// Attempts to fetch open positions from a dedicated endpoint.
+// Falls back gracefully (returns null) if the endpoint doesn't exist.
+async function fetchAgentPositions(apiKey, agentId) {
+    try {
+        const res = await (0, node_fetch_1.default)(`${BASE}/api/v1/agents/${agentId}/positions`, { headers: headers(apiKey) });
+        if (!res.ok)
+            return null;
+        const data = await res.json();
+        // Handle both { positions: [...] } and direct array responses
+        return Array.isArray(data) ? data : (data.positions ?? data.openPositions ?? null);
+    }
+    catch {
+        return null;
+    }
 }
 async function overrideAgent(apiKey, agentId, instruction) {
     const res = await (0, node_fetch_1.default)(`${BASE}/api/v1/agents/${agentId}/override`, {
