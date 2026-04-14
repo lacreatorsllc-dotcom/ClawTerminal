@@ -1,6 +1,6 @@
 import OpenAI from 'openai'
 import { db, FieldValue } from './firebase'
-import { pauseAgent, resumeAgent, overrideAgent, fetchAgentStatus } from './api'
+import { pauseAgent, resumeAgent, overrideAgent, fetchAgentStatus, fetchAgentPositions } from './api'
 import { getCached } from './cache'
 
 // Extracts unrealized PnL from a position object.
@@ -135,7 +135,16 @@ async function handleStatus(
 
   const state = live.state ?? 'UNKNOWN'
   const paused = admin.paused === true
-  const positions: any[] = live.openPositions ?? []
+
+  // Try dedicated positions endpoint first (has entry/current prices + unrealized PnL)
+  // Fall back to openPositions from agent status (may be empty or lack price fields)
+  let positions: any[] = (await fetchAgentPositions(apiKey, tbAgentId)) ?? live.openPositions ?? []
+
+  // Debug: log first position's keys so we know the exact field names
+  if (positions.length > 0) {
+    console.log(`[chat:status:${firestoreAgentId}] position keys: ${Object.keys(positions[0]).join(', ')}`)
+    console.log(`[chat:status:${firestoreAgentId}] first position: ${JSON.stringify(positions[0])}`)
+  }
   const pnl = live.dailyPnlUsd ?? 0
   const trades = live.dailyTradeCount ?? 0
   const setups = live.activeConditionalSetups ?? 0

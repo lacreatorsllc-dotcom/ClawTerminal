@@ -989,22 +989,31 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               No decisions yet
             </Text>
           }
-          renderItem={({ item }) => (
-            <View style={tb.decisionRow}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{item.tokenSymbol}</Text>
-                <View style={[tb.actionBadge, { backgroundColor: decisionColor(item.actionType) + '22', borderColor: decisionColor(item.actionType) }]}>
-                  <Text style={{ color: decisionColor(item.actionType), fontSize: 10, fontWeight: '700' }}>{item.actionType}</Text>
+          renderItem={({ item }) => {
+            const label = item.actionType || item.decisionType || null
+            const body = item.details || null
+            if (!label && !body) return null
+            return (
+              <View style={tb.decisionRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: body ? 4 : 0 }}>
+                  <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{item.tokenSymbol}</Text>
+                  {!!label && (
+                    <View style={[tb.actionBadge, { backgroundColor: decisionColor(label) + '22', borderColor: decisionColor(label) }]}>
+                      <Text style={{ color: decisionColor(label), fontSize: 10, fontWeight: '700' }}>{label}</Text>
+                    </View>
+                  )}
+                  <Text style={{ color: Colors.textMuted, fontSize: 11, marginLeft: 'auto' }}>
+                    {item.eventTime ? formatTime001(item.eventTime) : ''}
+                  </Text>
                 </View>
-                <Text style={{ color: Colors.textMuted, fontSize: 11, marginLeft: 'auto' }}>
-                  {item.eventTime ? formatTime001(item.eventTime) : ''}
-                </Text>
+                {!!body && (
+                  <Text style={{ color: Colors.textSecondary, fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
+                    {body}
+                  </Text>
+                )}
               </View>
-              <Text style={{ color: Colors.textSecondary, fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
-                {item.details}
-              </Text>
-            </View>
-          )}
+            )
+          }}
         />
       )}
     </KeyboardAvoidingView>

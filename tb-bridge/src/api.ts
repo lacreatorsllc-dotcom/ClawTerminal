@@ -54,6 +54,20 @@ export async function resumeAgent(apiKey: string, agentId: string): Promise<void
   await checkResponse(res, 'resumeAgent')
 }
 
+// Attempts to fetch open positions from a dedicated endpoint.
+// Falls back gracefully (returns null) if the endpoint doesn't exist.
+export async function fetchAgentPositions(apiKey: string, agentId: string): Promise<any[] | null> {
+  try {
+    const res = await fetch(`${BASE}/api/v1/agents/${agentId}/positions`, { headers: headers(apiKey) })
+    if (!res.ok) return null
+    const data = await res.json() as any
+    // Handle both { positions: [...] } and direct array responses
+    return Array.isArray(data) ? data : (data.positions ?? data.openPositions ?? null)
+  } catch {
+    return null
+  }
+}
+
 export async function overrideAgent(apiKey: string, agentId: string, instruction: string): Promise<void> {
   const res = await fetch(`${BASE}/api/v1/agents/${agentId}/override`, {
     method: 'POST',
