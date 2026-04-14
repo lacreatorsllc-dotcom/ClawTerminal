@@ -132,7 +132,7 @@ function getAgentTabs(agentName?: string): Tab[] {
 }
 
 const URL_REGEX = /^https?:\/\/[^\s]+$/
-const TOKEN_REGEX = /(https?:\/\/[^\s]+|`\/[a-z][a-z0-9_\s\-\[\]]*`|\/[a-z][a-z0-9_]*)/g
+const TOKEN_REGEX = /(https?:\/\/[^\s]+|`\/[a-z][a-z0-9_\s\-\[\]]*`|\/[a-z][a-z0-9_]*|[+]\$[\d,]+\.?\d*|-\$[\d,]+\.?\d*)/g
 
 const MessageText = memo(function MessageText({ content, outbound }: { content: string; outbound: boolean }) {
   const parts = useMemo(() => content.split(TOKEN_REGEX), [content])
@@ -140,8 +140,10 @@ const MessageText = memo(function MessageText({ content, outbound }: { content: 
     <Text style={[styles.bubbleText, outbound && styles.bubbleTextOut]}>
       {parts.map((part, i) => {
         if (URL_REGEX.test(part)) return <Text key={i} style={styles.bubbleLink} onPress={() => Linking.openURL(part)}>{part}</Text>
-        if (/^`\//.test(part)) return <Text key={i} style={styles.bubbleCmd}>{part.replace(/`/g, '')}</Text>
-        if (/^\/[a-z]/.test(part)) return <Text key={i} style={styles.bubbleCmd}>{part}</Text>
+        if (/^`\//.test(part)) return <Text key={i} style={[styles.bubbleCmd, outbound && styles.bubbleCmdOut]}>{part.replace(/`/g, '')}</Text>
+        if (/^\/[a-z]/.test(part)) return <Text key={i} style={[styles.bubbleCmd, outbound && styles.bubbleCmdOut]}>{part}</Text>
+        if (/^\+\$/.test(part)) return <Text key={i} style={styles.bubblePnlPos}>{part}</Text>
+        if (/^-\$/.test(part)) return <Text key={i} style={styles.bubblePnlNeg}>{part}</Text>
         return <Text key={i}>{part}</Text>
       })}
     </Text>
@@ -896,7 +898,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
             <View style={[tb.card, { flex: 1 }]}>
               <Text style={tb.cardLabel}>DAILY P&L</Text>
               <Text style={[tb.cardValue, { color: (agentDoc?.live_state?.dailyPnlUsd ?? 0) >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-                ${(agentDoc?.live_state?.dailyPnlUsd ?? 0).toFixed(2)}
+                {(agentDoc?.live_state?.dailyPnlUsd ?? 0) >= 0 ? '+' : ''}${(agentDoc?.live_state?.dailyPnlUsd ?? 0).toFixed(2)}
               </Text>
             </View>
             <View style={[tb.card, { flex: 1 }]}>
@@ -904,6 +906,19 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               <Text style={tb.cardValue}>{agentDoc?.live_state?.openPositions?.length ?? 0}</Text>
             </View>
           </View>
+
+          {(() => {
+            const positions: any[] = agentDoc?.live_state?.openPositions ?? []
+            const unrealized = positions.reduce((sum: number, p: any) => sum + Number(p.unrealizedPnl ?? p.pnl ?? 0), 0)
+            return (
+              <View style={tb.card}>
+                <Text style={tb.cardLabel}>UNREALIZED P&L</Text>
+                <Text style={[tb.cardValue, { color: unrealized >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+                  {unrealized >= 0 ? '+' : ''}${unrealized.toFixed(2)}
+                </Text>
+              </View>
+            )
+          })()}
 
           <View style={tb.cardRow}>
             <View style={[tb.card, { flex: 1 }]}>
@@ -3036,7 +3051,10 @@ const styles = StyleSheet.create({
   bubbleText: { color: Colors.textPrimary, fontSize: 15, lineHeight: 20 },
   bubbleTextOut: { color: '#fff' },
   bubbleLink: { color: Colors.accentTeal, textDecorationLine: 'underline' },
-  bubbleCmd: { color: '#a78bfa' },
+  bubbleCmd: { color: '#a78bfa', fontWeight: '600' },
+  bubbleCmdOut: { color: '#c4b5fd' },
+  bubblePnlPos: { color: Colors.accentGreen, fontWeight: '700' },
+  bubblePnlNeg: { color: Colors.accentRed, fontWeight: '700' },
   cmdPicker: {
     maxHeight: 220,
     backgroundColor: Colors.bgElevated,
