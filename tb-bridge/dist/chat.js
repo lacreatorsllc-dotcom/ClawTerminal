@@ -116,12 +116,12 @@ async function handleStatus(firestoreAgentId, agentName, apiKey, tbAgentId) {
     const setups = live.activeConditionalSetups ?? 0;
     const lastSync = freshData ? 'just now' : ((0, cache_1.getCached)(firestoreAgentId) ? new Date((0, cache_1.getCached)(firestoreAgentId).updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown');
     const unrealized = positions.reduce((sum, p) => sum + (0, prices_1.calcUnrealized)(p, prices), 0);
-    const sign = (n) => (n >= 0 ? '+' : '');
+    const fmt = (n) => `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
     const reply = `${stateEmoji(paused ? 'PAUSED' : state)} ${agentName} — ${paused ? 'PAUSED' : state}\n\n` +
         `📋 Watchlist: ${watchlist.length} tokens\n` +
         `📊 Open positions: ${positions.length}\n` +
-        `📈 Daily PnL: ${sign(Number(pnl))}$${Number(pnl).toFixed(2)}\n` +
-        `💸 Unrealized PnL: ${sign(unrealized)}$${unrealized.toFixed(2)}\n` +
+        `📈 Daily PnL: ${fmt(Number(pnl))}\n` +
+        `💸 Unrealized PnL: ${fmt(unrealized)}\n` +
         `🔢 Daily trades: ${trades}\n` +
         `🎯 Active setups: ${setups}\n` +
         `🕐 Last sync: ${lastSync}`;
@@ -193,10 +193,10 @@ async function handlePnl(firestoreAgentId, agentName, apiKey, tbAgentId) {
     const syms = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean);
     const prices = await (0, prices_1.getCurrentPrices)(syms);
     const unrealized = positions.reduce((sum, p) => sum + (0, prices_1.calcUnrealized)(p, prices), 0);
-    const sign = (n) => (n >= 0 ? '+' : '');
+    const fmt = (n) => `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`;
     const reply = `💰 ${agentName} PnL\n\n` +
-        `Daily realized: ${sign(pnl)}$${Number(pnl).toFixed(2)}\n` +
-        `Unrealized: ${sign(unrealized)}$${unrealized.toFixed(2)}\n` +
+        `Daily realized: ${fmt(Number(pnl))}\n` +
+        `Unrealized: ${fmt(unrealized)}\n` +
         `Daily trades: ${trades}\n` +
         `Open positions: ${positions.length}`;
     await writeReply(firestoreAgentId, reply);

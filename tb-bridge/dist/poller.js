@@ -4,6 +4,7 @@ exports.startPoller = startPoller;
 const firebase_1 = require("./firebase");
 const api_1 = require("./api");
 const cache_1 = require("./cache");
+const prices_1 = require("./prices");
 // ── Shared decisions cache ────────────────────────────────────────────────────
 // fetchDecisions is account-level — all agents on the same apiKey share one fetch.
 // Without this, 3 agents × 2 calls/30s = 17,280 API calls/day.
@@ -66,6 +67,18 @@ function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId, openaiApiK
         try {
             // 1 API call per agent per poll
             const { agent, live } = await (0, api_1.fetchAgentStatus)(apiKey, tbAgentId);
+            // Enrich positions with live unrealized PnL from CoinGecko
+            const positions = live.state?.openPositions ?? [];
+            let enrichedUnrealizedPnl = 0;
+            if (positions.length > 0) {
+                const symbols = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean);
+                const prices = await (0, prices_1.getCurrentPrices)(symbols);
+                enrichedUnrealizedPnl = positions.reduce((sum, p) => sum + (0, prices_1.calcUnrealized)(p, prices), 0);
+            }
+            const enrichedLiveState = {
+                ...live.state,
+                unrealizedPnlUsd: enrichedUnrealizedPnl,
+            };
             await firebase_1.db.collection('agents').doc(firestoreAgentId).update({
                 name: agent.name,
                 status: agent.status === 'active' ? 'connected' : 'disconnected',
@@ -74,7 +87,7 @@ function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId, openaiApiK
                 tick_count: agent.tickCount,
                 last_tick_at: agent.lastTickAt,
                 next_scan_at: agent.nextScanAt,
-                live_state: live.state,
+                live_state: enrichedLiveState,
                 live_admin: live.admin,
                 last_synced: firebase_1.FieldValue.serverTimestamp(),
             });
