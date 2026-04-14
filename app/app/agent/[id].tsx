@@ -17,7 +17,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
-import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToMessages, addMessage, subscribeToDecisions, db, type PaperAgentState } from '../../lib/firebase'
+import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, db, type PaperAgentState } from '../../lib/firebase'
 import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
@@ -663,16 +663,17 @@ function formatTime001(ts: string): string {
 type TbTab = 'chat' | 'status' | 'activity'
 
 const TB_SLASH_COMMANDS = [
-  { cmd: '/help',      desc: 'Show available commands' },
-  { cmd: '/status',    desc: 'Agent status & health' },
-  { cmd: '/agents',    desc: 'All active agents' },
-  { cmd: '/positions', desc: 'Open positions with live P&L' },
-  { cmd: '/decisions', desc: 'Recent trade decisions' },
-  { cmd: '/pnl',       desc: 'Daily profit & loss' },
-  { cmd: '/summary',   desc: 'Daily activity summary' },
-  { cmd: '/pause',     desc: 'Pause the agent' },
-  { cmd: '/resume',    desc: 'Resume the agent' },
-  { cmd: '/override',  desc: 'Send instruction to agent' },
+  { cmd: '/help',               desc: 'Show available commands' },
+  { cmd: '/status',             desc: 'Agent status & health' },
+  { cmd: '/agents',             desc: 'All active agents' },
+  { cmd: '/positions',          desc: 'Open positions with live P&L' },
+  { cmd: '/decisions',          desc: 'Recent trade decisions' },
+  { cmd: '/pnl',                desc: 'Daily profit & loss' },
+  { cmd: '/summary',            desc: 'Daily activity summary' },
+  { cmd: '/analyze-slug001',    desc: 'AI analysis of the Range Farmer' },
+  { cmd: '/pause',              desc: 'Pause the agent' },
+  { cmd: '/resume',             desc: 'Resume the agent' },
+  { cmd: '/override',           desc: 'Send instruction to agent' },
 ]
 
 function TradingBoyScreen({ agentId }: { agentId: string }) {
@@ -1168,17 +1169,18 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
 
 function Slug001Screen() {
   const [state, setState] = useState<PaperAgentState | null>(null)
-  const [feed, setFeed] = useState<any[]>([])
+  const [trades, setTrades] = useState<any[]>([])
   const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState('')
   const [tab, setTab] = useState<'chat' | 'trades' | 'positions'>('chat')
+  const [selectedTrade, setSelectedTrade] = useState<any | null>(null)
   const [showShare, setShowShare] = useState(false)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
   const [atBottom, setAtBottom] = useState(true)
 
   useEffect(() => { return subscribeToSlug001(setState) }, [])
-  useEffect(() => { return subscribeToSlug001Feed((events) => setFeed(events)) }, [])
+  useEffect(() => { return subscribeToSlug001Trades(setTrades) }, [])
   useEffect(() => { return subscribeToMessages('slug-001', setMessages) }, [])
   // Inverted list: offset 0 = newest messages (visual bottom). atBottom = user sees newest.
   function handleScroll(e: any) {
@@ -1416,61 +1418,164 @@ function Slug001Screen() {
         {/* Trades tab */}
         {tab === 'trades' && (
           <View style={{ gap: 8 }}>
-            {feed.length === 0 && (
+            {trades.length === 0 && (
               <View style={s001.emptyTab}>
                 <Text style={s001.emptyTabText}>No trades yet — waiting for first fill.</Text>
               </View>
             )}
-            {feed
-              .filter((item) => item.type === 'pnl' || item.type === 'trade')
-              .map((item) => {
-                const p = item.payload ?? {}
-                const side: string = p.side ?? 'buy'
-                const isBuy = side === 'buy'
-                const sideColor = isBuy ? Colors.accentGreen : Colors.accentRed
-                const sideBg = isBuy ? 'rgba(0,200,150,0.12)' : 'rgba(255,69,58,0.12)'
-                const pnl: number | null = p.pnl != null ? Number(p.pnl) : null
-                const fillPrice: number | null = p.fillPrice != null ? Number(p.fillPrice) : null
-                const qty: number | null = p.qty != null ? Number(p.qty) : null
-                const pnlColor = pnl != null ? (pnl >= 0 ? Colors.accentGreen : Colors.accentRed) : Colors.textMuted
-                return (
-                  <View key={item.id} style={s001.tradeCard}>
-                    {/* Top row: side badge + pair + agent tag + pnl */}
-                    <View style={s001.tradeTop}>
-                      <View style={[s001.sideBadge, { backgroundColor: sideBg }]}>
-                        <Text style={[s001.sideText, { color: sideColor }]}>{side.toUpperCase()}</Text>
-                      </View>
-                      <Text style={s001.tradePair}>BTC/USDT</Text>
-                      <View style={s001.tradeAgentTag}>
-                        <Text style={s001.tradeAgentText}>Slug #001</Text>
-                      </View>
-                      <View style={{ flex: 1 }} />
-                      {pnl != null && (
-                        <Text style={[s001.tradePnl, { color: pnlColor }]}>
-                          {pnl >= 0 ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
-                        </Text>
-                      )}
+            {trades.map((item) => {
+              const side: string = item.side ?? 'buy'
+              const isBuy = side === 'buy'
+              const sideColor = isBuy ? Colors.accentGreen : Colors.accentRed
+              const sideBg = isBuy ? 'rgba(0,200,150,0.12)' : 'rgba(255,69,58,0.12)'
+              const pnl: number | null = item.pnl != null ? Number(item.pnl) : null
+              const fillPrice: number | null = item.fillPrice != null ? Number(item.fillPrice) : null
+              const qty: number | null = item.qty != null ? Number(item.qty) : null
+              const pnlColor = pnl != null ? (pnl >= 0 ? Colors.accentGreen : Colors.accentRed) : Colors.textMuted
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={s001.tradeCard}
+                  onPress={() => setSelectedTrade(item)}
+                  activeOpacity={0.75}
+                >
+                  <View style={s001.tradeTop}>
+                    <View style={[s001.sideBadge, { backgroundColor: sideBg }]}>
+                      <Text style={[s001.sideText, { color: sideColor }]}>{side.toUpperCase()}</Text>
                     </View>
-                    {/* Details row: entry price + qty */}
-                    <View style={s001.tradeDetails}>
-                      {fillPrice != null && (
-                        <View style={s001.tradeDetailCol}>
-                          <Text style={s001.tradeDetailLabel}>ENTRY</Text>
-                          <Text style={s001.tradeDetailValue}>${fillPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
-                        </View>
-                      )}
-                      {qty != null && (
-                        <View style={s001.tradeDetailCol}>
-                          <Text style={s001.tradeDetailLabel}>SIZE</Text>
-                          <Text style={s001.tradeDetailValue}>{qty} BTC</Text>
-                        </View>
-                      )}
-                      <View style={{ flex: 1 }} />
-                      <Text style={s001.tradeTime}>{formatTime001(item.created_at)}</Text>
+                    <Text style={s001.tradePair}>BTC/USDT</Text>
+                    <View style={s001.tradeAgentTag}>
+                      <Text style={s001.tradeAgentText}>Slug #001</Text>
                     </View>
+                    <View style={{ flex: 1 }} />
+                    {pnl != null && (
+                      <Text style={[s001.tradePnl, { color: pnlColor }]}>
+                        {pnl >= 0 ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
+                      </Text>
+                    )}
                   </View>
-                )
-              })}
+                  <View style={s001.tradeDetails}>
+                    {fillPrice != null && (
+                      <View style={s001.tradeDetailCol}>
+                        <Text style={s001.tradeDetailLabel}>ENTRY</Text>
+                        <Text style={s001.tradeDetailValue}>${fillPrice.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+                      </View>
+                    )}
+                    {qty != null && (
+                      <View style={s001.tradeDetailCol}>
+                        <Text style={s001.tradeDetailLabel}>SIZE</Text>
+                        <Text style={s001.tradeDetailValue}>{qty} BTC</Text>
+                      </View>
+                    )}
+                    {item.type && (
+                      <View style={s001.tradeDetailCol}>
+                        <Text style={s001.tradeDetailLabel}>TYPE</Text>
+                        <Text style={s001.tradeDetailValue}>{item.type === 'grid_fill' ? 'Grid' : 'Manual'}</Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }} />
+                    <Text style={s001.tradeTime}>{formatTime001(item.created_at)}</Text>
+                  </View>
+                </TouchableOpacity>
+              )
+            })}
+
+            {/* Trade detail modal */}
+            <Modal
+              visible={selectedTrade != null}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setSelectedTrade(null)}
+            >
+              <TouchableOpacity
+                style={s001.modalOverlay}
+                activeOpacity={1}
+                onPress={() => setSelectedTrade(null)}
+              >
+                <TouchableOpacity activeOpacity={1} style={s001.modalSheet} onPress={() => {}}>
+                  {selectedTrade && (() => {
+                    const t = selectedTrade
+                    const isBuy = t.side === 'buy'
+                    const sideColor = isBuy ? Colors.accentGreen : Colors.accentRed
+                    const sideBg = isBuy ? 'rgba(0,200,150,0.12)' : 'rgba(255,69,58,0.12)'
+                    const pnl = t.pnl != null ? Number(t.pnl) : null
+                    const pnlColor = pnl != null ? (pnl >= 0 ? Colors.accentGreen : Colors.accentRed) : Colors.textMuted
+                    const btcAtFill = t.btc_price != null ? Number(t.btc_price) : null
+                    const sessionAtFill = t.session_pnl != null ? Number(t.session_pnl) : null
+                    return (
+                      <>
+                        <View style={s001.modalHandle} />
+                        <View style={s001.modalHeader}>
+                          <View style={[s001.sideBadge, { backgroundColor: sideBg }]}>
+                            <Text style={[s001.sideText, { color: sideColor }]}>{(t.side ?? '?').toUpperCase()}</Text>
+                          </View>
+                          <Text style={s001.modalTitle}>BTC/USDT</Text>
+                          <View style={s001.tradeAgentTag}>
+                            <Text style={s001.tradeAgentText}>Slug #001</Text>
+                          </View>
+                        </View>
+
+                        {pnl != null && (
+                          <Text style={[s001.modalPnl, { color: pnlColor }]}>
+                            {pnl >= 0 ? '+$' : '-$'}{Math.abs(pnl).toFixed(4)}
+                          </Text>
+                        )}
+
+                        <View style={s001.modalGrid}>
+                          {t.fillPrice != null && (
+                            <View style={s001.modalGridItem}>
+                              <Text style={s001.modalGridLabel}>ENTRY PRICE</Text>
+                              <Text style={s001.modalGridValue}>${Number(t.fillPrice).toLocaleString('en-US', { maximumFractionDigits: 2 })}</Text>
+                            </View>
+                          )}
+                          {t.qty != null && (
+                            <View style={s001.modalGridItem}>
+                              <Text style={s001.modalGridLabel}>SIZE</Text>
+                              <Text style={s001.modalGridValue}>{t.qty} BTC</Text>
+                            </View>
+                          )}
+                          {btcAtFill != null && (
+                            <View style={s001.modalGridItem}>
+                              <Text style={s001.modalGridLabel}>BTC AT FILL</Text>
+                              <Text style={s001.modalGridValue}>${Math.round(btcAtFill).toLocaleString()}</Text>
+                            </View>
+                          )}
+                          {t.qty != null && t.fillPrice != null && (
+                            <View style={s001.modalGridItem}>
+                              <Text style={s001.modalGridLabel}>NOTIONAL</Text>
+                              <Text style={s001.modalGridValue}>${(Number(t.qty) * Number(t.fillPrice)).toLocaleString('en-US', { maximumFractionDigits: 2 })}</Text>
+                            </View>
+                          )}
+                          {sessionAtFill != null && (
+                            <View style={s001.modalGridItem}>
+                              <Text style={s001.modalGridLabel}>SESSION PNL AT FILL</Text>
+                              <Text style={[s001.modalGridValue, { color: sessionAtFill >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+                                {sessionAtFill >= 0 ? '+$' : '-$'}{Math.abs(sessionAtFill).toFixed(2)}
+                              </Text>
+                            </View>
+                          )}
+                          <View style={s001.modalGridItem}>
+                            <Text style={s001.modalGridLabel}>TYPE</Text>
+                            <Text style={s001.modalGridValue}>{t.type === 'grid_fill' ? 'Grid Fill' : 'Manual'}</Text>
+                          </View>
+                          <View style={s001.modalGridItem}>
+                            <Text style={s001.modalGridLabel}>TIME</Text>
+                            <Text style={s001.modalGridValue}>{t.created_at ? new Date(t.created_at).toLocaleString() : '—'}</Text>
+                          </View>
+                        </View>
+
+                        <TouchableOpacity
+                          style={s001.modalDismiss}
+                          onPress={() => setSelectedTrade(null)}
+                        >
+                          <Text style={s001.modalDismissText}>Close</Text>
+                        </TouchableOpacity>
+                      </>
+                    )
+                  })()}
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </Modal>
           </View>
         )}
 
@@ -1615,6 +1720,26 @@ const s001 = StyleSheet.create({
   tradeDetailLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1, textTransform: 'uppercase' },
   tradeDetailValue: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   tradeTime: { fontSize: 10, color: Colors.textMuted, alignSelf: 'flex-end' },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalSheet: {
+    backgroundColor: '#141413', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 40, gap: 16,
+    borderTopWidth: 1, borderColor: Colors.bgBorder,
+  },
+  modalHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: Colors.bgBorder, alignSelf: 'center', marginBottom: 4 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary },
+  modalPnl: { fontSize: 32, fontWeight: '800', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: -0.5 },
+  modalGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 0, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: Colors.bgBorder },
+  modalGridItem: { width: '50%', padding: 14, gap: 4, borderBottomWidth: 1, borderRightWidth: 1, borderColor: Colors.bgBorder },
+  modalGridLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1, textTransform: 'uppercase' },
+  modalGridValue: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  modalDismiss: {
+    backgroundColor: Colors.bgElevated, borderRadius: 14, padding: 14, alignItems: 'center',
+    borderWidth: 1, borderColor: Colors.bgBorder,
+  },
+  modalDismissText: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary },
 
   positionCard: { backgroundColor: '#0f0f0f', borderRadius: 14, padding: 14, gap: 10 },
   positionTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },

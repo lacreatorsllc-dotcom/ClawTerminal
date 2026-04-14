@@ -191,6 +191,21 @@ export function subscribeToPublicFeed(uids: string[], cb: (events: any[]) => voi
   })
 }
 
+// Individual trades subcollection — fine-grained per-fill data
+export function subscribeToSlug001Trades(cb: (trades: any[]) => void) {
+  const q = query(
+    collection(db, 'agents', 'slug-001', 'trades'),
+    orderBy('created_at', 'desc'),
+    limit(100)
+  )
+  return onSnapshot(q, (snap) => {
+    cb(snap.docs.map((d) => ({
+      id: d.id, ...d.data(),
+      created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
+    })))
+  })
+}
+
 export function subscribeToSlug001Feed(cb: (events: any[]) => void) {
   const q = query(
     collection(db, 'feed_events'),

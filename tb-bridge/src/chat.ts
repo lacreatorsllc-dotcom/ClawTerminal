@@ -234,10 +234,83 @@ function handleHelp(firestoreAgentId: string, agentName: string): Promise<void> 
     `/decisions — Recent trade decisions\n` +
     `/pnl — Daily profit & loss\n` +
     `/summary — Daily activity summary\n` +
+    `/analyze-slug001 — AI analysis of the Range Farmer\n` +
     `/pause — Pause this agent\n` +
     `/resume — Resume this agent\n` +
     `/override <text> — Send instruction to agent`
   return writeReply(firestoreAgentId, msg)
+}
+
+async function handleAnalyzeSlug001(
+  firestoreAgentId: string,
+  agentName: string,
+  ai: { client: any; model: string } | null,
+): Promise<void> {
+  if (!ai) {
+    await writeReply(firestoreAgentId, 'AI key required to run analysis. Add a Gemini or OpenAI key in Deploy settings.')
+    return
+  }
+
+  const slugDoc = await db.collection('agents').doc('slug-001').get()
+  const s = slugDoc.data()
+  if (!s) {
+    await writeReply(firestoreAgentId, '⚠️ Could not fetch Slug #001 data.')
+    return
+  }
+
+  const tradesSnap = await db
+    .collection('agents').doc('slug-001').collection('trades')
+    .orderBy('created_at', 'desc').limit(10).get()
+
+  const tradeLines = tradesSnap.docs.map((d) => {
+    const t = d.data()
+    return `  ${(t.side ?? '?').toUpperCase()} ${t.qty} BTC @ $${Math.round(t.fillPrice ?? 0).toLocaleString()} · PnL ${t.pnl != null ? (t.pnl >= 0 ? '+' : '') + '$' + Number(t.pnl).toFixed(2) : 'n/a'}`
+  })
+
+  const positions: any[] = s.positions ?? []
+  const sessionPnl = s.session_pnl ?? 0
+  const totalFills = s.total_fills ?? 0
+  const regime = s.regime ?? 'unknown'
+  const btcPrice = s.btc_price ?? 0
+  const gridCenter = s.grid_center ?? 0
+
+  const context =
+    `SLUG #001 — RANGE FARMER (Paper BTC Grid)\n` +
+    `Status: ${(s.status ?? 'unknown').toUpperCase()} | Regime: ${regime.toUpperCase()}\n` +
+    `BTC: $${Math.round(btcPrice).toLocaleString()} | Grid center: $${Math.round(gridCenter).toLocaleString()}\n` +
+    `Grid: ${s.grid_levels ?? '?'} levels × ${s.grid_spacing_pct ?? '?'}% spacing\n` +
+    `Session PnL: ${sessionPnl >= 0 ? '+' : ''}$${Number(sessionPnl).toFixed(2)} | Fills: ${totalFills}\n` +
+    `Open positions: ${positions.length}\n\n` +
+    `RECENT TRADES:\n${tradeLines.length > 0 ? tradeLines.join('\n') : '  None yet.'}\n\n` +
+    `OPEN POSITIONS:\n${positions.length > 0
+      ? positions.map((p: any) => {
+          const pnl = (p.currentPrice - p.fillPrice) * p.qty * (p.side === 'sell' ? -1 : 1)
+          return `  ${(p.side ?? '?').toUpperCase()} ${p.qty} BTC @ $${Math.round(p.fillPrice).toLocaleString()} · Unrealized ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`
+        }).join('\n')
+      : '  None.'}`
+
+  const prompt =
+    `You are ${agentName}, a professional crypto trading agent analyzing a sister bot called Slug #001 that runs a BTC grid (range farming) strategy.\n\n` +
+    `Current state:\n${context}\n\n` +
+    `Provide a concise analysis covering:\n` +
+    `1. Performance — is the grid generating healthy PnL for a range farmer?\n` +
+    `2. Market fit — does the current regime suit this strategy?\n` +
+    `3. Grid config — is the center/spacing appropriate for current BTC price?\n` +
+    `4. Position risk — any concerns with open positions?\n` +
+    `5. Verdict — one concrete recommendation.\n\n` +
+    `Be direct, data-first. 2-4 sentences per section.`
+
+  try {
+    const completion = await ai.client.chat.completions.create(
+      { model: ai.model, messages: [{ role: 'user', content: prompt }], max_tokens: 700 },
+      { timeout: 40_000 },
+    )
+    const reply = completion.choices[0]?.message?.content ?? 'No response.'
+    await writeReply(firestoreAgentId, `🔬 Slug #001 Analysis\n\n${reply}`)
+  } catch (err: any) {
+    console.error(`[chat:${firestoreAgentId}] analyze error:`, err?.message ?? err)
+    await writeReply(firestoreAgentId, 'Analysis failed. Try again.')
+  }
 }
 
 
@@ -327,6 +400,10 @@ export function startChatListener(
           }
           if (text === '/help') {
             await handleHelp(firestoreAgentId, agentName)
+            continue
+          }
+          if (text === '/analyze-slug001') {
+            await handleAnalyzeSlug001(firestoreAgentId, agentName, ai)
             continue
           }
 

@@ -16,4 +16,5 @@ export { FieldValue }
 
 export const AGENT_DOC = db.doc('agents/slug-001')
 export const MESSAGES_COL = db.collection('agents/slug-001/messages')
+export const TRADES_COL = db.collection('agents/slug-001/trades')
 export const FEED_COL = db.collection('feed_events')
