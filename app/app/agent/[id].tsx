@@ -682,6 +682,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
   const [decisions, setDecisions] = useState<any[]>([])
   const [input, setInput] = useState('')
   const [cmdPickerVisible, setCmdPickerVisible] = useState(false)
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
 
@@ -768,34 +769,56 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
       {/* Chat tab */}
       {activeTab === 'chat' && (
         <>
-          <FlatList
-            ref={flatRef}
-            data={reversed}
-            keyExtractor={(item) => item.id ?? String(item.created_at)}
-            inverted
-            contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
-            renderItem={({ item }) => {
-              const isUser = item.direction === 'inbound'
-              return (
-                <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-                  <View style={{
-                    backgroundColor: isUser ? Colors.accentAmber : '#1a1a1a',
-                    borderRadius: 14,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    maxWidth: '80%',
-                  }}>
-                    <Text style={{ color: isUser ? '#000' : Colors.textPrimary, fontSize: 15, lineHeight: 21 }}>
-                      {item.content}
+          <View style={{ flex: 1 }}>
+            <FlatList
+              ref={flatRef}
+              data={reversed}
+              keyExtractor={(item) => item.id ?? String(item.created_at)}
+              inverted
+              contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+              onScroll={(e) => setShowScrollBtn(e.nativeEvent.contentOffset.y > 80)}
+              scrollEventThrottle={100}
+              renderItem={({ item }) => {
+                const isUser = item.direction === 'inbound'
+                return (
+                  <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+                    <View style={{
+                      backgroundColor: isUser ? Colors.accentAmber : '#1a1a1a',
+                      borderRadius: 14,
+                      paddingHorizontal: 14,
+                      paddingVertical: 10,
+                      maxWidth: '80%',
+                    }}>
+                      <Text style={{ color: isUser ? '#000' : Colors.textPrimary, fontSize: 15, lineHeight: 21 }}>
+                        {item.content}
+                      </Text>
+                    </View>
+                    <Text style={{ color: Colors.textMuted, fontSize: 11, marginTop: 3, marginHorizontal: 4 }}>
+                      {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                     </Text>
                   </View>
-                  <Text style={{ color: Colors.textMuted, fontSize: 11, marginTop: 3, marginHorizontal: 4 }}>
-                    {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                  </Text>
-                </View>
-              )
-            }}
-          />
+                )
+              }}
+            />
+            {showScrollBtn && (
+              <TouchableOpacity
+                style={{
+                  position: 'absolute', bottom: 12, alignSelf: 'center',
+                  backgroundColor: '#1a1a1a', borderRadius: 20,
+                  paddingHorizontal: 14, paddingVertical: 8,
+                  flexDirection: 'row', alignItems: 'center', gap: 6,
+                  borderWidth: 1, borderColor: '#333',
+                }}
+                onPress={() => {
+                  flatRef.current?.scrollToOffset({ offset: 0, animated: true })
+                  setShowScrollBtn(false)
+                }}
+              >
+                <Ionicons name="arrow-down" size={14} color={Colors.textSecondary} />
+                <Text style={{ color: Colors.textSecondary, fontSize: 13 }}>Latest</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           {cmdPickerVisible && (
             <ScrollView style={styles.cmdPicker} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               {TB_SLASH_COMMANDS.filter(c => c.cmd.startsWith(input)).map((c) => (

@@ -1,5 +1,6 @@
 import { db, FieldValue } from './firebase'
 import { fetchAgentStatus, fetchDecisions } from './api'
+import { setCached } from './cache'
 
 // Strip undefined values — Firestore rejects them (null is fine)
 function sanitize(obj: Record<string, any>): Record<string, any> {
@@ -13,6 +14,7 @@ export function startPoller(
   apiKey: string,
   tbAgentId: string,
   tbTraderId: string,
+  openaiApiKey?: string,
 ): void {
   async function poll(): Promise<void> {
     try {
@@ -30,6 +32,15 @@ export function startPoller(
         live_state: live.state,
         live_admin: live.admin,
         last_synced: FieldValue.serverTimestamp(),
+      })
+
+      // Update in-memory cache so chat handler avoids redundant Firestore reads
+      setCached(firestoreAgentId, {
+        name: agent.name,
+        liveState: live.state,
+        liveAdmin: live.admin,
+        watchlist: agent.watchlist ?? [],
+        openaiApiKey,
       })
 
       // Fetch all decisions for account, filter to this trader

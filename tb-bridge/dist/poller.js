@@ -3,11 +3,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.startPoller = startPoller;
 const firebase_1 = require("./firebase");
 const api_1 = require("./api");
+const cache_1 = require("./cache");
 // Strip undefined values — Firestore rejects them (null is fine)
 function sanitize(obj) {
     return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, v === undefined ? null : v]));
 }
-function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId) {
+function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId, openaiApiKey) {
     async function poll() {
         try {
             // Fetch live agent status
@@ -23,6 +24,14 @@ function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId) {
                 live_state: live.state,
                 live_admin: live.admin,
                 last_synced: firebase_1.FieldValue.serverTimestamp(),
+            });
+            // Update in-memory cache so chat handler avoids redundant Firestore reads
+            (0, cache_1.setCached)(firestoreAgentId, {
+                name: agent.name,
+                liveState: live.state,
+                liveAdmin: live.admin,
+                watchlist: agent.watchlist ?? [],
+                openaiApiKey,
             });
             // Fetch all decisions for account, filter to this trader
             const allDecisions = await (0, api_1.fetchDecisions)(apiKey, 50);

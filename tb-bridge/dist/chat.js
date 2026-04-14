@@ -7,6 +7,7 @@ exports.startChatListener = startChatListener;
 const openai_1 = __importDefault(require("openai"));
 const firebase_1 = require("./firebase");
 const api_1 = require("./api");
+const cache_1 = require("./cache");
 function makeAIClient(apiKey) {
     if (apiKey.startsWith('AIza')) {
         // Google Gemini — uses OpenAI-compatible endpoint
@@ -85,18 +86,17 @@ async function handleAgents(firestoreAgentId) {
     await writeReply(firestoreAgentId, lines.join('\n\n'));
 }
 async function handleStatus(firestoreAgentId, agentName) {
-    const doc = await firebase_1.db.collection('agents').doc(firestoreAgentId).get();
-    const d = doc.data() ?? {};
-    const live = d.live_state ?? {};
-    const admin = d.live_admin ?? {};
+    const cached = (0, cache_1.getCached)(firestoreAgentId);
+    const live = cached?.liveState ?? (await firebase_1.db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {};
+    const admin = cached?.liveAdmin ?? {};
     const state = live.state ?? 'UNKNOWN';
     const paused = admin.paused === true;
     const positions = live.openPositions ?? [];
     const pnl = live.dailyPnlUsd ?? 0;
     const trades = live.dailyTradeCount ?? 0;
     const setups = live.activeConditionalSetups ?? 0;
-    const watchlist = d.watchlist ?? [];
-    const lastSync = d.last_synced?.toDate?.()?.toLocaleTimeString() ?? 'unknown';
+    const watchlist = cached?.watchlist ?? [];
+    const lastSync = cached ? new Date(cached.updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown';
     const reply = `${stateEmoji(paused ? 'PAUSED' : state)} ${agentName} — ${paused ? 'PAUSED' : state}\n\n` +
         `📋 Watchlist: ${watchlist.length} tokens\n` +
         `📊 Open positions: ${positions.length}\n` +
@@ -107,8 +107,8 @@ async function handleStatus(firestoreAgentId, agentName) {
     await writeReply(firestoreAgentId, reply);
 }
 async function handlePositions(firestoreAgentId) {
-    const doc = await firebase_1.db.collection('agents').doc(firestoreAgentId).get();
-    const live = doc.data()?.live_state ?? {};
+    const cached = (0, cache_1.getCached)(firestoreAgentId);
+    const live = cached?.liveState ?? (await firebase_1.db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {};
     const positions = live.openPositions ?? [];
     if (positions.length === 0) {
         await writeReply(firestoreAgentId, '📊 No open positions.');
@@ -147,9 +147,8 @@ async function handleDecisions(firestoreAgentId, limit = 5) {
     await writeReply(firestoreAgentId, lines.join('\n\n'));
 }
 async function handlePnl(firestoreAgentId, agentName) {
-    const doc = await firebase_1.db.collection('agents').doc(firestoreAgentId).get();
-    const d = doc.data() ?? {};
-    const live = d.live_state ?? {};
+    const cached = (0, cache_1.getCached)(firestoreAgentId);
+    const live = cached?.liveState ?? (await firebase_1.db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {};
     const pnl = live.dailyPnlUsd ?? 0;
     const trades = live.dailyTradeCount ?? 0;
     const positions = live.openPositions ?? [];
@@ -166,16 +165,16 @@ async function handlePnl(firestoreAgentId, agentName) {
     await writeReply(firestoreAgentId, reply);
 }
 async function handleSummary(firestoreAgentId, agentName) {
-    const doc = await firebase_1.db.collection('agents').doc(firestoreAgentId).get();
-    const d = doc.data() ?? {};
-    const live = d.live_state ?? {};
+    const cached = (0, cache_1.getCached)(firestoreAgentId);
+    const live = cached?.liveState ?? (await firebase_1.db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {};
+    const admin = cached?.liveAdmin ?? {};
     const state = live.state ?? 'UNKNOWN';
     const pnl = live.dailyPnlUsd ?? 0;
     const trades = live.dailyTradeCount ?? 0;
     const setups = live.activeConditionalSetups ?? 0;
     const positions = live.openPositions ?? [];
-    const watchlist = d.watchlist ?? [];
-    const paused = d.live_admin?.paused === true;
+    const watchlist = cached?.watchlist ?? [];
+    const paused = admin.paused === true;
     const decisionsSnap = await firebase_1.db
         .collection('agents').doc(firestoreAgentId).collection('decisions')
         .orderBy('eventTime', 'desc').limit(3).get();
@@ -295,9 +294,8 @@ function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, opena
                     await writeReply(firestoreAgentId, `Use /help to see available commands.`);
                     continue;
                 }
-                const agentDoc = await firebase_1.db.collection('agents').doc(firestoreAgentId).get();
-                const agentData = agentDoc.data() ?? {};
-                const live = agentData.live_state ?? {};
+                const cached = (0, cache_1.getCached)(firestoreAgentId);
+                const live = cached?.liveState ?? (await firebase_1.db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {};
                 const state = live.state ?? 'UNKNOWN';
                 const positions = live.openPositions ?? [];
                 const pnl = live.dailyPnlUsd ?? 0;

@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import { db, FieldValue } from './firebase'
 import { pauseAgent, resumeAgent, overrideAgent } from './api'
+import { getCached } from './cache'
 
 function makeAIClient(apiKey: string): { client: OpenAI; model: string } {
   if (apiKey.startsWith('AIza')) {
@@ -86,18 +87,17 @@ async function handleAgents(firestoreAgentId: string): Promise<void> {
 }
 
 async function handleStatus(firestoreAgentId: string, agentName: string): Promise<void> {
-  const doc = await db.collection('agents').doc(firestoreAgentId).get()
-  const d = doc.data() ?? {}
-  const live = d.live_state ?? {}
-  const admin = d.live_admin ?? {}
+  const cached = getCached(firestoreAgentId)
+  const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
+  const admin = cached?.liveAdmin ?? {}
   const state = live.state ?? 'UNKNOWN'
   const paused = admin.paused === true
   const positions = live.openPositions ?? []
   const pnl = live.dailyPnlUsd ?? 0
   const trades = live.dailyTradeCount ?? 0
   const setups = live.activeConditionalSetups ?? 0
-  const watchlist = d.watchlist ?? []
-  const lastSync = d.last_synced?.toDate?.()?.toLocaleTimeString() ?? 'unknown'
+  const watchlist = cached?.watchlist ?? []
+  const lastSync = cached ? new Date(cached.updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown'
 
   const reply =
     `${stateEmoji(paused ? 'PAUSED' : state)} ${agentName} — ${paused ? 'PAUSED' : state}\n\n` +
@@ -112,8 +112,8 @@ async function handleStatus(firestoreAgentId: string, agentName: string): Promis
 }
 
 async function handlePositions(firestoreAgentId: string): Promise<void> {
-  const doc = await db.collection('agents').doc(firestoreAgentId).get()
-  const live = doc.data()?.live_state ?? {}
+  const cached = getCached(firestoreAgentId)
+  const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
   const positions: any[] = live.openPositions ?? []
 
   if (positions.length === 0) {
@@ -164,9 +164,8 @@ async function handleDecisions(firestoreAgentId: string, limit = 5): Promise<voi
 }
 
 async function handlePnl(firestoreAgentId: string, agentName: string): Promise<void> {
-  const doc = await db.collection('agents').doc(firestoreAgentId).get()
-  const d = doc.data() ?? {}
-  const live = d.live_state ?? {}
+  const cached = getCached(firestoreAgentId)
+  const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
   const pnl = live.dailyPnlUsd ?? 0
   const trades = live.dailyTradeCount ?? 0
   const positions: any[] = live.openPositions ?? []
@@ -188,16 +187,16 @@ async function handlePnl(firestoreAgentId: string, agentName: string): Promise<v
 }
 
 async function handleSummary(firestoreAgentId: string, agentName: string): Promise<void> {
-  const doc = await db.collection('agents').doc(firestoreAgentId).get()
-  const d = doc.data() ?? {}
-  const live = d.live_state ?? {}
+  const cached = getCached(firestoreAgentId)
+  const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
+  const admin = cached?.liveAdmin ?? {}
   const state = live.state ?? 'UNKNOWN'
   const pnl = live.dailyPnlUsd ?? 0
   const trades = live.dailyTradeCount ?? 0
   const setups = live.activeConditionalSetups ?? 0
   const positions: any[] = live.openPositions ?? []
-  const watchlist: string[] = d.watchlist ?? []
-  const paused = d.live_admin?.paused === true
+  const watchlist: string[] = cached?.watchlist ?? []
+  const paused = admin.paused === true
 
   const decisionsSnap = await db
     .collection('agents').doc(firestoreAgentId).collection('decisions')
@@ -337,9 +336,8 @@ export function startChatListener(
             continue
           }
 
-          const agentDoc = await db.collection('agents').doc(firestoreAgentId).get()
-          const agentData = agentDoc.data() ?? {}
-          const live = agentData.live_state ?? {}
+          const cached = getCached(firestoreAgentId)
+          const live = cached?.liveState ?? (await db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {}
           const state = live.state ?? 'UNKNOWN'
           const positions = live.openPositions ?? []
           const pnl = live.dailyPnlUsd ?? 0

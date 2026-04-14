@@ -55,7 +55,7 @@ function activateAgent(firestoreId, apiKey, tbAgentId, tbTraderId, agentName, op
     if (runningAgents.has(firestoreId))
         return;
     runningAgents.add(firestoreId);
-    (0, poller_1.startPoller)(firestoreId, apiKey, tbAgentId, tbTraderId);
+    (0, poller_1.startPoller)(firestoreId, apiKey, tbAgentId, tbTraderId, openaiKey);
     (0, chat_1.startChatListener)(firestoreId, apiKey, tbAgentId, agentName, openaiKey);
     console.log(`[tb-bridge] activated agent ${firestoreId} (${agentName}) openai=${openaiKey ? 'yes' : 'no'}`);
 }

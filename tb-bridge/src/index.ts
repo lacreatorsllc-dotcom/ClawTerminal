@@ -20,7 +20,7 @@ const runningAgents = new Set<string>()
 function activateAgent(firestoreId: string, apiKey: string, tbAgentId: string, tbTraderId: string, agentName: string, openaiKey?: string): void {
   if (runningAgents.has(firestoreId)) return
   runningAgents.add(firestoreId)
-  startPoller(firestoreId, apiKey, tbAgentId, tbTraderId)
+  startPoller(firestoreId, apiKey, tbAgentId, tbTraderId, openaiKey)
   startChatListener(firestoreId, apiKey, tbAgentId, agentName, openaiKey)
   console.log(`[tb-bridge] activated agent ${firestoreId} (${agentName}) openai=${openaiKey ? 'yes' : 'no'}`)
 }
