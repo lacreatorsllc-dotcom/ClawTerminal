@@ -8,27 +8,7 @@ const openai_1 = __importDefault(require("openai"));
 const firebase_1 = require("./firebase");
 const api_1 = require("./api");
 const cache_1 = require("./cache");
-// Extracts unrealized PnL from a position object.
-// Tries all known field names first; if none exist, computes from entry/current price + size.
-function unrealizedPnlOf(p) {
-    // Try every explicit field name the trading-boy API might use
-    for (const key of [
-        'unrealizedPnl', 'unrealizedPnlUsd', 'unrealized_pnl', 'unrealized',
-        'floatingPnl', 'floating_pnl', 'openPnl', 'open_pnl',
-    ]) {
-        if (p[key] !== undefined && p[key] !== null)
-            return Number(p[key]);
-    }
-    // Fall back to computing from position data
-    const entry = Number(p.entryPrice ?? p.entry_price ?? p.openPrice ?? 0);
-    const current = Number(p.currentPrice ?? p.markPrice ?? p.mark_price ?? p.current_price ?? 0);
-    const size = Number(p.positionSize ?? p.size ?? p.sizeUsd ?? p.notional ?? p.amount ?? 0);
-    const dir = (p.direction ?? p.side ?? '').toUpperCase();
-    if (!entry || !current || !size)
-        return 0;
-    const multiplier = dir === 'SHORT' ? -1 : 1;
-    return multiplier * ((current - entry) / entry) * size;
-}
+const prices_1 = require("./prices");
 function makeAIClient(apiKey) {
     if (apiKey.startsWith('AIza')) {
         // Google Gemini — uses OpenAI-compatible endpoint
@@ -127,19 +107,15 @@ async function handleStatus(firestoreAgentId, agentName, apiKey, tbAgentId) {
     }
     const state = live.state ?? 'UNKNOWN';
     const paused = admin.paused === true;
-    // Try dedicated positions endpoint first (has entry/current prices + unrealized PnL)
-    // Fall back to openPositions from agent status (may be empty or lack price fields)
-    let positions = (await (0, api_1.fetchAgentPositions)(apiKey, tbAgentId)) ?? live.openPositions ?? [];
-    // Debug: log first position's keys so we know the exact field names
-    if (positions.length > 0) {
-        console.log(`[chat:status:${firestoreAgentId}] position keys: ${Object.keys(positions[0]).join(', ')}`);
-        console.log(`[chat:status:${firestoreAgentId}] first position: ${JSON.stringify(positions[0])}`);
-    }
+    const positions = (await (0, api_1.fetchAgentPositions)(apiKey, tbAgentId)) ?? live.openPositions ?? [];
+    // Fetch live prices for all position tokens
+    const symbols = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? p.token ?? '').toUpperCase()).filter(Boolean);
+    const prices = await (0, prices_1.getCurrentPrices)(symbols);
     const pnl = live.dailyPnlUsd ?? 0;
     const trades = live.dailyTradeCount ?? 0;
     const setups = live.activeConditionalSetups ?? 0;
     const lastSync = freshData ? 'just now' : ((0, cache_1.getCached)(firestoreAgentId) ? new Date((0, cache_1.getCached)(firestoreAgentId).updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown');
-    const unrealized = positions.reduce((sum, p) => sum + unrealizedPnlOf(p), 0);
+    const unrealized = positions.reduce((sum, p) => sum + (0, prices_1.calcUnrealized)(p, prices), 0);
     const sign = (n) => (n >= 0 ? '+' : '');
     const reply = `${stateEmoji(paused ? 'PAUSED' : state)} ${agentName} — ${paused ? 'PAUSED' : state}\n\n` +
         `📋 Watchlist: ${watchlist.length} tokens\n` +
@@ -166,14 +142,17 @@ async function handlePositions(firestoreAgentId, apiKey, tbAgentId) {
         await writeReply(firestoreAgentId, '📊 No open positions.');
         return;
     }
+    const syms = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean);
+    const prices = await (0, prices_1.getCurrentPrices)(syms);
     const lines = ['📊 Open Positions\n'];
     for (const p of positions) {
-        const pnl = unrealizedPnlOf(p);
+        const sym = (p.symbol ?? p.tokenSymbol ?? p.token ?? '?').toUpperCase();
+        const currentPrice = prices.get(sym);
+        const pnl = (0, prices_1.calcUnrealized)(p, prices);
         const sign = pnl >= 0 ? '+' : '';
-        lines.push(`${p.symbol ?? p.token ?? p.tokenSymbol ?? '?'} ${p.direction ?? p.side ?? ''}\n` +
-            `  Entry: $${p.entryPrice ?? '—'}\n` +
-            `  Current: $${p.currentPrice ?? p.markPrice ?? '—'}\n` +
-            `  Unrealized: ${sign}$${Number(pnl).toFixed(2)}`);
+        lines.push(`${sym} ${p.direction ?? p.side ?? ''}\n` +
+            `  Entry: $${p.entryPrice ?? '—'} · Current: $${currentPrice?.toFixed(4) ?? '—'}\n` +
+            `  Size: $${p.sizeUsd ?? '—'} · Unrealized: ${sign}$${Number(pnl).toFixed(2)}`);
     }
     await writeReply(firestoreAgentId, lines.join('\n\n'));
 }
@@ -210,8 +189,10 @@ async function handlePnl(firestoreAgentId, agentName, apiKey, tbAgentId) {
     }
     const pnl = live.dailyPnlUsd ?? 0;
     const trades = live.dailyTradeCount ?? 0;
-    const positions = live.openPositions ?? [];
-    const unrealized = positions.reduce((sum, p) => sum + unrealizedPnlOf(p), 0);
+    const positions = (await (0, api_1.fetchAgentPositions)(apiKey, tbAgentId)) ?? live.openPositions ?? [];
+    const syms = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean);
+    const prices = await (0, prices_1.getCurrentPrices)(syms);
+    const unrealized = positions.reduce((sum, p) => sum + (0, prices_1.calcUnrealized)(p, prices), 0);
     const sign = (n) => (n >= 0 ? '+' : '');
     const reply = `💰 ${agentName} PnL\n\n` +
         `Daily realized: ${sign(pnl)}$${Number(pnl).toFixed(2)}\n` +
@@ -324,6 +305,58 @@ async function handleAnalyzeSlug001(firestoreAgentId, agentName, ai) {
         await writeReply(firestoreAgentId, 'Analysis failed. Try again.');
     }
 }
+const pendingTrades = new Map();
+// ── Build live agent context for AI system prompt ─────────────────────────────
+async function buildLiveContext(firestoreAgentId, agentName, apiKey, tbAgentId) {
+    let live = {};
+    let admin = {};
+    let watchlist = [];
+    try {
+        const fresh = await (0, api_1.fetchAgentStatus)(apiKey, tbAgentId);
+        live = fresh.live?.state ?? {};
+        admin = fresh.live?.admin ?? {};
+        watchlist = fresh.agent?.watchlist ?? [];
+    }
+    catch {
+        const cached = (0, cache_1.getCached)(firestoreAgentId);
+        live = cached?.liveState ?? {};
+        admin = cached?.liveAdmin ?? {};
+        watchlist = cached?.watchlist ?? [];
+    }
+    const state = live.state ?? 'UNKNOWN';
+    const paused = admin.paused === true;
+    const positions = (await (0, api_1.fetchAgentPositions)(apiKey, tbAgentId)) ?? live.openPositions ?? [];
+    const pnl = live.dailyPnlUsd ?? 0;
+    const trades = live.dailyTradeCount ?? 0;
+    const syms = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean);
+    const prices = await (0, prices_1.getCurrentPrices)(syms);
+    const positionLines = positions.length > 0
+        ? positions.map((p) => {
+            const sym = (p.symbol ?? p.tokenSymbol ?? p.token ?? '?').toUpperCase();
+            const currentPrice = prices.get(sym);
+            const upnl = (0, prices_1.calcUnrealized)(p, prices);
+            const sign = upnl >= 0 ? '+' : '';
+            return `  ${p.direction ?? 'LONG'} ${sym} | Entry: $${p.entryPrice ?? '?'} | Current: $${currentPrice?.toFixed(4) ?? '?'} | Size: $${p.sizeUsd ?? '?'} | Unrealized: ${sign}$${upnl.toFixed(2)} | SL: $${p.stopLoss ?? '?'} | TP: $${p.takeProfit ?? '?'}`;
+        }).join('\n')
+        : '  None';
+    const decisionsSnap = await firebase_1.db
+        .collection('agents').doc(firestoreAgentId).collection('decisions')
+        .orderBy('eventTime', 'desc').limit(6).get();
+    const decisionLines = decisionsSnap.docs.map((d) => {
+        const dec = d.data();
+        const ts = dec.eventTime ? new Date(dec.eventTime).toLocaleString() : '?';
+        return `  [${ts}] ${dec.actionType ?? dec.decisionType} ${dec.tokenSymbol ?? ''} (${dec.confidence ?? 0}%): ${(dec.details ?? '').slice(0, 120)}`;
+    }).join('\n');
+    return `AGENT: ${agentName} | STATUS: ${paused ? 'PAUSED' : state}
+WATCHLIST: ${watchlist.join(', ') || 'none'}
+DAILY PnL: $${Number(pnl).toFixed(2)} | DAILY TRADES: ${trades}
+
+OPEN POSITIONS (${positions.length}):
+${positionLines}
+
+RECENT DECISIONS:
+${decisionLines || '  None'}`;
+}
 function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, openaiApiKey) {
     const ai = openaiApiKey ? makeAIClient(openaiApiKey) : null;
     const processedIds = new Set();
@@ -434,39 +467,67 @@ function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, opena
                     await handleAnalyzeSlug001(firestoreAgentId, agentName, ai);
                     continue;
                 }
-                // Free-form text — use LLM if key available
+                // ── Trade confirmation check ──────────────────────────────────────
+                const pending = pendingTrades.get(firestoreAgentId);
+                if (pending) {
+                    if (Date.now() > pending.expiresAt) {
+                        pendingTrades.delete(firestoreAgentId);
+                    }
+                    else if (/^(yes|confirm|go|execute|do it|ok|sure|yep|yeah)/i.test(text)) {
+                        try {
+                            await (0, api_1.overrideAgent)(apiKey, tbAgentId, pending.instruction);
+                            pendingTrades.delete(firestoreAgentId);
+                            await writeReply(firestoreAgentId, `✅ Trade sent to ${agentName}: ${pending.type} ${pending.token} $${pending.size}\nThe agent will execute when conditions are met.`);
+                        }
+                        catch (e) {
+                            await writeReply(firestoreAgentId, `❌ Trade failed: ${e.message}`);
+                        }
+                        continue;
+                    }
+                    else if (/^(no|cancel|stop|nevermind|nope|abort)/i.test(text)) {
+                        pendingTrades.delete(firestoreAgentId);
+                        await writeReply(firestoreAgentId, '↩️ Trade cancelled.');
+                        continue;
+                    }
+                }
+                // ── Free-form AI subagent ─────────────────────────────────────────
                 if (!ai) {
                     await writeReply(firestoreAgentId, `Use /help to see available commands.`);
                     continue;
                 }
-                const cached = (0, cache_1.getCached)(firestoreAgentId);
-                const live = cached?.liveState ?? (await firebase_1.db.collection('agents').doc(firestoreAgentId).get()).data()?.live_state ?? {};
-                const agentState = live.state ?? 'UNKNOWN';
-                const positions = live.openPositions ?? [];
-                const pnl = live.dailyPnlUsd ?? 0;
-                const trades = live.dailyTradeCount ?? 0;
-                const decisionsSnap = await firebase_1.db
-                    .collection('agents').doc(firestoreAgentId).collection('decisions')
-                    .orderBy('eventTime', 'desc').limit(10).get();
-                const decisions = decisionsSnap.docs.map((d) => d.data());
-                // Load recent conversation history for memory
+                // Fetch live context (positions, decisions, state)
+                const liveContext = await buildLiveContext(firestoreAgentId, agentName, apiKey, tbAgentId);
+                // Load recent conversation history
                 const historySnap = await firebase_1.db
                     .collection('agents').doc(firestoreAgentId).collection('messages')
                     .orderBy('created_at', 'desc').limit(20).get();
                 const history = historySnap.docs
                     .map((d) => d.data())
-                    .reverse() // oldest first
-                    .filter((m) => m.content && m.content !== text) // exclude current message
-                    .slice(-14); // last 14 messages (7 exchanges)
-                const system = `You are ${agentName}, a fully autonomous crypto trading agent on Cabal Ventures.
+                    .reverse()
+                    .filter((m) => m.content && m.content !== text)
+                    .slice(-14);
+                const system = `You are ${agentName}, a fully autonomous crypto trading agent on Cabal Ventures. You have full visibility into your live trading state and can execute trades on behalf of the user.
 
-STATE: ${agentState} | Positions: ${positions.length} | Daily PnL: $${Number(pnl).toFixed(2)} | Trades: ${trades}
+LIVE STATE:
+${liveContext}
 
-RECENT DECISIONS:
-${decisions.length > 0 ? decisions.map((d) => `[${d.eventTime}] ${d.tokenSymbol} ${d.actionType} (${d.confidence}%): ${d.details}`).join('\n') : 'None.'}
+CAPABILITIES:
+You can answer any question about your positions, decisions, market conditions, and strategy using the live data above.
+You can also take actions — when appropriate, append a JSON action block to your response:
 
-Be concise and data-driven. Plain text only. Never fabricate data. Remember prior conversation context.`;
-                // Build messages array with conversation history
+To propose a trade (always ask user to confirm first):
+TRADE_ACTION:{"type":"BUY","token":"SOL","size":250}
+or: TRADE_ACTION:{"type":"SELL","token":"SOL","size":250}
+
+To pause yourself: AGENT_ACTION:{"action":"pause"}
+To resume yourself: AGENT_ACTION:{"action":"resume"}
+To send yourself an instruction: AGENT_ACTION:{"action":"override","instruction":"focus on BTC and ETH only"}
+
+Rules:
+- Always confirm trade details with the user before appending TRADE_ACTION
+- Be concise and data-driven. Plain text only. Never fabricate prices or data.
+- If asked about a position or token not in your data, say so honestly.
+- Remember the conversation history above.`;
                 const messages = [
                     { role: 'system', content: system },
                     ...history.map((m) => ({
@@ -475,22 +536,69 @@ Be concise and data-driven. Plain text only. Never fabricate data. Remember prio
                     })),
                     { role: 'user', content: text },
                 ];
-                // Attempt with one retry on 429
                 let completion;
                 try {
-                    completion = await ai.client.chat.completions.create({ model: ai.model, messages, max_tokens: 400 }, { timeout: 30000 });
+                    completion = await ai.client.chat.completions.create({ model: ai.model, messages, max_tokens: 500 }, { timeout: 30000 });
                 }
                 catch (firstErr) {
                     if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
                         console.warn(`[chat:${firestoreAgentId}] 429 rate limit, retrying in 15s...`);
                         await new Promise((r) => setTimeout(r, 15000));
-                        completion = await ai.client.chat.completions.create({ model: ai.model, messages, max_tokens: 400 }, { timeout: 30000 });
+                        completion = await ai.client.chat.completions.create({ model: ai.model, messages, max_tokens: 500 }, { timeout: 30000 });
                     }
                     else {
                         throw firstErr;
                     }
                 }
-                await writeReply(firestoreAgentId, completion.choices[0]?.message?.content ?? 'No response.');
+                const rawReply = completion.choices[0]?.message?.content ?? 'No response.';
+                // ── Parse and execute action blocks ───────────────────────────────
+                const tradeMatch = rawReply.match(/TRADE_ACTION:\{[^}]+\}/);
+                const agentMatch = rawReply.match(/AGENT_ACTION:\{[^}]+\}/);
+                if (tradeMatch) {
+                    try {
+                        const tradeData = JSON.parse(tradeMatch[0].replace('TRADE_ACTION:', ''));
+                        const cleanReply = rawReply.replace(tradeMatch[0], '').trim();
+                        const instruction = `${tradeData.type} ${tradeData.token} SIZE_USD:${tradeData.size} SOURCE:user_chat`;
+                        pendingTrades.set(firestoreAgentId, {
+                            token: tradeData.token,
+                            type: tradeData.type,
+                            size: tradeData.size,
+                            instruction,
+                            expiresAt: Date.now() + 2 * 60 * 1000, // 2-min window to confirm
+                        });
+                        await writeReply(firestoreAgentId, `${cleanReply}\n\nReply "confirm" to execute or "cancel" to abort.`);
+                    }
+                    catch {
+                        await writeReply(firestoreAgentId, rawReply);
+                    }
+                }
+                else if (agentMatch) {
+                    try {
+                        const actionData = JSON.parse(agentMatch[0].replace('AGENT_ACTION:', ''));
+                        const cleanReply = rawReply.replace(agentMatch[0], '').trim();
+                        if (actionData.action === 'pause') {
+                            await (0, api_1.pauseAgent)(apiKey, tbAgentId);
+                            await writeReply(firestoreAgentId, cleanReply || `⏸️ ${agentName} paused.`);
+                        }
+                        else if (actionData.action === 'resume') {
+                            await (0, api_1.resumeAgent)(apiKey, tbAgentId);
+                            await writeReply(firestoreAgentId, cleanReply || `▶️ ${agentName} resumed.`);
+                        }
+                        else if (actionData.action === 'override') {
+                            await (0, api_1.overrideAgent)(apiKey, tbAgentId, actionData.instruction);
+                            await writeReply(firestoreAgentId, cleanReply || `🎯 Instruction sent: "${actionData.instruction}"`);
+                        }
+                        else {
+                            await writeReply(firestoreAgentId, rawReply);
+                        }
+                    }
+                    catch {
+                        await writeReply(firestoreAgentId, rawReply);
+                    }
+                }
+                else {
+                    await writeReply(firestoreAgentId, rawReply);
+                }
             }
             catch (err) {
                 console.error(`[chat:${firestoreAgentId}] error processing message:`, err?.message ?? err);
