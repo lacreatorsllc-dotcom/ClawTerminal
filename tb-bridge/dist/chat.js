@@ -97,10 +97,16 @@ async function handleStatus(firestoreAgentId, agentName) {
     const setups = live.activeConditionalSetups ?? 0;
     const watchlist = cached?.watchlist ?? [];
     const lastSync = cached ? new Date(cached.updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown';
+    let unrealized = 0;
+    for (const p of positions) {
+        unrealized += Number(p.unrealizedPnl ?? p.pnl ?? 0);
+    }
+    const sign = (n) => (n >= 0 ? '+' : '');
     const reply = `${stateEmoji(paused ? 'PAUSED' : state)} ${agentName} — ${paused ? 'PAUSED' : state}\n\n` +
         `📋 Watchlist: ${watchlist.length} tokens\n` +
         `📊 Open positions: ${positions.length}\n` +
-        `📈 Daily PnL: $${Number(pnl).toFixed(2)}\n` +
+        `📈 Daily PnL: ${sign(Number(pnl))}$${Number(pnl).toFixed(2)}\n` +
+        `💸 Unrealized PnL: ${sign(unrealized)}$${unrealized.toFixed(2)}\n` +
         `🔢 Daily trades: ${trades}\n` +
         `🎯 Active setups: ${setups}\n` +
         `🕐 Last sync: ${lastSync}`;
