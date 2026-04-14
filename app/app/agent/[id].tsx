@@ -1598,11 +1598,11 @@ export default function AgentDetailScreen() {
   // Slug #001 gets its own dedicated screen
   if (id === 'slug-001') return <Slug001Screen />
 
-  // Blue Chip gets a Firebase-based chat screen
   const agentSnap = useAgentsStore.getState().agents.find((a) => a.id === id) as any
-  const isBluechip = agentSnap?.agent_type === 'cabal_blue_chip' || agentSnap?.name === 'Blue Chip'
-  if (isBluechip && id) return <BlueChipScreen agentId={id} />
+  // cabal_trading_boy always goes to TradingBoyScreen (even if named "Blue Chip")
   if (agentSnap?.agent_type === 'cabal_trading_boy' && id) return <TradingBoyScreen agentId={id} />
+  // Legacy connector-based Blue Chip
+  if (agentSnap?.agent_type === 'cabal_blue_chip' && id) return <BlueChipScreen agentId={id} />
 
   const [tab, setTab] = useState<Tab>('chat')
   const [showShareCard, setShowShareCard] = useState(false)
