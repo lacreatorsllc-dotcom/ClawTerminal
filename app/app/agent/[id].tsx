@@ -150,8 +150,8 @@ const MessageText = memo(function MessageText({
     <Text style={baseStyle}>
       {parts.map((part, i) => {
         if (URL_REGEX.test(part)) return <Text key={i} style={styles.bubbleLink} onPress={() => Linking.openURL(part)}>{part}</Text>
-        if (/^`\//.test(part)) return <Text key={i} style={styles.bubbleCmd}>{part.replace(/`/g, '')}</Text>
-        if (/^\/[a-z]/.test(part)) return <Text key={i} style={styles.bubbleCmd}>{part}</Text>
+        if (/^`\//.test(part)) return <Text key={i} style={outbound ? styles.bubbleCmdOut : styles.bubbleCmd}>{part.replace(/`/g, '')}</Text>
+        if (/^\/[a-z]/.test(part)) return <Text key={i} style={outbound ? styles.bubbleCmdOut : styles.bubbleCmd}>{part}</Text>
         if (/^\+\$/.test(part)) return <Text key={i} style={styles.bubblePnlPos}>{part}</Text>
         if (/^-\$/.test(part)) return <Text key={i} style={styles.bubblePnlNeg}>{part}</Text>
         return <Text key={i}>{part}</Text>
@@ -813,7 +813,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
                     }}>
                       <MessageText
                         content={item.content ?? ''}
-                        outbound={false}
+                        outbound={isUser}
                         textStyle={{ color: textColor, fontSize: 15, lineHeight: 21 }}
                       />
                     </View>
@@ -3083,6 +3083,10 @@ const styles = StyleSheet.create({
   bubbleLink: { color: Colors.accentTeal, textDecorationLine: 'underline' },
   bubbleCmd: {
     color: '#a78bfa',
+    fontWeight: '700',
+  },
+  bubbleCmdOut: {
+    color: '#281e1a',
     fontWeight: '700',
   },
   bubblePnlPos: { color: Colors.accentGreen, fontWeight: '700' },
