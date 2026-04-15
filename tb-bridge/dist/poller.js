@@ -160,6 +160,13 @@ function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId, openaiApiK
             console.error(`[poller:${firestoreAgentId}] error:`, err?.message ?? err);
         }
     }
-    poll();
-    setInterval(poll, POLL_INTERVAL_MS);
+    // Sequential loop — next poll only starts after current one fully completes.
+    // Prevents overlapping Firestore writes and double-alerts when poll() takes > 2 min.
+    async function runPollerLoop() {
+        while (true) {
+            await poll();
+            await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        }
+    }
+    runPollerLoop();
 }
