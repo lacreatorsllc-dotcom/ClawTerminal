@@ -96,7 +96,7 @@ export function subscribeToUserAgents(uid: string, cb: (agents: any[]) => void) 
   const q = query(collection(db, 'agents'), where('user_id', '==', uid))
   return onSnapshot(q, (snap) => {
     cb(snap.docs.map((d) => ({ id: d.id, ...d.data(), last_seen: tsToISO(d.data().last_seen as any) })))
-  })
+  }, _noop)
 }
 
 export async function createAgent(uid: string, name: string, metadata?: Record<string, unknown>) {
@@ -208,7 +208,7 @@ export function subscribeToSlug001Trades(cb: (trades: any[]) => void) {
       id: d.id, ...d.data(),
       created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
     })))
-  })
+  }, _noop)
 }
 
 // Only daily summaries in the feed — filter client-side to avoid composite index requirement
@@ -289,7 +289,7 @@ export function subscribeToMessages(agentId: string, cb: (msgs: any[]) => void) 
       id: d.id, ...d.data(),
       created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
     })))
-  })
+  }, _noop)
 }
 
 export async function addMessage(agentId: string, data: {
@@ -421,7 +421,7 @@ export function subscribeToDecisions(agentId: string, cb: (decisions: any[]) => 
   )
   return onSnapshot(q, (snap) => {
     cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })))
-  })
+  }, _noop)
 }
 
 // ── Paper agent (Slug #001) ───────────────────────────────────────────────────
@@ -456,8 +456,10 @@ export interface PaperPosition {
   openedAt: string
 }
 
+const _noop = () => {}
+
 export function subscribeToSlug001(cb: (state: PaperAgentState | null) => void) {
   return onSnapshot(doc(db, 'agents', SLUG001_ID), (snap) => {
     cb(snap.exists() ? (snap.data() as PaperAgentState) : null)
-  })
+  }, _noop)
 }
