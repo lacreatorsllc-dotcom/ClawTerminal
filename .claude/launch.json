@@ -1,0 +1,33 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "app (Expo / Metro)",
+      "cwd": "app",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["expo", "start"],
+      "port": 8081
+    },
+    {
+      "name": "web (Vite / slugs-landing)",
+      "cwd": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    },
+    {
+      "name": "tb-bridge (ts-node)",
+      "cwd": "tb-bridge",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["ts-node", "src/index.ts"],
+      "port": null
+    },
+    {
+      "name": "connector (ts-node)",
+      "cwd": "connector",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["ts-node", "src/index.ts"],
+      "port": null
+    }
+  ]
+}

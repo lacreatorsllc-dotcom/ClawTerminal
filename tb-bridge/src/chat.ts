@@ -64,7 +64,11 @@ async function handleAgents(firestoreAgentId: string): Promise<void> {
     return
   }
 
-  const fmt = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`
+  const fmt = (n: number) => {
+    const sign = n >= 0 ? '+' : '-'
+    const color = n >= 0 ? '🟢' : '🔴'
+    return `${color} ${sign}$${Math.abs(n).toFixed(2)}`
+  }
 
   const lines: string[] = ['🤖 Active Agents\n']
   for (const doc of snap.docs) {
@@ -130,7 +134,11 @@ async function handleStatus(
   const lastSync = freshData ? 'just now' : (getCached(firestoreAgentId) ? new Date(getCached(firestoreAgentId)!.updatedAt ?? Date.now()).toLocaleTimeString() : 'unknown')
 
   const unrealized = positions.reduce((sum, p) => sum + calcUnrealized(p, prices), 0)
-  const fmt = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`
+  const fmt = (n: number) => {
+    const sign = n >= 0 ? '+' : '-'
+    const color = n >= 0 ? '🟢' : '🔴'
+    return `${color} ${sign}$${Math.abs(n).toFixed(2)}`
+  }
 
   const reply =
     `${stateEmoji(paused ? 'PAUSED' : state)} ${agentName} — ${paused ? 'PAUSED' : state}\n\n` +
@@ -233,7 +241,11 @@ async function handlePnl(
   const prices = await getCurrentPrices(syms)
   const unrealized = positions.reduce((sum, p) => sum + calcUnrealized(p, prices), 0)
 
-  const fmt = (n: number) => `${n >= 0 ? '+' : '-'}$${Math.abs(n).toFixed(2)}`
+  const fmt = (n: number) => {
+    const sign = n >= 0 ? '+' : '-'
+    const color = n >= 0 ? '🟢' : '🔴'
+    return `${color} ${sign}$${Math.abs(n).toFixed(2)}`
+  }
   const reply =
     `💰 ${agentName} PnL\n\n` +
     `Daily realized: ${fmt(Number(pnl))}\n` +
