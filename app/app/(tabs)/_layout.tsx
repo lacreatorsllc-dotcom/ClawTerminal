@@ -51,12 +51,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="skills"
-        options={{
-          title: 'Market',
-          tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="store" size={26} color={color} />
-          ),
-        }}
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="settings"
