@@ -115,9 +115,20 @@ async function writeTrade(trade: {
 }
 
 async function syncToFirestore() {
-  await AGENT_DOC.set({ ...state, last_updated: FieldValue.serverTimestamp() }, { merge: true })
-}
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    console.log("⚠️ Skipping Firestore (no credentials)");
+    return;
+  }
 
+  try {
+    await AGENT_DOC.set(
+      { ...state, last_updated: FieldValue.serverTimestamp() },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("Firestore sync error:", err);
+  }
+}
 // ── Main trading loop ─────────────────────────────────────────────────────────
 
 export async function runTradingLoop() {

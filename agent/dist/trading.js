@@ -86,7 +86,16 @@ async function writeTrade(trade) {
     });
 }
 async function syncToFirestore() {
-    await firebase_1.AGENT_DOC.set({ ...state, last_updated: firebase_1.FieldValue.serverTimestamp() }, { merge: true });
+    if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+        console.log("⚠️ Skipping Firestore (no credentials)");
+        return;
+    }
+    try {
+        await firebase_1.AGENT_DOC.set({ ...state, last_updated: firebase_1.FieldValue.serverTimestamp() }, { merge: true });
+    }
+    catch (err) {
+        console.error("Firestore sync error:", err);
+    }
 }
 // ── Main trading loop ─────────────────────────────────────────────────────────
 async function runTradingLoop() {

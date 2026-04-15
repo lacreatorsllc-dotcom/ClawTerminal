@@ -53,8 +53,19 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
     console.log(`[server] listening on :${PORT}`);
     // Start trading loop immediately, then every 30s
-    (0, trading_1.runTradingLoop)();
-    setInterval(trading_1.runTradingLoop, TRADING_INTERVAL_MS);
+    async function startTradingLoop() {
+        while (true) {
+            try {
+                await (0, trading_1.runTradingLoop)();
+            }
+            catch (err) {
+                console.error("Trading loop error:", err);
+            }
+            await new Promise(resolve => setTimeout(resolve, TRADING_INTERVAL_MS));
+        }
+    }
+    // start once
+    startTradingLoop();
     // Start chat listener
     (0, chat_1.startChatListener)();
     console.log('[slug-001] agent started');
