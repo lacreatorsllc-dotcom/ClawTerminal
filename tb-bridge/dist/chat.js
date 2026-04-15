@@ -14,17 +14,57 @@ const prices_1 = require("./prices");
 function makeAIClient(apiKey) {
     if (apiKey.startsWith('sk-') && !apiKey.startsWith('sk-ant-')) {
         // OpenAI key (sk-... or sk-proj-...)
-        return { client: new openai_1.default({ apiKey }), model: 'gpt-4o' };
+        return { type: 'openai', client: new openai_1.default({ apiKey }), model: 'gpt-4o' };
     }
-    // Default: Google Gemini via OpenAI-compatible endpoint
-    // Covers AIzaSy... keys, AQ... keys, and any other Google AI Studio format
-    return {
-        client: new openai_1.default({
-            apiKey,
-            baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-        }),
-        model: 'gemini-2.0-flash',
+    if (apiKey.startsWith('AIza')) {
+        // Classic Google AI Studio key — works with OpenAI-compatible shim
+        return {
+            type: 'openai',
+            client: new openai_1.default({
+                apiKey,
+                baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+            }),
+            model: 'gemini-1.5-flash',
+        };
+    }
+    // OAuth-style Google key (AQ...) — must use native Gemini REST API
+    return { type: 'gemini-native', apiKey, model: 'gemini-1.5-flash' };
+}
+async function callAI(ai, messages, maxTokens = 500) {
+    if (ai.type === 'openai') {
+        const completion = await ai.client.chat.completions.create({ model: ai.model, messages, max_tokens: maxTokens }, { timeout: 30000 });
+        return completion.choices[0]?.message?.content ?? 'No response.';
+    }
+    // Native Gemini REST — convert messages to Gemini format
+    const system = messages.find((m) => m.role === 'system')?.content ?? '';
+    const contents = messages
+        .filter((m) => m.role !== 'system')
+        .map((m) => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }],
+    }));
+    const body = {
+        contents,
+        generationConfig: { maxOutputTokens: maxTokens },
     };
+    if (system)
+        body.systemInstruction = { parts: [{ text: system }] };
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${ai.model}:generateContent`;
+    const resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ai.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30000),
+    });
+    if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        throw new Error(`Gemini ${resp.status}: ${errText.slice(0, 200)}`);
+    }
+    const data = await resp.json();
+    return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No response.';
 }
 async function writeReply(firestoreAgentId, content) {
     await firebase_1.db.collection('agents').doc(firestoreAgentId).collection('messages').add({
@@ -310,8 +350,7 @@ async function handleAnalyzeSlug001(firestoreAgentId, agentName, ai) {
         `5. Verdict — one concrete recommendation.\n\n` +
         `Be direct, data-first. 2-4 sentences per section.`;
     try {
-        const completion = await ai.client.chat.completions.create({ model: ai.model, messages: [{ role: 'user', content: prompt }], max_tokens: 700 }, { timeout: 40000 });
-        const reply = completion.choices[0]?.message?.content ?? 'No response.';
+        const reply = await callAI(ai, [{ role: 'user', content: prompt }], 700);
         await writeReply(firestoreAgentId, `🔬 Slug #001 Analysis\n\n${reply}`);
     }
     catch (err) {
@@ -612,21 +651,20 @@ Rules:
                     })),
                     { role: 'user', content: text },
                 ];
-                let completion;
+                let rawReply;
                 try {
-                    completion = await ai.client.chat.completions.create({ model: ai.model, messages, max_tokens: 500 }, { timeout: 30000 });
+                    rawReply = await callAI(ai, messages, 500);
                 }
                 catch (firstErr) {
                     if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
                         console.warn(`[chat:${firestoreAgentId}] 429 rate limit, retrying in 15s...`);
                         await new Promise((r) => setTimeout(r, 15000));
-                        completion = await ai.client.chat.completions.create({ model: ai.model, messages, max_tokens: 500 }, { timeout: 30000 });
+                        rawReply = await callAI(ai, messages, 500);
                     }
                     else {
                         throw firstErr;
                     }
                 }
-                const rawReply = completion.choices[0]?.message?.content ?? 'No response.';
                 // ── Parse and execute action blocks ───────────────────────────────
                 const tradeMatch = rawReply.match(/TRADE_ACTION:\{[^}]+\}/);
                 const agentMatch = rawReply.match(/AGENT_ACTION:\{[^}]+\}/);
@@ -792,19 +830,18 @@ function startRangeFarmerChatListener(firestoreAgentId, agentName, coin = 'BTC')
                     })),
                     { role: 'user', content: text },
                 ];
-                let completion;
+                let reply;
                 try {
-                    completion = await ai.client.chat.completions.create({ model: ai.model, messages, max_tokens: 400 }, { timeout: 30000 });
+                    reply = await callAI(ai, messages, 400);
                 }
                 catch (firstErr) {
                     if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
                         await new Promise((r) => setTimeout(r, 15000));
-                        completion = await ai.client.chat.completions.create({ model: ai.model, messages, max_tokens: 400 }, { timeout: 30000 });
+                        reply = await callAI(ai, messages, 400);
                     }
                     else
                         throw firstErr;
                 }
-                const reply = completion.choices[0]?.message?.content ?? 'No response.';
                 await writeReply(firestoreAgentId, reply);
             }
             catch (err) {
@@ -922,19 +959,18 @@ function startMarketAdvisorChatListener(firestoreAgentId, userId, agentName, gem
                     })),
                     { role: 'user', content: text },
                 ];
-                let completion;
+                let reply;
                 try {
-                    completion = await activeAi.client.chat.completions.create({ model: activeAi.model, messages, max_tokens: 600 }, { timeout: 30000 });
+                    reply = await callAI(activeAi, messages, 600);
                 }
                 catch (firstErr) {
                     if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
                         await new Promise((r) => setTimeout(r, 15000));
-                        completion = await activeAi.client.chat.completions.create({ model: activeAi.model, messages, max_tokens: 600 }, { timeout: 30000 });
+                        reply = await callAI(activeAi, messages, 600);
                     }
                     else
                         throw firstErr;
                 }
-                const reply = completion.choices[0]?.message?.content ?? 'No response.';
                 await writeReply(firestoreAgentId, reply);
             }
             catch (err) {

@@ -4,20 +4,72 @@ import { pauseAgent, resumeAgent, overrideAgent, fetchAgentStatus, fetchAgentPos
 import { getCached } from './cache'
 import { getCurrentPrices, calcUnrealized } from './prices'
 
-function makeAIClient(apiKey: string): { client: OpenAI; model: string } {
+type AIClient =
+  | { type: 'openai'; client: OpenAI; model: string }
+  | { type: 'gemini-native'; apiKey: string; model: string }
+
+function makeAIClient(apiKey: string): AIClient {
   if (apiKey.startsWith('sk-') && !apiKey.startsWith('sk-ant-')) {
     // OpenAI key (sk-... or sk-proj-...)
-    return { client: new OpenAI({ apiKey }), model: 'gpt-4o' }
+    return { type: 'openai', client: new OpenAI({ apiKey }), model: 'gpt-4o' }
   }
-  // Default: Google Gemini via OpenAI-compatible endpoint
-  // Covers AIzaSy... keys, AQ... keys, and any other Google AI Studio format
-  return {
-    client: new OpenAI({
-      apiKey,
-      baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    }),
-    model: 'gemini-2.0-flash',
+  if (apiKey.startsWith('AIza')) {
+    // Classic Google AI Studio key — works with OpenAI-compatible shim
+    return {
+      type: 'openai',
+      client: new OpenAI({
+        apiKey,
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+      }),
+      model: 'gemini-1.5-flash',
+    }
   }
+  // OAuth-style Google key (AQ...) — must use native Gemini REST API
+  return { type: 'gemini-native', apiKey, model: 'gemini-1.5-flash' }
+}
+
+async function callAI(
+  ai: AIClient,
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
+  maxTokens = 500,
+): Promise<string> {
+  if (ai.type === 'openai') {
+    const completion = await ai.client.chat.completions.create(
+      { model: ai.model, messages, max_tokens: maxTokens },
+      { timeout: 30_000 },
+    )
+    return completion.choices[0]?.message?.content ?? 'No response.'
+  }
+  // Native Gemini REST — convert messages to Gemini format
+  const system = messages.find((m) => m.role === 'system')?.content ?? ''
+  const contents = messages
+    .filter((m) => m.role !== 'system')
+    .map((m) => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }],
+    }))
+  const body: any = {
+    contents,
+    generationConfig: { maxOutputTokens: maxTokens },
+  }
+  if (system) body.systemInstruction = { parts: [{ text: system }] }
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${ai.model}:generateContent`
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${ai.apiKey}`,
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '')
+    throw new Error(`Gemini ${resp.status}: ${errText.slice(0, 200)}`)
+  }
+  const data: any = await resp.json()
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? 'No response.'
 }
 
 async function writeReply(firestoreAgentId: string, content: string): Promise<void> {
@@ -311,7 +363,7 @@ function handleHelp(firestoreAgentId: string, agentName: string): Promise<void> 
 async function handleAnalyzeSlug001(
   firestoreAgentId: string,
   agentName: string,
-  ai: { client: any; model: string } | null,
+  ai: AIClient | null,
 ): Promise<void> {
   if (!ai) {
     await writeReply(firestoreAgentId, 'AI key required to run analysis. Add a Gemini or OpenAI key in Deploy settings.')
@@ -368,11 +420,7 @@ async function handleAnalyzeSlug001(
     `Be direct, data-first. 2-4 sentences per section.`
 
   try {
-    const completion = await ai.client.chat.completions.create(
-      { model: ai.model, messages: [{ role: 'user', content: prompt }], max_tokens: 700 },
-      { timeout: 40_000 },
-    )
-    const reply = completion.choices[0]?.message?.content ?? 'No response.'
+    const reply = await callAI(ai, [{ role: 'user', content: prompt }], 700)
     await writeReply(firestoreAgentId, `🔬 Slug #001 Analysis\n\n${reply}`)
   } catch (err: any) {
     console.error(`[chat:${firestoreAgentId}] analyze error:`, err?.message ?? err)
@@ -719,26 +767,18 @@ Rules:
             { role: 'user', content: text },
           ]
 
-          let completion: any
+          let rawReply: string
           try {
-            completion = await ai.client.chat.completions.create(
-              { model: ai.model, messages, max_tokens: 500 },
-              { timeout: 30_000 },
-            )
+            rawReply = await callAI(ai, messages, 500)
           } catch (firstErr: any) {
             if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
               console.warn(`[chat:${firestoreAgentId}] 429 rate limit, retrying in 15s...`)
               await new Promise((r) => setTimeout(r, 15_000))
-              completion = await ai.client.chat.completions.create(
-                { model: ai.model, messages, max_tokens: 500 },
-                { timeout: 30_000 },
-              )
+              rawReply = await callAI(ai, messages, 500)
             } else {
               throw firstErr
             }
           }
-
-          const rawReply: string = completion.choices[0]?.message?.content ?? 'No response.'
 
           // ── Parse and execute action blocks ───────────────────────────────
           const tradeMatch = rawReply.match(/TRADE_ACTION:\{[^}]+\}/)
@@ -909,23 +949,16 @@ export function startRangeFarmerChatListener(
             { role: 'user', content: text },
           ]
 
-          let completion: any
+          let reply: string
           try {
-            completion = await ai.client.chat.completions.create(
-              { model: ai.model, messages, max_tokens: 400 },
-              { timeout: 30_000 },
-            )
+            reply = await callAI(ai, messages, 400)
           } catch (firstErr: any) {
             if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
               await new Promise((r) => setTimeout(r, 15_000))
-              completion = await ai.client.chat.completions.create(
-                { model: ai.model, messages, max_tokens: 400 },
-                { timeout: 30_000 },
-              )
+              reply = await callAI(ai, messages, 400)
             } else throw firstErr
           }
 
-          const reply = completion.choices[0]?.message?.content ?? 'No response.'
           await writeReply(firestoreAgentId, reply)
         } catch (err: any) {
           console.error(`[ranger:${firestoreAgentId}] error:`, err?.message ?? err)
@@ -1055,23 +1088,16 @@ export function startMarketAdvisorChatListener(
             { role: 'user', content: text },
           ]
 
-          let completion: any
+          let reply: string
           try {
-            completion = await activeAi.client.chat.completions.create(
-              { model: activeAi.model, messages, max_tokens: 600 },
-              { timeout: 30_000 },
-            )
+            reply = await callAI(activeAi, messages, 600)
           } catch (firstErr: any) {
             if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
               await new Promise((r) => setTimeout(r, 15_000))
-              completion = await activeAi.client.chat.completions.create(
-                { model: activeAi.model, messages, max_tokens: 600 },
-                { timeout: 30_000 },
-              )
+              reply = await callAI(activeAi, messages, 600)
             } else throw firstErr
           }
 
-          const reply = completion.choices[0]?.message?.content ?? 'No response.'
           await writeReply(firestoreAgentId, reply)
         } catch (err: any) {
           console.error(`[advisor:${firestoreAgentId}] error:`, err?.message ?? err)
