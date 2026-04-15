@@ -203,6 +203,7 @@ export default function DeployScreen() {
             <Text style={s.fieldLabel}>Cabal API Key</Text>
             <View style={s.keyInputRow}>
               <TextInput
+                key={showTbKey ? 'tb-show' : 'tb-hide'}
                 style={s.keyInput}
                 value={tbApiKey}
                 onChangeText={setTbApiKey}
@@ -212,7 +213,7 @@ export default function DeployScreen() {
                 autoCorrect={false}
                 secureTextEntry={!showTbKey}
               />
-              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowTbKey(!showTbKey)}>
+              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowTbKey(v => !v)}>
                 <Ionicons name={showTbKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
@@ -221,6 +222,7 @@ export default function DeployScreen() {
             <Text style={[s.fieldLabel, { marginTop: 20 }]}>Gemini API Key</Text>
             <View style={s.keyInputRow}>
               <TextInput
+                key={showAiKey ? 'ai-show' : 'ai-hide'}
                 style={s.keyInput}
                 value={aiKey}
                 onChangeText={setAiKey}
@@ -228,9 +230,10 @@ export default function DeployScreen() {
                 placeholderTextColor={Colors.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
+                autoFocus={showAiKey && aiKey.length === 0}
                 secureTextEntry={!showAiKey}
               />
-              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowAiKey(!showAiKey)}>
+              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowAiKey(v => !v)}>
                 <Ionicons name={showAiKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
@@ -325,6 +328,7 @@ export default function DeployScreen() {
             <Text style={[s.fieldLabel, { marginTop: 20 }]}>Gemini API Key</Text>
             <View style={s.keyInputRow}>
               <TextInput
+                key={showAiKey ? 'ai-show' : 'ai-hide'}
                 style={s.keyInput}
                 value={aiKey}
                 onChangeText={setAiKey}
@@ -332,9 +336,10 @@ export default function DeployScreen() {
                 placeholderTextColor={Colors.textMuted}
                 autoCapitalize="none"
                 autoCorrect={false}
+                autoFocus={showAiKey && aiKey.length === 0}
                 secureTextEntry={!showAiKey}
               />
-              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowAiKey(!showAiKey)}>
+              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowAiKey(v => !v)}>
                 <Ionicons name={showAiKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>

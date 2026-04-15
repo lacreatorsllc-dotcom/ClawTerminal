@@ -123,8 +123,9 @@ export default function SettingsScreen() {
             <View style={s.inputBlock}>
               <View style={s.inputRow}>
                 <TextInput
+                  key={showKey ? 'key-show' : 'key-hide'}
                   style={s.input}
-                  value={showKey ? aiKey : aiKey ? aiKey.slice(0, 8) + '••••••••••••' : ''}
+                  value={aiKey}
                   onChangeText={setAiKey}
                   placeholder="AIzaSy... or sk-..."
                   placeholderTextColor={Colors.textMuted}
@@ -132,7 +133,7 @@ export default function SettingsScreen() {
                   autoCorrect={false}
                   secureTextEntry={!showKey}
                 />
-                <TouchableOpacity style={s.eyeBtn} onPress={() => setShowKey(!showKey)}>
+                <TouchableOpacity style={s.eyeBtn} onPress={() => setShowKey(v => !v)}>
                   <Ionicons name={showKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
                 </TouchableOpacity>
               </View>
