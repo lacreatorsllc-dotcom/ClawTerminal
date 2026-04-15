@@ -152,6 +152,9 @@ function AgentCard({ agent, username }: { agent: Agent; username: string | null 
   const slugHandle = username
     ? `@${username}/${agent.name.toLowerCase().replace(/\s+/g, '-')}`
     : agent.name
+  const unrealized: number = (agent as any).live_state?.unrealizedPnlUsd ?? null
+  const hasUnrealized = unrealized !== null && unrealized !== undefined
+  const isPos = hasUnrealized && unrealized >= 0
 
   return (
     <TouchableOpacity
@@ -175,10 +178,19 @@ function AgentCard({ agent, username }: { agent: Agent; username: string | null 
         </View>
       </View>
       <View style={styles.statsRow}>
-        <View style={styles.stat}>
-          <Text style={styles.statLabel}>LAST SEEN</Text>
-          <Text style={styles.statValue}>{timeAgo(agent.last_seen)}</Text>
-        </View>
+        {hasUnrealized ? (
+          <View style={styles.stat}>
+            <Text style={styles.statLabel}>UNREALIZED PNL</Text>
+            <Text style={[styles.statValue, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
+              {isPos ? '+$' : '-$'}{Math.abs(unrealized).toFixed(2)}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.stat}>
+            <Text style={styles.statLabel}>LAST SEEN</Text>
+            <Text style={styles.statValue}>{timeAgo(agent.last_seen)}</Text>
+          </View>
+        )}
         <View style={{ flex: 1 }} />
         {(meta.platform as string) && (
           <View style={styles.tag}>
