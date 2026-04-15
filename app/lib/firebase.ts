@@ -111,7 +111,7 @@ export async function createAgent(uid: string, name: string, metadata?: Record<s
   return ref.id
 }
 
-export async function createRangeFarmerAgent(uid: string, name: string): Promise<string> {
+export async function createRangeFarmerAgent(uid: string, name: string, coin = 'BTC'): Promise<string> {
   const ref = await addDoc(collection(db, 'agents'), {
     user_id: uid,
     name,
@@ -120,11 +120,11 @@ export async function createRangeFarmerAgent(uid: string, name: string): Promise
     agent_type: 'range_farmer',
     hosted: true,
     paper_mode: true,
+    coin: coin.toUpperCase(),
     deployment_status: 'active',
-    metadata: { agent_type: 'range_farmer', hosted: true, paper_mode: true, platform: 'grid' },
+    metadata: { agent_type: 'range_farmer', hosted: true, paper_mode: true, platform: 'grid', coin: coin.toUpperCase() },
     created_at: serverTimestamp(),
   })
-  // Instance doc is created server-side by Cloud Run agent when it detects this agent
   return ref.id
 }
 
@@ -368,6 +368,21 @@ export async function searchAgents(prefix: string) {
   )
   const snap = await getDocs(q)
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
+
+export async function createMarketAdvisorAgent(uid: string, name: string, geminiApiKey: string): Promise<string> {
+  const ref = await addDoc(collection(db, 'agents'), {
+    user_id: uid,
+    name,
+    status: 'connected',
+    last_seen: serverTimestamp(),
+    agent_type: 'market_advisor',
+    gemini_api_key: geminiApiKey,
+    live_state: null,
+    metadata: { agent_type: 'market_advisor' },
+    created_at: serverTimestamp(),
+  })
+  return ref.id
 }
 
 export async function createTradingBoyAgent(

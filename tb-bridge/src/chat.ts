@@ -394,6 +394,62 @@ interface PendingTrade {
 }
 const pendingTrades = new Map<string, PendingTrade>()
 
+// ── Build full portfolio context from ALL user agents ─────────────────────────
+async function buildAllAgentsContext(userId: string, excludeAgentId?: string): Promise<string> {
+  const snap = await db.collection('agents').where('user_id', '==', userId).get()
+  const sections: string[] = []
+
+  for (const docSnap of snap.docs) {
+    if (excludeAgentId && docSnap.id === excludeAgentId) continue
+    const d = docSnap.data()
+    if (d.agent_type === 'market_advisor') continue // skip advisory agents
+
+    const name = d.name ?? 'Agent'
+    const unrealized = d.live_state?.unrealizedPnlUsd ?? 0
+    const daily = d.live_state?.dailyPnlUsd ?? 0
+    const positions: any[] = d.live_state?.openPositions ?? []
+    const state = d.live_state?.state ?? d.status ?? 'unknown'
+
+    // Recent decisions
+    const decisionsSnap = await db
+      .collection('agents').doc(docSnap.id).collection('decisions')
+      .orderBy('eventTime', 'desc').limit(5).get()
+
+    const decLines = decisionsSnap.docs.map((dd) => {
+      const dec = dd.data()
+      const ts = dec.eventTime ? new Date(dec.eventTime).toLocaleDateString() : '?'
+      return `  [${ts}] ${dec.actionType ?? dec.decisionType ?? '?'} ${dec.tokenSymbol ?? ''} (${dec.confidence ?? 0}% conf): ${(dec.details ?? '').slice(0, 100)}`
+    }).join('\n')
+
+    const posLines = positions.map((p: any) =>
+      `  ${p.direction ?? 'LONG'} ${(p.symbol ?? p.tokenSymbol ?? '?').toUpperCase()} entry $${p.entryPrice ?? '?'} size $${p.sizeUsd ?? '?'}`
+    ).join('\n')
+
+    sections.push(
+      `AGENT: ${name} (${state.toUpperCase()})\n` +
+      `Daily PnL: $${Number(daily).toFixed(2)} | Unrealized: ${unrealized >= 0 ? '+' : ''}$${Number(unrealized).toFixed(2)}\n` +
+      `Open positions (${positions.length}):${posLines ? '\n' + posLines : ' none'}\n` +
+      `Recent decisions:${decLines ? '\n' + decLines : ' none'}`
+    )
+  }
+
+  // Also include Slug #001 if accessible
+  try {
+    const slug001 = (await db.collection('agents').doc('slug-001').get()).data()
+    if (slug001) {
+      const sPositions: any[] = slug001.positions ?? []
+      sections.push(
+        `AGENT: Slug #001 — Range Farmer (PAPER)\n` +
+        `BTC: $${Math.round(slug001.btc_price ?? 0).toLocaleString()} | Regime: ${slug001.regime ?? 'unknown'}\n` +
+        `Session PnL: ${(slug001.session_pnl ?? 0) >= 0 ? '+' : ''}$${Number(slug001.session_pnl ?? 0).toFixed(2)} | Fills: ${slug001.total_fills ?? 0}\n` +
+        `Open positions: ${sPositions.length}`
+      )
+    }
+  } catch { /* non-fatal */ }
+
+  return sections.length > 0 ? sections.join('\n\n---\n\n') : 'No active agents with data yet.'
+}
+
 // ── Build live agent context for AI system prompt ─────────────────────────────
 async function buildLiveContext(
   firestoreAgentId: string,
@@ -607,6 +663,13 @@ export function startChatListener(
           // Fetch live context (positions, decisions, state)
           const liveContext = await buildLiveContext(firestoreAgentId, agentName, apiKey, tbAgentId)
 
+          // Fetch context from all other user agents for full portfolio memory
+          const thisDoc = await db.collection('agents').doc(firestoreAgentId).get()
+          const userId = thisDoc.data()?.user_id
+          const portfolioContext = userId
+            ? await buildAllAgentsContext(userId, firestoreAgentId)
+            : 'Portfolio data unavailable.'
+
           // Load recent conversation history
           const historySnap = await db
             .collection('agents').doc(firestoreAgentId).collection('messages')
@@ -617,10 +680,13 @@ export function startChatListener(
             .filter((m) => m.content && m.content !== text)
             .slice(-14)
 
-          const system = `You are ${agentName}, a fully autonomous crypto trading agent on Cabal Ventures. You have full visibility into your live trading state and can execute trades on behalf of the user.
+          const system = `You are ${agentName}, a fully autonomous crypto trading agent on Cabal Ventures. You have full visibility into your own live trading state AND the user's entire portfolio across all agents.
 
-LIVE STATE:
+YOUR LIVE STATE:
 ${liveContext}
+
+OTHER AGENTS IN PORTFOLIO:
+${portfolioContext}
 
 CAPABILITIES:
 You can answer any question about your positions, decisions, market conditions, and strategy using the live data above.
@@ -720,6 +786,297 @@ Rules:
     },
     (err) => {
       console.error(`[chat:${firestoreAgentId}] snapshot error:`, err?.message ?? err)
+    },
+  )
+}
+
+// ── Range Farmer chat listener ────────────────────────────────────────────────
+// Handles per-user range_farmer agents AND slug-001 (shared).
+// Looks up the user's ai_api_key from their profile on each message.
+
+async function getUserAiKey(userId: string): Promise<string | null> {
+  try {
+    const userDoc = await db.collection('users').doc(userId).get()
+    return (userDoc.data()?.ai_api_key as string) || null
+  } catch {
+    return null
+  }
+}
+
+export function startRangeFarmerChatListener(
+  firestoreAgentId: string,
+  agentName: string,
+  coin = 'BTC',
+): void {
+  const processedIds = new Set<string>()
+  let initialized = false
+
+  const q = db
+    .collection('agents').doc(firestoreAgentId).collection('messages')
+    .orderBy('created_at', 'asc')
+
+  console.log(`[ranger:${firestoreAgentId}] starting range farmer listener for ${agentName}`)
+
+  q.onSnapshot(
+    async (snap) => {
+      if (!initialized) {
+        for (const doc of snap.docs) processedIds.add(doc.id)
+        initialized = true
+        console.log(`[ranger:${firestoreAgentId}] initialized, skipped ${processedIds.size} existing messages`)
+        return
+      }
+
+      for (const change of snap.docChanges()) {
+        if (change.type !== 'added') continue
+        if (processedIds.has(change.doc.id)) continue
+
+        const msgData = change.doc.data()
+        if (msgData.direction !== 'inbound') { processedIds.add(change.doc.id); continue }
+        const text: string = (msgData.content ?? '').trim()
+        if (!text) { processedIds.add(change.doc.id); continue }
+
+        // Claim message atomically
+        try {
+          await db.runTransaction(async (tx) => {
+            const s = await tx.get(change.doc.ref)
+            if (s.data()?.chat_processed === true) {
+              throw Object.assign(new Error('already_processed'), { skip: true })
+            }
+            tx.update(change.doc.ref, { chat_processed: true })
+          })
+        } catch (e: any) {
+          if (e?.skip) { processedIds.add(change.doc.id); continue }
+        }
+        processedIds.add(change.doc.id)
+        console.log(`[ranger:${firestoreAgentId}] received: ${text}`)
+
+        try {
+          // Get AI key from the message sender's profile
+          const userId = msgData.user_id as string | undefined
+          const apiKey = userId ? await getUserAiKey(userId) : null
+
+          if (!apiKey) {
+            await writeReply(firestoreAgentId,
+              `I need an AI key to respond. Go to Settings → AI Provider and add your Gemini or OpenAI key — it's free at aistudio.google.com.`)
+            continue
+          }
+
+          const ai = makeAIClient(apiKey)
+
+          // Build context from slug-001 (source of truth for range farmer state)
+          let rangerContext = `Coin: ${coin}`
+          try {
+            const slug001 = (await db.collection('agents').doc('slug-001').get()).data()
+            if (slug001) {
+              const positions: any[] = slug001.positions ?? []
+              rangerContext =
+                `Coin: ${coin} | BTC Price: $${Math.round(slug001.btc_price ?? 0).toLocaleString()}\n` +
+                `Market Regime: ${slug001.regime ?? 'unknown'} | 24h Change: ${(slug001.price_change_24h_pct ?? 0).toFixed(2)}%\n` +
+                `Grid: ${slug001.grid_levels ?? '?'} levels × ${slug001.grid_spacing_pct ?? '?'}% spacing around $${Math.round(slug001.grid_center ?? 0).toLocaleString()}\n` +
+                `Session PnL: ${(slug001.session_pnl ?? 0) >= 0 ? '+' : ''}$${Number(slug001.session_pnl ?? 0).toFixed(2)} | Fills: ${slug001.total_fills ?? 0}\n` +
+                `Open positions: ${positions.length}`
+            }
+          } catch { /* non-fatal */ }
+
+          // Recent history
+          const historySnap = await db
+            .collection('agents').doc(firestoreAgentId).collection('messages')
+            .orderBy('created_at', 'desc').limit(16).get()
+          const history = historySnap.docs
+            .map((d) => d.data()).reverse()
+            .filter((m) => m.content && m.content !== text).slice(-12)
+
+          const system =
+            `You are ${agentName}, a paper trading range farmer agent running a grid strategy on ${coin}.\n\n` +
+            `LIVE STATE:\n${rangerContext}\n\n` +
+            `YOUR ROLE:\n` +
+            `- Answer questions about the grid strategy, current positions, and performance\n` +
+            `- Explain what you're doing and why in plain language\n` +
+            `- Give trading perspective on market conditions for ${coin}\n` +
+            `- This is paper trading — no real money at risk\n\n` +
+            `Keep responses concise (2-4 sentences). Plain text only. Never fabricate numbers not in the data above.`
+
+          const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+            { role: 'system', content: system },
+            ...history.map((m) => ({
+              role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
+              content: m.content as string,
+            })),
+            { role: 'user', content: text },
+          ]
+
+          let completion: any
+          try {
+            completion = await ai.client.chat.completions.create(
+              { model: ai.model, messages, max_tokens: 400 },
+              { timeout: 30_000 },
+            )
+          } catch (firstErr: any) {
+            if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
+              await new Promise((r) => setTimeout(r, 15_000))
+              completion = await ai.client.chat.completions.create(
+                { model: ai.model, messages, max_tokens: 400 },
+                { timeout: 30_000 },
+              )
+            } else throw firstErr
+          }
+
+          const reply = completion.choices[0]?.message?.content ?? 'No response.'
+          await writeReply(firestoreAgentId, reply)
+        } catch (err: any) {
+          console.error(`[ranger:${firestoreAgentId}] error:`, err?.message ?? err)
+          await writeReply(firestoreAgentId, 'Something went wrong. Try again.').catch(() => {})
+        }
+      }
+    },
+    (err) => {
+      console.error(`[ranger:${firestoreAgentId}] snapshot error:`, err?.message ?? err)
+    },
+  )
+}
+
+// ── Market Advisor chat listener ──────────────────────────────────────────────
+// Pure advisory agent — reads ALL user agents, guides user, no trade execution
+
+export function startMarketAdvisorChatListener(
+  firestoreAgentId: string,
+  userId: string,
+  agentName: string,
+  geminiApiKey: string,
+): void {
+  // geminiApiKey is the key stored on the agent doc at deploy time.
+  // On each message, also check the user's profile for an updated key (profile wins).
+  const fallbackKey = geminiApiKey
+  const ai = makeAIClient(fallbackKey)
+  const processedIds = new Set<string>()
+  let initialized = false
+
+  const q = db
+    .collection('agents').doc(firestoreAgentId).collection('messages')
+    .orderBy('created_at', 'asc')
+
+  console.log(`[advisor:${firestoreAgentId}] starting market advisor listener for ${agentName}`)
+
+  q.onSnapshot(
+    async (snap) => {
+      if (!initialized) {
+        for (const doc of snap.docs) processedIds.add(doc.id)
+        initialized = true
+        console.log(`[advisor:${firestoreAgentId}] initialized, skipped ${processedIds.size} existing messages`)
+        return
+      }
+
+      for (const change of snap.docChanges()) {
+        if (change.type !== 'added') continue
+        if (processedIds.has(change.doc.id)) continue
+
+        const msgData = change.doc.data()
+        if (msgData.direction !== 'inbound') { processedIds.add(change.doc.id); continue }
+        const text: string = (msgData.content ?? '').trim()
+        if (!text) { processedIds.add(change.doc.id); continue }
+
+        // Claim message
+        try {
+          await db.runTransaction(async (tx) => {
+            const s = await tx.get(change.doc.ref)
+            if (s.data()?.chat_processed === true) {
+              throw Object.assign(new Error('already_processed'), { skip: true })
+            }
+            tx.update(change.doc.ref, { chat_processed: true })
+          })
+        } catch (e: any) {
+          if (e?.skip) { processedIds.add(change.doc.id); continue }
+        }
+        processedIds.add(change.doc.id)
+
+        console.log(`[advisor:${firestoreAgentId}] received: ${text}`)
+
+        try {
+          // Use profile key if present (user may have updated it since deploy)
+          const profileKey = await getUserAiKey(userId)
+          const activeAi = profileKey && profileKey !== fallbackKey ? makeAIClient(profileKey) : ai
+
+          if (!profileKey && !fallbackKey) {
+            await writeReply(firestoreAgentId,
+              `I need an AI key to respond. Go to Settings → AI Provider and add your Gemini or OpenAI key.`)
+            continue
+          }
+
+          // Full portfolio context across all agents
+          const portfolioContext = await buildAllAgentsContext(userId)
+
+          // BTC + market context from Slug #001
+          let marketContext = ''
+          try {
+            const slug001 = (await db.collection('agents').doc('slug-001').get()).data()
+            if (slug001) {
+              marketContext =
+                `BTC Price: $${Math.round(slug001.btc_price ?? 0).toLocaleString()}\n` +
+                `Market Regime: ${slug001.regime ?? 'unknown'}\n` +
+                `24h Change: ${(slug001.price_change_24h_pct ?? 0).toFixed(2)}%\n` +
+                `24h High: $${Math.round(slug001.high_24h ?? 0).toLocaleString()} | Low: $${Math.round(slug001.low_24h ?? 0).toLocaleString()}`
+            }
+          } catch { /* non-fatal */ }
+
+          // Conversation history
+          const historySnap = await db
+            .collection('agents').doc(firestoreAgentId).collection('messages')
+            .orderBy('created_at', 'desc').limit(20).get()
+          const history = historySnap.docs
+            .map((d) => d.data()).reverse()
+            .filter((m) => m.content && m.content !== text).slice(-14)
+
+          const system =
+            `You are ${agentName}, a crypto market intelligence advisor with full visibility into the user's trading portfolio.\n\n` +
+            `LIVE MARKET:\n${marketContext || 'Market data loading...'}\n\n` +
+            `FULL PORTFOLIO:\n${portfolioContext}\n\n` +
+            `YOUR ROLE:\n` +
+            `- Analyze the user's current positions and recent agent decisions\n` +
+            `- Give clear, actionable guidance on what they should do next\n` +
+            `- Explain what their agents are doing and whether it makes sense\n` +
+            `- Flag risks, opportunities, and anything worth watching\n` +
+            `- Be honest about uncertainty — don't fabricate prices or data\n\n` +
+            `RULES:\n` +
+            `- You don't execute trades — you advise, the user acts\n` +
+            `- Keep responses concise (3-5 sentences) unless deep analysis is requested\n` +
+            `- Reference actual numbers from the portfolio data above\n` +
+            `- Plain text only, no markdown`
+
+          const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
+            { role: 'system', content: system },
+            ...history.map((m) => ({
+              role: (m.direction === 'inbound' ? 'user' : 'assistant') as 'user' | 'assistant',
+              content: m.content as string,
+            })),
+            { role: 'user', content: text },
+          ]
+
+          let completion: any
+          try {
+            completion = await activeAi.client.chat.completions.create(
+              { model: activeAi.model, messages, max_tokens: 600 },
+              { timeout: 30_000 },
+            )
+          } catch (firstErr: any) {
+            if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
+              await new Promise((r) => setTimeout(r, 15_000))
+              completion = await activeAi.client.chat.completions.create(
+                { model: activeAi.model, messages, max_tokens: 600 },
+                { timeout: 30_000 },
+              )
+            } else throw firstErr
+          }
+
+          const reply = completion.choices[0]?.message?.content ?? 'No response.'
+          await writeReply(firestoreAgentId, reply)
+        } catch (err: any) {
+          console.error(`[advisor:${firestoreAgentId}] error:`, err?.message ?? err)
+          await writeReply(firestoreAgentId, 'Something went wrong. Try again.').catch(() => {})
+        }
+      }
+    },
+    (err) => {
+      console.error(`[advisor:${firestoreAgentId}] snapshot error:`, err?.message ?? err)
     },
   )
 }
