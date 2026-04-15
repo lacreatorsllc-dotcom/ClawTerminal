@@ -651,12 +651,16 @@ Rules:
                     })),
                     { role: 'user', content: text },
                 ];
+                console.log(`[chat:${firestoreAgentId}] calling AI (type=${ai.type} model=${ai.model})`);
                 let rawReply;
                 try {
                     rawReply = await callAI(ai, messages, 500);
+                    console.log(`[chat:${firestoreAgentId}] AI replied ok`);
                 }
                 catch (firstErr) {
-                    if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
+                    const firstMsg = firstErr?.message ?? String(firstErr);
+                    console.error(`[chat:${firestoreAgentId}] AI error: ${firstMsg}`);
+                    if (firstErr?.status === 429 || firstMsg.includes('429')) {
                         console.warn(`[chat:${firestoreAgentId}] 429 rate limit, retrying in 15s...`);
                         await new Promise((r) => setTimeout(r, 15000));
                         rawReply = await callAI(ai, messages, 500);
@@ -715,7 +719,8 @@ Rules:
                 }
             }
             catch (err) {
-                console.error(`[chat:${firestoreAgentId}] error processing message:`, err?.message ?? err);
+                const msg = err?.message ?? String(err);
+                console.error(`[chat:${firestoreAgentId}] error processing message: ${msg}`);
                 await writeReply(firestoreAgentId, 'Error processing your message. Please try again.').catch(() => { });
             }
         }
@@ -830,12 +835,16 @@ function startRangeFarmerChatListener(firestoreAgentId, agentName, coin = 'BTC')
                     })),
                     { role: 'user', content: text },
                 ];
+                console.log(`[ranger:${firestoreAgentId}] calling AI (type=${ai.type} model=${ai.model})`);
                 let reply;
                 try {
                     reply = await callAI(ai, messages, 400);
+                    console.log(`[ranger:${firestoreAgentId}] AI replied ok`);
                 }
                 catch (firstErr) {
-                    if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
+                    const firstMsg = firstErr?.message ?? String(firstErr);
+                    console.error(`[ranger:${firestoreAgentId}] AI error: ${firstMsg}`);
+                    if (firstMsg.includes('429')) {
                         await new Promise((r) => setTimeout(r, 15000));
                         reply = await callAI(ai, messages, 400);
                     }
@@ -845,7 +854,8 @@ function startRangeFarmerChatListener(firestoreAgentId, agentName, coin = 'BTC')
                 await writeReply(firestoreAgentId, reply);
             }
             catch (err) {
-                console.error(`[ranger:${firestoreAgentId}] error:`, err?.message ?? err);
+                const msg = err?.message ?? String(err);
+                console.error(`[ranger:${firestoreAgentId}] error: ${msg}`);
                 await writeReply(firestoreAgentId, 'Something went wrong. Try again.').catch(() => { });
             }
         }
@@ -974,7 +984,8 @@ function startMarketAdvisorChatListener(firestoreAgentId, userId, agentName, gem
                 await writeReply(firestoreAgentId, reply);
             }
             catch (err) {
-                console.error(`[advisor:${firestoreAgentId}] error:`, err?.message ?? err);
+                const msg = err?.message ?? String(err);
+                console.error(`[advisor:${firestoreAgentId}] error: ${msg}`);
                 await writeReply(firestoreAgentId, 'Something went wrong. Try again.').catch(() => { });
             }
         }

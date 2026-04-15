@@ -767,11 +767,15 @@ Rules:
             { role: 'user', content: text },
           ]
 
+          console.log(`[chat:${firestoreAgentId}] calling AI (type=${ai.type} model=${ai.model})`)
           let rawReply: string
           try {
             rawReply = await callAI(ai, messages, 500)
+            console.log(`[chat:${firestoreAgentId}] AI replied ok`)
           } catch (firstErr: any) {
-            if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
+            const firstMsg = firstErr?.message ?? String(firstErr)
+            console.error(`[chat:${firestoreAgentId}] AI error: ${firstMsg}`)
+            if (firstErr?.status === 429 || firstMsg.includes('429')) {
               console.warn(`[chat:${firestoreAgentId}] 429 rate limit, retrying in 15s...`)
               await new Promise((r) => setTimeout(r, 15_000))
               rawReply = await callAI(ai, messages, 500)
@@ -823,7 +827,8 @@ Rules:
             await writeReply(firestoreAgentId, rawReply)
           }
         } catch (err: any) {
-          console.error(`[chat:${firestoreAgentId}] error processing message:`, err?.message ?? err)
+          const msg = err?.message ?? String(err)
+          console.error(`[chat:${firestoreAgentId}] error processing message: ${msg}`)
           await writeReply(firestoreAgentId, 'Error processing your message. Please try again.').catch(() => {})
         }
       }
@@ -949,11 +954,15 @@ export function startRangeFarmerChatListener(
             { role: 'user', content: text },
           ]
 
+          console.log(`[ranger:${firestoreAgentId}] calling AI (type=${ai.type} model=${ai.model})`)
           let reply: string
           try {
             reply = await callAI(ai, messages, 400)
+            console.log(`[ranger:${firestoreAgentId}] AI replied ok`)
           } catch (firstErr: any) {
-            if (firstErr?.status === 429 || firstErr?.message?.includes('429')) {
+            const firstMsg = firstErr?.message ?? String(firstErr)
+            console.error(`[ranger:${firestoreAgentId}] AI error: ${firstMsg}`)
+            if (firstMsg.includes('429')) {
               await new Promise((r) => setTimeout(r, 15_000))
               reply = await callAI(ai, messages, 400)
             } else throw firstErr
@@ -961,7 +970,8 @@ export function startRangeFarmerChatListener(
 
           await writeReply(firestoreAgentId, reply)
         } catch (err: any) {
-          console.error(`[ranger:${firestoreAgentId}] error:`, err?.message ?? err)
+          const msg = err?.message ?? String(err)
+          console.error(`[ranger:${firestoreAgentId}] error: ${msg}`)
           await writeReply(firestoreAgentId, 'Something went wrong. Try again.').catch(() => {})
         }
       }
@@ -1100,7 +1110,8 @@ export function startMarketAdvisorChatListener(
 
           await writeReply(firestoreAgentId, reply)
         } catch (err: any) {
-          console.error(`[advisor:${firestoreAgentId}] error:`, err?.message ?? err)
+          const msg = err?.message ?? String(err)
+          console.error(`[advisor:${firestoreAgentId}] error: ${msg}`)
           await writeReply(firestoreAgentId, 'Something went wrong. Try again.').catch(() => {})
         }
       }
