@@ -312,6 +312,52 @@ export async function searchUsers(prefix: string) {
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
 }
 
+// Publish a user's agent PnL snapshot as a public feed event
+export async function publishAgentPnl(
+  uid: string,
+  agentId: string,
+  agentName: string,
+  unrealizedPnl: number,
+  dailyPnl?: number | null,
+) {
+  await addDoc(collection(db, 'feed_events'), {
+    user_id: uid,
+    agent_id: agentId,
+    agent_name: agentName,
+    type: 'pnl',
+    content: `${agentName} unrealized PnL: ${unrealizedPnl >= 0 ? '+' : ''}$${Math.abs(unrealizedPnl).toFixed(2)}`,
+    payload: {
+      pnl: unrealizedPnl,
+      pct: 0,
+      daily_pnl: dailyPnl ?? null,
+    },
+    is_public: true,
+    created_at: serverTimestamp(),
+  })
+}
+
+// Get/set pnl_sharing preference stored on the user profile
+export async function getPnlSharingPref(uid: string): Promise<'auto' | 'manual' | 'private' | null> {
+  const profile = await getProfile(uid)
+  return (profile?.pnl_sharing as any) ?? null
+}
+
+export async function setPnlSharingPref(uid: string, pref: 'auto' | 'manual' | 'private') {
+  await setProfile(uid, { pnl_sharing: pref })
+}
+
+// Subscribe to agents for a given user that have live_state data
+export function subscribeToUserAgentsPnl(uid: string, cb: (agents: any[]) => void) {
+  const q = query(collection(db, 'agents'), where('user_id', '==', uid))
+  return onSnapshot(q, (snap) => {
+    cb(
+      snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((a: any) => a.live_state?.unrealizedPnlUsd != null)
+    )
+  })
+}
+
 // Search agents by name prefix
 export async function searchAgents(prefix: string) {
   const q = query(
