@@ -25,9 +25,7 @@ export default function DeployScreen() {
   const [step, setStep] = useState<Step>('pick')
   const [name, setName] = useState('')
   const [tbApiKey, setTbApiKey] = useState('')
-  const [aiKey, setAiKey] = useState('')
   const [selectedCoin, setSelectedCoin] = useState('BTC')
-  const [showAiKey, setShowAiKey] = useState(false)
   const [showTbKey, setShowTbKey] = useState(false)
   const [deploying, setDeploying] = useState(false)
   const [deployed, setDeployed] = useState<DeployedAgent | null>(null)
@@ -60,7 +58,6 @@ export default function DeployScreen() {
         body: JSON.stringify({
           userId: user.uid,
           apiKey: tbApiKey.trim(),
-          openaiKey: aiKey.trim() || undefined,
         }),
       })
       const data = await res.json() as any
@@ -74,11 +71,11 @@ export default function DeployScreen() {
   }
 
   async function deployMarketAdvisor() {
-    if (!user || !aiKey.trim()) return
+    if (!user) return
     setDeploying(true); setError('')
     try {
       const agentName = name.trim() || 'Market Advisor'
-      const id = await createMarketAdvisorAgent(user.uid, agentName, aiKey.trim())
+      const id = await createMarketAdvisorAgent(user.uid, agentName, '')
       setDeployed({ id, name: agentName, type: 'market_advisor' })
       setStep('success')
     } catch (e: any) { setError(e.message ?? 'Deploy failed') }
@@ -219,29 +216,6 @@ export default function DeployScreen() {
             </View>
             <Text style={s.hintText}>Starts with tb_live_. Find it in your cabal.ventures dashboard.</Text>
 
-            <Text style={[s.fieldLabel, { marginTop: 20 }]}>Gemini API Key</Text>
-            <View style={s.keyInputRow}>
-              <TextInput
-                key={showAiKey ? 'ai-show' : 'ai-hide'}
-                style={s.keyInput}
-                value={aiKey}
-                onChangeText={setAiKey}
-                placeholder="AIzaSy..."
-                placeholderTextColor={Colors.textMuted}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus={showAiKey && aiKey.length === 0}
-                secureTextEntry={!showAiKey}
-              />
-              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowAiKey(v => !v)}>
-                <Ionicons name={showAiKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            <Text style={s.hintText}>
-              Gemini powers your agent's chat and reads all your portfolio history. Get a free key at{' '}
-              <Text style={{ color: Colors.accentAmber }}>aistudio.google.com</Text>
-            </Text>
-
             {error ? <Text style={s.errorText}>{error}</Text> : null}
 
             <TouchableOpacity
@@ -325,34 +299,17 @@ export default function DeployScreen() {
               autoCapitalize="words"
             />
 
-            <Text style={[s.fieldLabel, { marginTop: 20 }]}>Gemini API Key</Text>
-            <View style={s.keyInputRow}>
-              <TextInput
-                key={showAiKey ? 'ai-show' : 'ai-hide'}
-                style={s.keyInput}
-                value={aiKey}
-                onChangeText={setAiKey}
-                placeholder="AIzaSy..."
-                placeholderTextColor={Colors.textMuted}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus={showAiKey && aiKey.length === 0}
-                secureTextEntry={!showAiKey}
-              />
-              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowAiKey(v => !v)}>
-                <Ionicons name={showAiKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
-              </TouchableOpacity>
+            <View style={s.infoBox}>
+              <Text style={s.infoRow}>🔑  Uses your AI key from Settings</Text>
+              <Text style={s.infoRow}>    No key? Add one under Settings → AI Provider</Text>
             </View>
-            <Text style={s.hintText}>
-              Free at <Text style={{ color: Colors.accentAmber }}>aistudio.google.com</Text> — no credit card needed.
-            </Text>
 
             {error ? <Text style={s.errorText}>{error}</Text> : null}
 
             <TouchableOpacity
-              style={[s.cta, (!aiKey.trim() || deploying) && { opacity: 0.5 }]}
+              style={[s.cta, deploying && { opacity: 0.5 }]}
               onPress={deployMarketAdvisor}
-              disabled={!aiKey.trim() || deploying}
+              disabled={deploying}
             >
               {deploying ? <ActivityIndicator color="#000" /> : <Text style={s.ctaText}>Deploy Advisor</Text>}
             </TouchableOpacity>
