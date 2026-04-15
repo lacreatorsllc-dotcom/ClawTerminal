@@ -12,22 +12,19 @@ const api_1 = require("./api");
 const cache_1 = require("./cache");
 const prices_1 = require("./prices");
 function makeAIClient(apiKey) {
-    if (apiKey.startsWith('AIza')) {
-        // Google Gemini — uses OpenAI-compatible endpoint
-        return {
-            client: new openai_1.default({
-                apiKey,
-                baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-            }),
-            model: 'gemini-2.0-flash',
-        };
-    }
-    if (apiKey.startsWith('sk-ant-')) {
-        // Anthropic Claude via their OpenAI-compatible layer (if available)
+    if (apiKey.startsWith('sk-') && !apiKey.startsWith('sk-ant-')) {
+        // OpenAI key (sk-... or sk-proj-...)
         return { client: new openai_1.default({ apiKey }), model: 'gpt-4o' };
     }
-    // Default: OpenAI
-    return { client: new openai_1.default({ apiKey }), model: 'gpt-4o' };
+    // Default: Google Gemini via OpenAI-compatible endpoint
+    // Covers AIzaSy... keys, AQ... keys, and any other Google AI Studio format
+    return {
+        client: new openai_1.default({
+            apiKey,
+            baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        }),
+        model: 'gemini-2.0-flash',
+    };
 }
 async function writeReply(firestoreAgentId, content) {
     await firebase_1.db.collection('agents').doc(firestoreAgentId).collection('messages').add({
@@ -386,7 +383,13 @@ async function buildLiveContext(firestoreAgentId, agentName, apiKey, tbAgentId) 
     }
     const state = live.state ?? 'UNKNOWN';
     const paused = admin.paused === true;
-    const positions = (await (0, api_1.fetchAgentPositions)(apiKey, tbAgentId)) ?? live.openPositions ?? [];
+    let positions = live.openPositions ?? [];
+    try {
+        const fetched = await (0, api_1.fetchAgentPositions)(apiKey, tbAgentId);
+        if (Array.isArray(fetched))
+            positions = fetched;
+    }
+    catch { /* use cached fallback from live state */ }
     const pnl = live.dailyPnlUsd ?? 0;
     const trades = live.dailyTradeCount ?? 0;
     const syms = positions.map((p) => (p.symbol ?? p.tokenSymbol ?? '').toUpperCase()).filter(Boolean);
@@ -419,7 +422,8 @@ RECENT DECISIONS:
 ${decisionLines || '  None'}`;
 }
 function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, openaiApiKey) {
-    const ai = openaiApiKey ? makeAIClient(openaiApiKey) : null;
+    // ai is used as static fallback only; per-message we prefer the user's profile key
+    const fallbackAi = openaiApiKey ? makeAIClient(openaiApiKey) : null;
     const processedIds = new Set();
     let initialized = false;
     const messagesRef = firebase_1.db.collection('agents').doc(firestoreAgentId).collection('messages');
@@ -525,7 +529,7 @@ function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, opena
                     continue;
                 }
                 if (text === '/analyze-slug001') {
-                    await handleAnalyzeSlug001(firestoreAgentId, agentName, ai);
+                    await handleAnalyzeSlug001(firestoreAgentId, agentName, fallbackAi);
                     continue;
                 }
                 // ── Trade confirmation check ──────────────────────────────────────
@@ -552,15 +556,17 @@ function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, opena
                     }
                 }
                 // ── Free-form AI subagent ─────────────────────────────────────────
+                // Resolve AI key: prefer user's profile key (set in Settings), fall back to agent key
+                const thisDoc = await firebase_1.db.collection('agents').doc(firestoreAgentId).get();
+                const userId = thisDoc.data()?.user_id;
+                const profileKey = userId ? await getUserAiKey(userId) : null;
+                const ai = profileKey ? makeAIClient(profileKey) : fallbackAi;
                 if (!ai) {
-                    await writeReply(firestoreAgentId, `Use /help to see available commands.`);
+                    await writeReply(firestoreAgentId, `I need an AI key to respond. Go to Settings → add your Gemini or OpenAI key — it's free at aistudio.google.com.`);
                     continue;
                 }
                 // Fetch live context (positions, decisions, state)
                 const liveContext = await buildLiveContext(firestoreAgentId, agentName, apiKey, tbAgentId);
-                // Fetch context from all other user agents for full portfolio memory
-                const thisDoc = await firebase_1.db.collection('agents').doc(firestoreAgentId).get();
-                const userId = thisDoc.data()?.user_id;
                 const portfolioContext = userId
                     ? await buildAllAgentsContext(userId, firestoreAgentId)
                     : 'Portfolio data unavailable.';
