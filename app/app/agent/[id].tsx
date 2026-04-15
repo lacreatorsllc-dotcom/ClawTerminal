@@ -1234,7 +1234,7 @@ function Slug001Screen() {
     setInput('')
     await addMessage('slug-001', {
       agent_id: 'slug-001',
-      user_id: user?.id ?? 'anonymous',
+      user_id: user?.uid ?? 'anonymous',
       direction: 'inbound',
       content: text,
     })
