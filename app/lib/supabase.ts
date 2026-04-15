@@ -19,8 +19,11 @@ const ExpoSecureStoreAdapter = {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: ExpoSecureStoreAdapter,
-    persistSession: true,
-    autoRefreshToken: true,
+    // App uses Firebase auth — no active Supabase session.
+    // Disable autoRefreshToken to stop GoTrueClient's background tick,
+    // which calls SecureStore and crashes on iOS Simulator (missing entitlement).
+    persistSession: false,
+    autoRefreshToken: false,
     detectSessionInUrl: false,
   },
 })
