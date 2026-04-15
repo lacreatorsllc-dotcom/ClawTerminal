@@ -17,7 +17,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
-import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, db, type PaperAgentState } from '../../lib/firebase'
+import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, type PaperAgentState } from '../../lib/firebase'
 import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
@@ -696,8 +696,38 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
   const [input, setInput] = useState('')
   const [cmdPickerVisible, setCmdPickerVisible] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [sharing, setSharing] = useState(false)
+  const [shareMsg, setShareMsg] = useState('')
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
+
+  async function sharePnl() {
+    if (!user || sharing) return
+    setSharing(true)
+    setShareMsg('')
+    try {
+      const live = agentDoc?.live_state ?? {}
+      const name = agentDoc?.name ?? 'Agent'
+      const daily = live.dailyPnlUsd ?? 0
+      const unrealized = live.unrealizedPnlUsd ?? 0
+      const positions = live.openPositions?.length ?? 0
+      const sign = (n: number) => n >= 0 ? '+' : ''
+      const content = `${name} · Daily P&L: ${sign(daily)}$${Math.abs(daily).toFixed(2)} · Unrealized: ${sign(unrealized)}$${Math.abs(unrealized).toFixed(2)} · ${positions} open position${positions !== 1 ? 's' : ''}`
+      await addFeedEvent({
+        agent_id: agentId,
+        user_id: user.uid,
+        type: 'pnl',
+        content,
+        payload: { daily_pnl: daily, unrealized_pnl: unrealized, open_positions: positions, agent_name: name },
+        is_public: true,
+      })
+      setShareMsg('Shared to your feed ✓')
+      setTimeout(() => setShareMsg(''), 3000)
+    } catch (e: any) {
+      setShareMsg('Failed to share')
+    }
+    setSharing(false)
+  }
 
   useEffect(() => subscribeToMessages(agentId, setMessages), [agentId])
   useEffect(() => subscribeToDecisions(agentId, setDecisions), [agentId])
@@ -970,6 +1000,20 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               </View>
             </View>
           )}
+
+          {/* Share P&L */}
+          <TouchableOpacity
+            style={[tb.shareBtn, sharing && { opacity: 0.5 }]}
+            onPress={sharePnl}
+            disabled={sharing}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="share-outline" size={16} color={Colors.accentAmber} />
+            <Text style={tb.shareBtnText}>{sharing ? 'Sharing…' : 'Share P&L to Feed'}</Text>
+          </TouchableOpacity>
+          {!!shareMsg && (
+            <Text style={{ color: Colors.accentGreen, fontSize: 13, textAlign: 'center', marginTop: -4 }}>{shareMsg}</Text>
+          )}
         </ScrollView>
       )}
 
@@ -1073,6 +1117,12 @@ const tb = StyleSheet.create({
   actionBadge: {
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1,
   },
+  shareBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1, borderColor: Colors.accentAmber, borderRadius: 14,
+    paddingVertical: 14, marginTop: 4,
+  },
+  shareBtnText: { fontSize: 15, fontWeight: '600', color: Colors.accentAmber },
 })
 
 // ── BlueChipScreen ────────────────────────────────────────────────────────────
