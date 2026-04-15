@@ -16,11 +16,12 @@ async function callOllama(prompt) {
 }
 
 callOllama(`
-Fix this code so it does not call an API repeatedly:
+You are a senior backend engineer.
 
-function fetchData() {
-  setInterval(() => {
-    callAPI()
-  }, 1000)
-}
+My system is accidentally calling an API 2000+ times.
+
+Give me:
+1. The likely cause
+2. A fix
+3. Example code
 `);

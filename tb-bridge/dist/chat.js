@@ -510,8 +510,10 @@ function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, opena
                     processedIds.add(change.doc.id);
                     continue;
                 }
-                // Unexpected transaction error — still attempt to process to avoid silent drops
-                claimed = true;
+                // Transaction failed — do NOT fall through, skip to avoid duplicate error messages
+                console.error(`[chat:${firestoreAgentId}] claim transaction failed, skipping: ${claimErr?.message ?? claimErr}`);
+                processedIds.add(change.doc.id);
+                continue;
             }
             if (!claimed)
                 continue;
@@ -652,6 +654,7 @@ Rules:
                     { role: 'user', content: text },
                 ];
                 console.log(`[chat:${firestoreAgentId}] calling AI (type=${ai.type} model=${ai.model})`);
+                await firebase_1.db.collection('agents').doc(firestoreAgentId).update({ is_typing: true }).catch(() => { });
                 let rawReply;
                 try {
                     rawReply = await callAI(ai, messages, 500);
@@ -717,10 +720,12 @@ Rules:
                 else {
                     await writeReply(firestoreAgentId, rawReply);
                 }
+                await firebase_1.db.collection('agents').doc(firestoreAgentId).update({ is_typing: false }).catch(() => { });
             }
             catch (err) {
                 const msg = err?.message ?? String(err);
                 console.error(`[chat:${firestoreAgentId}] error processing message: ${msg}`);
+                await firebase_1.db.collection('agents').doc(firestoreAgentId).update({ is_typing: false }).catch(() => { });
                 await writeReply(firestoreAgentId, 'Error processing your message. Please try again.').catch(() => { });
             }
         }
@@ -785,6 +790,10 @@ function startRangeFarmerChatListener(firestoreAgentId, agentName, coin = 'BTC')
                     processedIds.add(change.doc.id);
                     continue;
                 }
+                // Transaction error — skip rather than risk duplicate reply
+                console.error(`[ranger:${firestoreAgentId}] claim failed, skipping: ${e?.message ?? e}`);
+                processedIds.add(change.doc.id);
+                continue;
             }
             processedIds.add(change.doc.id);
             console.log(`[ranger:${firestoreAgentId}] received: ${text}`);
@@ -836,6 +845,7 @@ function startRangeFarmerChatListener(firestoreAgentId, agentName, coin = 'BTC')
                     { role: 'user', content: text },
                 ];
                 console.log(`[ranger:${firestoreAgentId}] calling AI (type=${ai.type} model=${ai.model})`);
+                await firebase_1.db.collection('agents').doc(firestoreAgentId).update({ is_typing: true }).catch(() => { });
                 let reply;
                 try {
                     reply = await callAI(ai, messages, 400);
@@ -852,10 +862,12 @@ function startRangeFarmerChatListener(firestoreAgentId, agentName, coin = 'BTC')
                         throw firstErr;
                 }
                 await writeReply(firestoreAgentId, reply);
+                await firebase_1.db.collection('agents').doc(firestoreAgentId).update({ is_typing: false }).catch(() => { });
             }
             catch (err) {
                 const msg = err?.message ?? String(err);
                 console.error(`[ranger:${firestoreAgentId}] error: ${msg}`);
+                await firebase_1.db.collection('agents').doc(firestoreAgentId).update({ is_typing: false }).catch(() => { });
                 await writeReply(firestoreAgentId, 'Something went wrong. Try again.').catch(() => { });
             }
         }
@@ -914,6 +926,9 @@ function startMarketAdvisorChatListener(firestoreAgentId, userId, agentName, gem
                     processedIds.add(change.doc.id);
                     continue;
                 }
+                console.error(`[advisor:${firestoreAgentId}] claim failed, skipping: ${e?.message ?? e}`);
+                processedIds.add(change.doc.id);
+                continue;
             }
             processedIds.add(change.doc.id);
             console.log(`[advisor:${firestoreAgentId}] received: ${text}`);
