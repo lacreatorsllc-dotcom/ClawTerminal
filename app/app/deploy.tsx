@@ -27,6 +27,8 @@ export default function DeployScreen() {
   const [tbApiKey, setTbApiKey] = useState('')
   const [aiKey, setAiKey] = useState('')
   const [selectedCoin, setSelectedCoin] = useState('BTC')
+  const [showAiKey, setShowAiKey] = useState(false)
+  const [showTbKey, setShowTbKey] = useState(false)
   const [deploying, setDeploying] = useState(false)
   const [deployed, setDeployed] = useState<DeployedAgent | null>(null)
   const [error, setError] = useState('')
@@ -199,28 +201,39 @@ export default function DeployScreen() {
             </View>
 
             <Text style={s.fieldLabel}>Cabal API Key</Text>
-            <TextInput
-              style={s.input}
-              value={tbApiKey}
-              onChangeText={setTbApiKey}
-              placeholder="tb_live_..."
-              placeholderTextColor={Colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+            <View style={s.keyInputRow}>
+              <TextInput
+                style={s.keyInput}
+                value={tbApiKey}
+                onChangeText={setTbApiKey}
+                placeholder="tb_live_..."
+                placeholderTextColor={Colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={!showTbKey}
+              />
+              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowTbKey(!showTbKey)}>
+                <Ionicons name={showTbKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
             <Text style={s.hintText}>Starts with tb_live_. Find it in your cabal.ventures dashboard.</Text>
 
             <Text style={[s.fieldLabel, { marginTop: 20 }]}>Gemini API Key</Text>
-            <TextInput
-              style={s.input}
-              value={aiKey}
-              onChangeText={setAiKey}
-              placeholder="AIzaSy..."
-              placeholderTextColor={Colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-            />
+            <View style={s.keyInputRow}>
+              <TextInput
+                style={s.keyInput}
+                value={aiKey}
+                onChangeText={setAiKey}
+                placeholder="AIzaSy..."
+                placeholderTextColor={Colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={!showAiKey}
+              />
+              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowAiKey(!showAiKey)}>
+                <Ionicons name={showAiKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
             <Text style={s.hintText}>
               Gemini powers your agent's chat and reads all your portfolio history. Get a free key at{' '}
               <Text style={{ color: Colors.accentAmber }}>aistudio.google.com</Text>
@@ -310,16 +323,21 @@ export default function DeployScreen() {
             />
 
             <Text style={[s.fieldLabel, { marginTop: 20 }]}>Gemini API Key</Text>
-            <TextInput
-              style={s.input}
-              value={aiKey}
-              onChangeText={setAiKey}
-              placeholder="AIzaSy..."
-              placeholderTextColor={Colors.textMuted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-            />
+            <View style={s.keyInputRow}>
+              <TextInput
+                style={s.keyInput}
+                value={aiKey}
+                onChangeText={setAiKey}
+                placeholder="AIzaSy..."
+                placeholderTextColor={Colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={!showAiKey}
+              />
+              <TouchableOpacity style={s.eyeBtn} onPress={() => setShowAiKey(!showAiKey)}>
+                <Ionicons name={showAiKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </View>
             <Text style={s.hintText}>
               Free at <Text style={{ color: Colors.accentAmber }}>aistudio.google.com</Text> — no credit card needed.
             </Text>
@@ -432,6 +450,16 @@ const s = StyleSheet.create({
     borderColor: Colors.borderSubtle, padding: 14,
     fontSize: 15, color: Colors.textPrimary,
   },
+  keyInputRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.bgCard, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.borderSubtle,
+  },
+  keyInput: {
+    flex: 1, padding: 14, fontSize: 15, color: Colors.textPrimary,
+  },
+  eyeBtn: { paddingHorizontal: 14, paddingVertical: 14 },
+
   hintText: { fontSize: 12, color: Colors.textMuted, lineHeight: 17 },
   errorText: { fontSize: 13, color: Colors.accentRed },
 

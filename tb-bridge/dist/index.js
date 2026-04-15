@@ -188,18 +188,45 @@ const server = http.createServer(async (req, res) => {
 });
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8080;
 async function startup() {
-    // Load all existing cabal_trading_boy agents from Firestore
-    const snap = await firebase_1.db.collection('agents').where('agent_type', '==', 'cabal_trading_boy').get();
     let count = 0;
-    for (const doc of snap.docs) {
+    // Load all existing cabal_trading_boy agents
+    const tbSnap = await firebase_1.db.collection('agents').where('agent_type', '==', 'cabal_trading_boy').get();
+    for (const doc of tbSnap.docs) {
         const data = doc.data();
         if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key) {
             activateAgent(doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined);
             count++;
         }
     }
+    // Load all existing market_advisor agents
+    const advisorSnap = await firebase_1.db.collection('agents').where('agent_type', '==', 'market_advisor').get();
+    for (const doc of advisorSnap.docs) {
+        const data = doc.data();
+        if (data.user_id && !runningAgents.has(doc.id)) {
+            runningAgents.add(doc.id);
+            // Use stored key as fallback; profile key will be resolved per-message
+            (0, chat_1.startMarketAdvisorChatListener)(doc.id, data.user_id, data.name ?? 'Market Advisor', data.gemini_api_key ?? '');
+            count++;
+        }
+    }
+    // Load all existing range_farmer agents (per-user instances)
+    const rangerSnap = await firebase_1.db.collection('agents').where('agent_type', '==', 'range_farmer').get();
+    for (const doc of rangerSnap.docs) {
+        const data = doc.data();
+        if (!runningAgents.has(doc.id)) {
+            runningAgents.add(doc.id);
+            (0, chat_1.startRangeFarmerChatListener)(doc.id, data.name ?? 'Range Farmer', data.coin ?? 'BTC');
+            count++;
+        }
+    }
+    // Always start slug-001 listener (shared paper agent used by all users)
+    if (!runningAgents.has('slug-001')) {
+        runningAgents.add('slug-001');
+        (0, chat_1.startRangeFarmerChatListener)('slug-001', 'Slug #001', 'BTC');
+        console.log(`[tb-bridge] activated slug-001 chat listener`);
+    }
     console.log(`[tb-bridge] started — watching ${count} existing agents`);
-    // Watch for new agents added after startup
+    // Watch for new cabal_trading_boy agents
     firebase_1.db.collection('agents')
         .where('agent_type', '==', 'cabal_trading_boy')
         .onSnapshot((snap) => {
@@ -209,6 +236,36 @@ async function startup() {
             const data = change.doc.data();
             if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key && !runningAgents.has(change.doc.id)) {
                 activateAgent(change.doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined);
+            }
+        }
+    });
+    // Watch for new market_advisor agents
+    firebase_1.db.collection('agents')
+        .where('agent_type', '==', 'market_advisor')
+        .onSnapshot((snap) => {
+        for (const change of snap.docChanges()) {
+            if (change.type !== 'added')
+                continue;
+            const data = change.doc.data();
+            if (data.user_id && !runningAgents.has(change.doc.id)) {
+                runningAgents.add(change.doc.id);
+                (0, chat_1.startMarketAdvisorChatListener)(change.doc.id, data.user_id, data.name ?? 'Market Advisor', data.gemini_api_key ?? '');
+                console.log(`[tb-bridge] activated market advisor ${change.doc.id}`);
+            }
+        }
+    });
+    // Watch for new range_farmer agents
+    firebase_1.db.collection('agents')
+        .where('agent_type', '==', 'range_farmer')
+        .onSnapshot((snap) => {
+        for (const change of snap.docChanges()) {
+            if (change.type !== 'added')
+                continue;
+            const data = change.doc.data();
+            if (!runningAgents.has(change.doc.id)) {
+                runningAgents.add(change.doc.id);
+                (0, chat_1.startRangeFarmerChatListener)(change.doc.id, data.name ?? 'Range Farmer', data.coin ?? 'BTC');
+                console.log(`[tb-bridge] activated range farmer ${change.doc.id} (${data.coin ?? 'BTC'})`);
             }
         }
     });
