@@ -29,6 +29,8 @@ import {
   onSnapshot,
   serverTimestamp,
   getDocs,
+  collectionGroup,
+  documentId,
   type DocumentData,
   type Timestamp,
 } from 'firebase/firestore'
@@ -61,6 +63,9 @@ function tsToISO(ts: Timestamp | string | null | undefined): string | null {
   if (typeof ts === 'string') return ts
   return ts.toDate().toISOString()
 }
+
+/** Exposed for screens that map raw Firestore timestamps */
+export const firestoreTsToIso = tsToISO
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -373,6 +378,124 @@ export async function searchAgents(prefix: string) {
   )
   const snap = await getDocs(q)
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
+
+/** Recent agents (e.g. owner filter in search when agent name is empty) */
+export async function getRecentAgents(max = 30) {
+  const q = query(collection(db, 'agents'), orderBy('last_seen', 'desc'), limit(max))
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
+
+export async function batchGetUsernames(userIds: string[]): Promise<Record<string, string>> {
+  const unique = [...new Set(userIds)].filter(Boolean)
+  const out: Record<string, string> = {}
+  await Promise.all(
+    unique.map(async (uid) => {
+      const snap = await getDoc(doc(db, 'users', uid))
+      if (snap.exists()) {
+        const u = snap.data().username
+        if (typeof u === 'string' && u.length > 0) out[uid] = u
+      }
+    })
+  )
+  return out
+}
+
+export async function getUidForUsername(raw: string): Promise<string | null> {
+  const snap = await getDoc(doc(db, 'usernames', raw.toLowerCase()))
+  if (!snap.exists()) return null
+  const uid = snap.data().uid
+  return typeof uid === 'string' ? uid : null
+}
+
+export async function getPublicProfileByUsername(raw: string): Promise<{
+  id: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+  created_at: string
+} | null> {
+  const uid = await getUidForUsername(raw)
+  if (!uid) return null
+  const snap = await getDoc(doc(db, 'users', uid))
+  if (!snap.exists()) return null
+  const data = snap.data()
+  return {
+    id: uid,
+    username: (data.username as string) ?? raw.toLowerCase(),
+    display_name: (data.display_name as string) ?? (data.displayName as string) ?? null,
+    avatar_url: (data.avatar_url as string) ?? (data.avatarUrl as string) ?? null,
+    created_at: tsToISO(data.created_at as Timestamp | null) ?? new Date(0).toISOString(),
+  }
+}
+
+export async function listAgentsForUser(uid: string): Promise<Array<{
+  id: string
+  name: string
+  status: string
+  last_seen: string | null
+  metadata: Record<string, unknown>
+}>> {
+  const q = query(collection(db, 'agents'), where('user_id', '==', uid))
+  const snap = await getDocs(q)
+  const rows = snap.docs.map((d) => {
+    const data = d.data()
+    return {
+      id: d.id,
+      name: data.name as string,
+      status: (data.status as string) ?? 'disconnected',
+      last_seen: tsToISO(data.last_seen as Timestamp | null),
+      metadata: (data.metadata as Record<string, unknown>) ?? {},
+    }
+  })
+  rows.sort((a, b) => {
+    const ta = a.last_seen ? new Date(a.last_seen).getTime() : 0
+    const tb = b.last_seen ? new Date(b.last_seen).getTime() : 0
+    return tb - ta
+  })
+  return rows
+}
+
+export async function listPublicFeedEventsForUser(
+  uid: string,
+  limitCount = 20,
+): Promise<Array<{ id: string; type: string; content: string; created_at: string; agent_id: string }>> {
+  const q = query(
+    collection(db, 'feed_events'),
+    where('user_id', '==', uid),
+    where('is_public', '==', true),
+    orderBy('created_at', 'desc'),
+    limit(limitCount)
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => {
+    const data = d.data()
+    return {
+      id: d.id,
+      type: String(data.type ?? ''),
+      content: String(data.content ?? ''),
+      created_at: tsToISO(data.created_at as Timestamp | null) ?? new Date().toISOString(),
+      agent_id: String(data.agent_id ?? ''),
+    }
+  })
+}
+
+/** Users who follow targetUid (subcollection doc id = followee uid) */
+export async function countFollowersOf(targetUid: string): Promise<number> {
+  const q = query(collectionGroup(db, 'following'), where(documentId(), '==', targetUid))
+  const snap = await getDocs(q)
+  return snap.size
+}
+
+export async function countFollowingOf(uid: string): Promise<number> {
+  const snap = await getDocs(collection(db, 'users', uid, 'following'))
+  return snap.size
+}
+
+export async function isFollowingUser(myUid: string, targetUid: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, 'users', myUid, 'following', targetUid))
+  return snap.exists()
 }
 
 export async function createMarketAdvisorAgent(uid: string, name: string, geminiApiKey: string): Promise<string> {

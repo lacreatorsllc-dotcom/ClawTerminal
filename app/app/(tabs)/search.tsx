@@ -1,10 +1,16 @@
 import { useState, useCallback, useRef } from 'react'
 import {
-  View, Text, TextInput, FlatList, SectionList, TouchableOpacity,
+  View, Text, TextInput, SectionList, TouchableOpacity,
   StyleSheet, ActivityIndicator,
 } from 'react-native'
 import { router } from 'expo-router'
-import { supabase } from '../../lib/supabase'
+import {
+  searchUsers,
+  searchAgents,
+  getRecentAgents,
+  batchGetUsernames,
+  firestoreTsToIso,
+} from '../../lib/firebase'
 import { Colors } from '../../constants/colors'
 import type { AgentStatus } from '../../lib/types'
 
@@ -39,6 +45,10 @@ interface AgentResult {
   ownerUsername: string | null
 }
 
+type SearchRow = UserResult | AgentResult
+
+type SearchSection = { title: string; data: SearchRow[]; type: 'user' | 'agent' }
+
 function timeAgo(iso: string | null): string {
   if (!iso) return 'never'
   const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -56,6 +66,23 @@ function parseQuery(raw: string): { owner: string | null; term: string } {
     return { owner: clean.slice(0, slash) || null, term: clean.slice(slash + 1) }
   }
   return { owner: null, term: clean }
+}
+
+function firestoreUserToResult(row: { id: string } & Record<string, unknown>): UserResult {
+  return {
+    id: row.id,
+    username: String(row.username ?? ''),
+    display_name: (row.display_name as string) ?? (row.displayName as string) ?? null,
+    avatar_url: (row.avatar_url as string) ?? (row.avatarUrl as string) ?? null,
+  }
+}
+
+function coerceAgentStatus(s: unknown): AgentStatus {
+  const v = String(s || '')
+  if (v === 'connected' || v === 'connecting' || v === 'stale' || v === 'error' || v === 'disconnected') {
+    return v
+  }
+  return 'disconnected'
 }
 
 export default function SearchScreen() {
@@ -79,58 +106,48 @@ export default function SearchScreen() {
     setLoading(true)
     setSearched(true)
 
-    const promises: [Promise<any>, Promise<any>] = [
-      // Users by username
-      owner
-        ? Promise.resolve({ data: [] })
-        : supabase
-            .from('users')
-            .select('id, username, display_name, avatar_url')
-            .ilike('username', `%${term}%`)
-            .limit(10),
+    try {
+      // Profiles and agents live in Firestore (Supabase users/agents are not synced from the app).
+      let userResults: UserResult[] = []
+      let agentDocs: Array<{ id: string; user_id?: string; name?: string; status?: string; last_seen?: unknown }> = []
 
-      // Agents by name
-      (() => {
-        let q = supabase
-          .from('agents')
-          .select('id, name, status, last_seen, user_id')
-          .order('last_seen', { ascending: false })
-          .limit(20)
-        if (term) q = q.ilike('name', `%${term}%`)
-        return q
-      })(),
-    ]
+      if (owner && !term) {
+        agentDocs = await getRecentAgents(30)
+      } else if (owner && term) {
+        agentDocs = await searchAgents(term)
+      } else if (!owner && term) {
+        const [uRows, aRows] = await Promise.all([
+          searchUsers(term.toLowerCase()),
+          searchAgents(term),
+        ])
+        userResults = uRows
+          .map((r) => firestoreUserToResult(r as { id: string } & Record<string, unknown>))
+          .filter((u) => u.username.length > 0)
+        agentDocs = aRows as typeof agentDocs
+      }
 
-    const [{ data: userRows }, { data: agentRows }] = await Promise.all(promises)
+      const userIds = [...new Set(agentDocs.map((a) => a.user_id as string).filter(Boolean))]
+      const usernameMap = await batchGetUsernames(userIds)
 
-    // Resolve agent owners
-    let mergedAgents: AgentResult[] = []
-    if (agentRows && agentRows.length > 0) {
-      const userIds = [...new Set(agentRows.map((a: any) => a.user_id as string))]
-      const { data: ownerRows } = await supabase
-        .from('users')
-        .select('id, username')
-        .in('id', userIds)
-
-      const usernameMap: Record<string, string> = Object.fromEntries(
-        (ownerRows ?? []).map((u: any) => [u.id, u.username])
-      )
-
-      mergedAgents = agentRows.map((a: any) => ({
-        ...a,
-        ownerUsername: usernameMap[a.user_id] ?? null,
+      let mergedAgents: AgentResult[] = agentDocs.map((a) => ({
+        id: a.id,
+        name: String(a.name ?? ''),
+        status: coerceAgentStatus(a.status),
+        last_seen: firestoreTsToIso(a.last_seen as any),
+        user_id: String(a.user_id ?? ''),
+        ownerUsername: a.user_id ? usernameMap[a.user_id] ?? null : null,
       }))
 
       if (owner) {
-        mergedAgents = mergedAgents.filter(
-          (a) => a.ownerUsername?.toLowerCase().startsWith(owner.toLowerCase())
-        )
+        const o = owner.toLowerCase()
+        mergedAgents = mergedAgents.filter((a) => a.ownerUsername?.toLowerCase().startsWith(o))
       }
-    }
 
-    setUsers((userRows as UserResult[]) ?? [])
-    setAgents(mergedAgents)
-    setLoading(false)
+      setUsers(owner ? [] : userResults)
+      setAgents(mergedAgents)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   function onChangeText(text: string) {
@@ -139,9 +156,9 @@ export default function SearchScreen() {
     debounceRef.current = setTimeout(() => search(text), 300)
   }
 
-  const sections = [
-    ...(users.length > 0 ? [{ title: 'PEOPLE', data: users, type: 'user' as const }] : []),
-    ...(agents.length > 0 ? [{ title: 'AGENTS', data: agents, type: 'agent' as const }] : []),
+  const sections: SearchSection[] = [
+    ...(users.length > 0 ? [{ title: 'PEOPLE', data: users as SearchRow[], type: 'user' as const }] : []),
+    ...(agents.length > 0 ? [{ title: 'AGENTS', data: agents as SearchRow[], type: 'agent' as const }] : []),
   ]
 
   const isEmpty = searched && !loading && users.length === 0 && agents.length === 0
@@ -183,9 +200,9 @@ export default function SearchScreen() {
           <Text style={styles.emptyHint}>Try a different name</Text>
         </View>
       ) : (
-        <SectionList
+        <SectionList<SearchRow, SearchSection>
           sections={sections}
-          keyExtractor={(item) => (item as any).id}
+          keyExtractor={(item) => item.id}
           renderSectionHeader={({ section }) => (
             <Text style={styles.sectionHeader}>{section.title}</Text>
           )}

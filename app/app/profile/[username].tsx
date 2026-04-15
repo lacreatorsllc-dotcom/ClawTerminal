@@ -4,7 +4,16 @@ import {
   ActivityIndicator, Image,
 } from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
-import { supabase } from '../../lib/supabase'
+import {
+  getPublicProfileByUsername,
+  listAgentsForUser,
+  listPublicFeedEventsForUser,
+  countFollowersOf,
+  countFollowingOf,
+  isFollowingUser,
+  followUser,
+  unfollowUser,
+} from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
 import { Colors } from '../../constants/colors'
 import type { AgentStatus } from '../../lib/types'
@@ -74,18 +83,19 @@ export default function PublicProfileScreen() {
   useEffect(() => {
     if (!username) return
     loadProfile()
-  }, [username])
+  }, [username, me?.uid])
 
   async function loadProfile() {
     setLoading(true)
+    setNotFound(false)
 
-    // 1. Load user profile
-    const { data: profileData } = await supabase
-      .from('users')
-      .select('id, username, display_name, avatar_url, created_at')
-      .eq('username', username)
-      .single()
+    const uname = Array.isArray(username) ? username[0] : username
+    if (!uname) {
+      setLoading(false)
+      return
+    }
 
+    const profileData = await getPublicProfileByUsername(uname)
     if (!profileData) {
       setNotFound(true)
       setLoading(false)
@@ -94,73 +104,41 @@ export default function PublicProfileScreen() {
 
     setProfile(profileData as PublicProfile)
 
-    // 2. Load agents, public feed, and follow data in parallel
-    const [
-      { data: agentData },
-      { data: feedData },
-      { count: followers },
-      { count: following },
-      { data: followRow },
-    ] = await Promise.all([
-      supabase
-        .from('agents')
-        .select('id, name, status, last_seen, metadata')
-        .eq('user_id', profileData.id)
-        .order('last_seen', { ascending: false }),
-      supabase
-        .from('feed_events')
-        .select('id, type, content, created_at, agent_id')
-        .eq('user_id', profileData.id)
-        .eq('is_public', true)
-        .order('created_at', { ascending: false })
-        .limit(20),
-      supabase
-        .from('follows')
-        .select('*', { count: 'exact', head: true })
-        .eq('following_id', profileData.id),
-      supabase
-        .from('follows')
-        .select('*', { count: 'exact', head: true })
-        .eq('follower_id', profileData.id),
-      me
-        ? supabase
-            .from('follows')
-            .select('id')
-            .eq('follower_id', me.id)
-            .eq('following_id', profileData.id)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+    const myUid = me?.uid ?? null
+    const [agentRows, feedRows, followers, following, amFollowing] = await Promise.all([
+      listAgentsForUser(profileData.id),
+      listPublicFeedEventsForUser(profileData.id, 20),
+      countFollowersOf(profileData.id),
+      countFollowingOf(profileData.id),
+      myUid ? isFollowingUser(myUid, profileData.id) : Promise.resolve(false),
     ])
 
-    setAgents((agentData as PublicAgent[]) ?? [])
-    setFeed((feedData as FeedEvent[]) ?? [])
-    setFollowerCount(followers ?? 0)
-    setFollowingCount(following ?? 0)
-    setIsFollowing(!!followRow)
+    setAgents(agentRows as unknown as PublicAgent[])
+    setFeed(feedRows)
+    setFollowerCount(followers)
+    setFollowingCount(following)
+    setIsFollowing(amFollowing)
     setLoading(false)
   }
 
   const toggleFollow = useCallback(async () => {
     if (!me || !profile) return
+    const myUid = me.uid
     setFollowLoading(true)
 
-    if (isFollowing) {
-      await supabase
-        .from('follows')
-        .delete()
-        .eq('follower_id', me.id)
-        .eq('following_id', profile.id)
-      setIsFollowing(false)
-      setFollowerCount((c) => Math.max(0, c - 1))
-    } else {
-      await supabase
-        .from('follows')
-        .insert({ follower_id: me.id, following_id: profile.id })
-      setIsFollowing(true)
-      setFollowerCount((c) => c + 1)
+    try {
+      if (isFollowing) {
+        await unfollowUser(myUid, profile.id)
+        setIsFollowing(false)
+        setFollowerCount((c) => Math.max(0, c - 1))
+      } else {
+        await followUser(myUid, profile.id)
+        setIsFollowing(true)
+        setFollowerCount((c) => c + 1)
+      }
+    } finally {
+      setFollowLoading(false)
     }
-
-    setFollowLoading(false)
   }, [me, profile, isFollowing])
 
   if (loading) {

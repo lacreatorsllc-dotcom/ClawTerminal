@@ -14,9 +14,10 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Following subcollection — only the owner can read/write their own follows
+    // Following edges — any signed-in user may read (social graph, follower counts via
+    // collectionGroup queries). Only the follower (path uid) may create/delete their edge.
     match /users/{uid}/following/{targetUid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == uid;
     }
 
@@ -36,11 +37,12 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
-    // User agents — owner can read/write; subcollections (messages, decisions) same
+    // User agents — any signed-in user can read top-level agent docs (search, public profile,
+    // discovery). WARNING: do not store secrets (API keys, etc.) on this document; use a
+    // private subcollection + rules that deny client reads, or a backend-only store.
+    // Owner-only: create / update / delete.
     match /agents/{agentId} {
-      allow read: if request.auth != null && (
-        resource.data.user_id == request.auth.uid
-      );
+      allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
       allow update, delete: if request.auth != null && resource.data.user_id == request.auth.uid;
     }
