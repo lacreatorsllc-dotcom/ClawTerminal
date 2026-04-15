@@ -37,15 +37,42 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
-    // User agents — any signed-in user can read top-level agent docs (search, public profile,
-    // discovery). WARNING: do not store secrets (API keys, etc.) on this document; use a
-    // private subcollection + rules that deny client reads, or a backend-only store.
-    // Owner-only: create / update / delete.
+    // User agents — any signed-in user can read top-level agent docs (search, public profile).
+    // Secrets live in private/ (owner-only). Owner-only: create / update / delete.
     match /agents/{agentId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null && request.resource.data.user_id == request.auth.uid;
       allow update, delete: if request.auth != null && resource.data.user_id == request.auth.uid;
     }
+
+    // Credentials & API keys — only the agent owner may read or write.
+    match /agents/{agentId}/private/{doc} {
+      allow read, create, update, delete: if request.auth != null
+        && get(/databases/$(database)/documents/agents/$(agentId)).data.user_id == request.auth.uid;
+    }
+
+    // Chat messages — owner (or any authed user for shared slug-001) may read/create.
+    // Owner may update only to set chat_processed (idempotent claim for client + bridge).
+    match /agents/{agentId}/messages/{msgId} {
+      allow read: if request.auth != null && (
+        agentId == 'slug-001' ||
+        get(/databases/$(database)/documents/agents/$(agentId)).data.user_id == request.auth.uid
+      );
+      allow create: if request.auth != null && (
+        agentId == 'slug-001' ||
+        get(/databases/$(database)/documents/agents/$(agentId)).data.user_id == request.auth.uid
+      );
+      allow update: if request.auth != null && (
+        agentId == 'slug-001' ||
+        (
+          get(/databases/$(database)/documents/agents/$(agentId)).data.user_id == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['chat_processed']) &&
+          request.resource.data.chat_processed == true
+        )
+      );
+      allow delete: if false;
+    }
+
     match /agents/{agentId}/{subcollection}/{doc} {
       allow read: if request.auth != null && (
         get(/databases/$(database)/documents/agents/$(agentId)).data.user_id == request.auth.uid

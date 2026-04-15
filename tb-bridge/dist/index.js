@@ -39,6 +39,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const http = __importStar(require("http"));
 const openai_1 = __importDefault(require("openai"));
 const firebase_1 = require("./firebase");
+const agentSecrets_1 = require("./agentSecrets");
 const api_1 = require("./api");
 const poller_1 = require("./poller");
 const chat_1 = require("./chat");
@@ -130,16 +131,16 @@ const server = http.createServer(async (req, res) => {
                     .limit(1)
                     .get();
                 let firestoreId;
+                const secretsRef = (id) => id.collection(agentSecrets_1.AGENT_PRIVATE_COLLECTION).doc(agentSecrets_1.AGENT_SECRETS_DOC_ID);
                 if (existing.empty) {
-                    // Create new doc
-                    const docRef = await firebase_1.db.collection('agents').add({
+                    const docRef = firebase_1.db.collection('agents').doc();
+                    const batch = firebase_1.db.batch();
+                    batch.set(docRef, {
                         user_id: userId,
                         name: agent.name,
                         agent_type: 'cabal_trading_boy',
                         tb_agent_id: agent.id,
                         tb_trader_id: agent.traderId,
-                        tb_api_key: apiKey,
-                        openai_api_key: openaiKey ?? null,
                         status: 'connected',
                         autonomy_level: agent.autonomyLevel,
                         watchlist: agent.watchlist,
@@ -151,16 +152,22 @@ const server = http.createServer(async (req, res) => {
                         last_synced: null,
                         created_at: firebase_1.FieldValue.serverTimestamp(),
                     });
+                    const secretFields = {
+                        tb_api_key: apiKey,
+                        updated_at: firebase_1.FieldValue.serverTimestamp(),
+                    };
+                    if (openaiKey)
+                        secretFields.openai_api_key = openaiKey;
+                    batch.set(secretsRef(docRef), secretFields);
+                    await batch.commit();
                     firestoreId = docRef.id;
                 }
                 else {
-                    // Update existing doc
                     const docRef = existing.docs[0].ref;
                     firestoreId = docRef.id;
-                    await docRef.update({
+                    const batch = firebase_1.db.batch();
+                    batch.update(docRef, {
                         name: agent.name,
-                        tb_api_key: apiKey,
-                        ...(openaiKey ? { openai_api_key: openaiKey } : {}),
                         status: 'connected',
                         autonomy_level: agent.autonomyLevel,
                         watchlist: agent.watchlist,
@@ -168,10 +175,18 @@ const server = http.createServer(async (req, res) => {
                         last_tick_at: agent.lastTickAt,
                         next_scan_at: agent.nextScanAt,
                     });
+                    const secretFields = {
+                        tb_api_key: apiKey,
+                        updated_at: firebase_1.FieldValue.serverTimestamp(),
+                    };
+                    if (openaiKey)
+                        secretFields.openai_api_key = openaiKey;
+                    batch.set(secretsRef(docRef), secretFields, { merge: true });
+                    await batch.commit();
                 }
-                // Activate poller + chat listener
-                // If re-connecting an already-running agent with a new key, update its listener
-                const currentOpenaiKey = openaiKey ?? (existing.empty ? undefined : existing.docs[0].data().openai_api_key);
+                const docRef = firebase_1.db.collection('agents').doc(firestoreId);
+                const secSnap = await secretsRef(docRef).get();
+                const currentOpenaiKey = openaiKey ?? secSnap.data()?.openai_api_key ?? undefined;
                 activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name, currentOpenaiKey);
                 connectedAgents.push({ id: firestoreId, name: agent.name, tbAgentId: agent.id });
             }
@@ -192,7 +207,7 @@ async function startup() {
     // Load all existing cabal_trading_boy agents
     const tbSnap = await firebase_1.db.collection('agents').where('agent_type', '==', 'cabal_trading_boy').get();
     for (const doc of tbSnap.docs) {
-        const data = doc.data();
+        const data = await (0, agentSecrets_1.getAgentDataWithSecrets)(doc);
         if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key) {
             activateAgent(doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined);
             count++;
@@ -201,10 +216,9 @@ async function startup() {
     // Load all existing market_advisor agents
     const advisorSnap = await firebase_1.db.collection('agents').where('agent_type', '==', 'market_advisor').get();
     for (const doc of advisorSnap.docs) {
-        const data = doc.data();
+        const data = await (0, agentSecrets_1.getAgentDataWithSecrets)(doc);
         if (data.user_id && !runningAgents.has(doc.id)) {
             runningAgents.add(doc.id);
-            // Use stored key as fallback; profile key will be resolved per-message
             (0, chat_1.startMarketAdvisorChatListener)(doc.id, data.user_id, data.name ?? 'Market Advisor', data.gemini_api_key ?? '');
             count++;
         }
@@ -230,29 +244,32 @@ async function startup() {
     firebase_1.db.collection('agents')
         .where('agent_type', '==', 'cabal_trading_boy')
         .onSnapshot((snap) => {
-        for (const change of snap.docChanges()) {
+        void Promise.all(snap.docChanges().map(async (change) => {
             if (change.type !== 'added')
-                continue;
-            const data = change.doc.data();
-            if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key && !runningAgents.has(change.doc.id)) {
+                return;
+            const data = await (0, agentSecrets_1.getAgentDataWithSecrets)(change.doc);
+            if (data.tb_agent_id &&
+                data.tb_trader_id &&
+                data.tb_api_key &&
+                !runningAgents.has(change.doc.id)) {
                 activateAgent(change.doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined);
             }
-        }
+        }));
     });
     // Watch for new market_advisor agents
     firebase_1.db.collection('agents')
         .where('agent_type', '==', 'market_advisor')
         .onSnapshot((snap) => {
-        for (const change of snap.docChanges()) {
+        void Promise.all(snap.docChanges().map(async (change) => {
             if (change.type !== 'added')
-                continue;
-            const data = change.doc.data();
+                return;
+            const data = await (0, agentSecrets_1.getAgentDataWithSecrets)(change.doc);
             if (data.user_id && !runningAgents.has(change.doc.id)) {
                 runningAgents.add(change.doc.id);
                 (0, chat_1.startMarketAdvisorChatListener)(change.doc.id, data.user_id, data.name ?? 'Market Advisor', data.gemini_api_key ?? '');
                 console.log(`[tb-bridge] activated market advisor ${change.doc.id}`);
             }
-        }
+        }));
     });
     // Watch for new range_farmer agents
     firebase_1.db.collection('agents')

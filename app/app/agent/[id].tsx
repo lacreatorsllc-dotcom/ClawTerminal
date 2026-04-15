@@ -18,6 +18,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
 import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, type PaperAgentState } from '../../lib/firebase'
+import { processMarketAdvisorInbound } from '../../lib/marketAdvisorClient'
 import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
@@ -1449,26 +1450,39 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
     if (!text || !user) return
     setInput('')
     setCmdPickerVisible(false)
-    await addMessage(agentId, {
-      agent_id: agentId,
-      user_id: user.uid,
-      direction: 'inbound',
-      content: text,
-    })
+    const name = agentDoc?.name ?? 'Market Advisor'
+    try {
+      const messageDocId = await addMessage(agentId, {
+        agent_id: agentId,
+        user_id: user.uid,
+        direction: 'inbound',
+        content: text,
+      })
+      void processMarketAdvisorInbound({
+        agentId,
+        userId: user.uid,
+        messageDocId,
+        userText: text,
+        agentName: name,
+      })
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Could not send message'
+      Alert.alert('Chat', msg)
+    }
   }
 
   const reversed = [...messages].reverse()
   const agentName = agentDoc?.name ?? 'Market Advisor'
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bgPrimary }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       {/* Header */}
       <View style={s001.header}>
         <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
           <Text style={s001.backText}>‹</Text>
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={{ color: Colors.text, fontWeight: '700', fontSize: 17 }}>{agentName}</Text>
+          <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 17 }}>{agentName}</Text>
           <Text style={{ color: Colors.accentGreen, fontSize: 12, marginTop: 1 }}>● active</Text>
         </View>
         <View style={{ width: 44 }} />
@@ -1523,12 +1537,24 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
                 setCmdPickerVisible(false)
                 setInput('')
                 if (!user) return
-                await addMessage(agentId, {
-                  agent_id: agentId,
-                  user_id: user.uid,
-                  direction: 'inbound',
-                  content: c.cmd,
-                })
+                try {
+                  const messageDocId = await addMessage(agentId, {
+                    agent_id: agentId,
+                    user_id: user.uid,
+                    direction: 'inbound',
+                    content: c.cmd,
+                  })
+                  void processMarketAdvisorInbound({
+                    agentId,
+                    userId: user.uid,
+                    messageDocId,
+                    userText: c.cmd,
+                    agentName,
+                  })
+                } catch (e: unknown) {
+                  const msg = e instanceof Error ? e.message : 'Could not send'
+                  Alert.alert('Chat', msg)
+                }
               }}
               activeOpacity={0.7}
             >

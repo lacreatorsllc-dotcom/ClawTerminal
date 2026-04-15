@@ -1,6 +1,8 @@
 import * as http from 'http'
+import type { DocumentReference } from 'firebase-admin/firestore'
 import OpenAI from 'openai'
 import { db, FieldValue } from './firebase'
+import { AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID, getAgentDataWithSecrets } from './agentSecrets'
 import { listAgents } from './api'
 import { startPoller } from './poller'
 import { startChatListener, startMarketAdvisorChatListener, startRangeFarmerChatListener } from './chat'
@@ -105,16 +107,18 @@ const server = http.createServer(async (req, res) => {
 
         let firestoreId: string
 
+        const secretsRef = (id: DocumentReference) =>
+          id.collection(AGENT_PRIVATE_COLLECTION).doc(AGENT_SECRETS_DOC_ID)
+
         if (existing.empty) {
-          // Create new doc
-          const docRef = await db.collection('agents').add({
+          const docRef = db.collection('agents').doc()
+          const batch = db.batch()
+          batch.set(docRef, {
             user_id: userId,
             name: agent.name,
             agent_type: 'cabal_trading_boy',
             tb_agent_id: agent.id,
             tb_trader_id: agent.traderId,
-            tb_api_key: apiKey,
-            openai_api_key: openaiKey ?? null,
             status: 'connected',
             autonomy_level: agent.autonomyLevel,
             watchlist: agent.watchlist,
@@ -126,15 +130,20 @@ const server = http.createServer(async (req, res) => {
             last_synced: null,
             created_at: FieldValue.serverTimestamp(),
           })
+          const secretFields: Record<string, unknown> = {
+            tb_api_key: apiKey,
+            updated_at: FieldValue.serverTimestamp(),
+          }
+          if (openaiKey) secretFields.openai_api_key = openaiKey
+          batch.set(secretsRef(docRef), secretFields)
+          await batch.commit()
           firestoreId = docRef.id
         } else {
-          // Update existing doc
           const docRef = existing.docs[0].ref
           firestoreId = docRef.id
-          await docRef.update({
+          const batch = db.batch()
+          batch.update(docRef, {
             name: agent.name,
-            tb_api_key: apiKey,
-            ...(openaiKey ? { openai_api_key: openaiKey } : {}),
             status: 'connected',
             autonomy_level: agent.autonomyLevel,
             watchlist: agent.watchlist,
@@ -142,11 +151,20 @@ const server = http.createServer(async (req, res) => {
             last_tick_at: agent.lastTickAt,
             next_scan_at: agent.nextScanAt,
           })
+          const secretFields: Record<string, unknown> = {
+            tb_api_key: apiKey,
+            updated_at: FieldValue.serverTimestamp(),
+          }
+          if (openaiKey) secretFields.openai_api_key = openaiKey
+          batch.set(secretsRef(docRef), secretFields, { merge: true })
+          await batch.commit()
         }
 
-        // Activate poller + chat listener
-        // If re-connecting an already-running agent with a new key, update its listener
-        const currentOpenaiKey = openaiKey ?? (existing.empty ? undefined : existing.docs[0].data().openai_api_key)
+        const docRef = db.collection('agents').doc(firestoreId)
+        const secSnap = await secretsRef(docRef).get()
+        const currentOpenaiKey =
+          openaiKey ?? (secSnap.data()?.openai_api_key as string | undefined) ?? undefined
+
         activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name, currentOpenaiKey)
         connectedAgents.push({ id: firestoreId, name: agent.name, tbAgentId: agent.id })
       }
@@ -171,9 +189,16 @@ async function startup(): Promise<void> {
   // Load all existing cabal_trading_boy agents
   const tbSnap = await db.collection('agents').where('agent_type', '==', 'cabal_trading_boy').get()
   for (const doc of tbSnap.docs) {
-    const data = doc.data()
+    const data = await getAgentDataWithSecrets(doc)
     if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key) {
-      activateAgent(doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined)
+      activateAgent(
+        doc.id,
+        data.tb_api_key as string,
+        data.tb_agent_id as string,
+        data.tb_trader_id as string,
+        (data.name as string) ?? 'Agent',
+        (data.openai_api_key as string | undefined) ?? undefined,
+      )
       count++
     }
   }
@@ -181,11 +206,15 @@ async function startup(): Promise<void> {
   // Load all existing market_advisor agents
   const advisorSnap = await db.collection('agents').where('agent_type', '==', 'market_advisor').get()
   for (const doc of advisorSnap.docs) {
-    const data = doc.data()
+    const data = await getAgentDataWithSecrets(doc)
     if (data.user_id && !runningAgents.has(doc.id)) {
       runningAgents.add(doc.id)
-      // Use stored key as fallback; profile key will be resolved per-message
-      startMarketAdvisorChatListener(doc.id, data.user_id, data.name ?? 'Market Advisor', data.gemini_api_key ?? '')
+      startMarketAdvisorChatListener(
+        doc.id,
+        data.user_id as string,
+        (data.name as string) ?? 'Market Advisor',
+        (data.gemini_api_key as string) ?? '',
+      )
       count++
     }
   }
@@ -214,28 +243,49 @@ async function startup(): Promise<void> {
   db.collection('agents')
     .where('agent_type', '==', 'cabal_trading_boy')
     .onSnapshot((snap) => {
-      for (const change of snap.docChanges()) {
-        if (change.type !== 'added') continue
-        const data = change.doc.data()
-        if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key && !runningAgents.has(change.doc.id)) {
-          activateAgent(change.doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined)
-        }
-      }
+      void Promise.all(
+        snap.docChanges().map(async (change) => {
+          if (change.type !== 'added') return
+          const data = await getAgentDataWithSecrets(change.doc)
+          if (
+            data.tb_agent_id &&
+            data.tb_trader_id &&
+            data.tb_api_key &&
+            !runningAgents.has(change.doc.id)
+          ) {
+            activateAgent(
+              change.doc.id,
+              data.tb_api_key as string,
+              data.tb_agent_id as string,
+              data.tb_trader_id as string,
+              (data.name as string) ?? 'Agent',
+              (data.openai_api_key as string | undefined) ?? undefined,
+            )
+          }
+        }),
+      )
     })
 
   // Watch for new market_advisor agents
   db.collection('agents')
     .where('agent_type', '==', 'market_advisor')
     .onSnapshot((snap) => {
-      for (const change of snap.docChanges()) {
-        if (change.type !== 'added') continue
-        const data = change.doc.data()
-        if (data.user_id && !runningAgents.has(change.doc.id)) {
-          runningAgents.add(change.doc.id)
-          startMarketAdvisorChatListener(change.doc.id, data.user_id, data.name ?? 'Market Advisor', data.gemini_api_key ?? '')
-          console.log(`[tb-bridge] activated market advisor ${change.doc.id}`)
-        }
-      }
+      void Promise.all(
+        snap.docChanges().map(async (change) => {
+          if (change.type !== 'added') return
+          const data = await getAgentDataWithSecrets(change.doc)
+          if (data.user_id && !runningAgents.has(change.doc.id)) {
+            runningAgents.add(change.doc.id)
+            startMarketAdvisorChatListener(
+              change.doc.id,
+              data.user_id as string,
+              (data.name as string) ?? 'Market Advisor',
+              (data.gemini_api_key as string) ?? '',
+            )
+            console.log(`[tb-bridge] activated market advisor ${change.doc.id}`)
+          }
+        }),
+      )
     })
 
   // Watch for new range_farmer agents

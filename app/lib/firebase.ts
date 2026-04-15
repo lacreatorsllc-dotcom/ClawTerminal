@@ -56,6 +56,10 @@ export const auth = isFirstInit
 
 export const db = getFirestore(app)
 
+/** Owner-only secrets: `agents/{agentId}/private/secrets` (see Firestore rules). */
+export const AGENT_PRIVATE_COLLECTION = 'private'
+export const AGENT_SECRETS_DOC_ID = 'secrets'
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function tsToISO(ts: Timestamp | string | null | undefined): string | null {
@@ -142,10 +146,13 @@ export async function createCabalAgent(uid: string, cabalChatId: string): Promis
     agent_type: 'cabal_blue_chip',
     hosted: false,
     paper_mode: false,
-    cabal_chat_id: cabalChatId,
     deployment_status: 'active',
-    metadata: { agent_type: 'cabal_blue_chip', hosted: false, platform: 'cabal', cabal_chat_id: cabalChatId },
+    metadata: { agent_type: 'cabal_blue_chip', hosted: false, platform: 'cabal' },
     created_at: serverTimestamp(),
+  })
+  await setDoc(doc(db, 'agents', ref.id, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    cabal_chat_id: cabalChatId,
+    updated_at: serverTimestamp(),
   })
   return ref.id
 }
@@ -158,6 +165,7 @@ export function subscribeToRangeFarmerInstance(agentId: string, cb: (state: any)
 
 export async function deleteAgent(agentId: string) {
   const { deleteDoc } = await import('firebase/firestore')
+  await deleteDoc(doc(db, 'agents', agentId, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID))
   await deleteDoc(doc(db, 'agents', agentId))
 }
 
@@ -286,15 +294,21 @@ export async function unfollowUser(myUid: string, targetUid: string) {
 export function subscribeToMessages(agentId: string, cb: (msgs: any[]) => void) {
   const q = query(
     collection(db, 'agents', agentId, 'messages'),
-    orderBy('created_at', 'asc'),
+    orderBy('created_at', 'desc'),
     limit(200)
   )
-  return onSnapshot(q, (snap) => {
-    cb(snap.docs.map((d) => ({
-      id: d.id, ...d.data(),
-      created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
-    })))
-  }, _noop)
+  return onSnapshot(
+    q,
+    (snap) => {
+      const rows = snap.docs.map((d) => ({
+        id: d.id,
+        ...d.data(),
+        created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
+      }))
+      cb(rows.reverse())
+    },
+    (err) => console.warn('[subscribeToMessages]', agentId, err?.message ?? err),
+  )
 }
 
 export async function addMessage(agentId: string, data: {
@@ -303,11 +317,12 @@ export async function addMessage(agentId: string, data: {
   direction: 'inbound' | 'outbound'
   content: string
   metadata?: Record<string, unknown>
-}) {
-  await addDoc(collection(db, 'agents', agentId, 'messages'), {
+}): Promise<string> {
+  const ref = await addDoc(collection(db, 'agents', agentId, 'messages'), {
     ...data,
     created_at: serverTimestamp(),
   })
+  return ref.id
 }
 
 // Search users by username prefix
@@ -505,10 +520,13 @@ export async function createMarketAdvisorAgent(uid: string, name: string, gemini
     status: 'connected',
     last_seen: serverTimestamp(),
     agent_type: 'market_advisor',
-    gemini_api_key: geminiApiKey,
     live_state: null,
     metadata: { agent_type: 'market_advisor' },
     created_at: serverTimestamp(),
+  })
+  await setDoc(doc(db, 'agents', ref.id, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    gemini_api_key: geminiApiKey,
+    updated_at: serverTimestamp(),
   })
   return ref.id
 }
@@ -528,10 +546,13 @@ export async function createTradingBoyAgent(
     agent_type: 'cabal_trading_boy',
     tb_agent_id: tbAgentId,
     tb_trader_id: tbTraderId,
-    tb_api_key: tbApiKey,
     live_state: null,
     last_synced: null,
     created_at: serverTimestamp(),
+  })
+  await setDoc(doc(db, 'agents', ref.id, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    tb_api_key: tbApiKey,
+    updated_at: serverTimestamp(),
   })
   return ref.id
 }
