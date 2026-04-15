@@ -1209,6 +1209,155 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
   )
 }
 
+// ── MarketAdvisorScreen ───────────────────────────────────────────────────────
+
+const MA_SLASH_COMMANDS = [
+  { cmd: '/help',      desc: 'Show available commands' },
+  { cmd: '/status',    desc: 'Portfolio overview' },
+  { cmd: '/agents',    desc: 'List your agents' },
+  { cmd: '/positions', desc: 'All open positions' },
+  { cmd: '/pnl',       desc: 'Portfolio P&L summary' },
+]
+
+function MarketAdvisorScreen({ agentId }: { agentId: string }) {
+  const [messages, setMessages] = useState<any[]>([])
+  const [agentDoc, setAgentDoc] = useState<any>(null)
+  const [input, setInput] = useState('')
+  const [cmdPickerVisible, setCmdPickerVisible] = useState(false)
+  const { user } = useAuthStore()
+  const flatRef = useRef<any>(null)
+
+  useEffect(() => {
+    if (!user) return
+    return subscribeToMessages(agentId, setMessages)
+  }, [agentId, user?.uid])
+
+  useEffect(() => {
+    const unsub = fsOnSnapshot(doc(db, 'agents', agentId), (snap) => {
+      if (snap.exists()) setAgentDoc(snap.data())
+    }, () => {})
+    return unsub
+  }, [agentId])
+
+  async function sendChat() {
+    const text = input.trim()
+    if (!text || !user) return
+    setInput('')
+    setCmdPickerVisible(false)
+    await addMessage(agentId, {
+      agent_id: agentId,
+      user_id: user.uid,
+      direction: 'inbound',
+      content: text,
+    })
+  }
+
+  const reversed = [...messages].reverse()
+  const agentName = agentDoc?.name ?? 'Market Advisor'
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      {/* Header */}
+      <View style={s001.header}>
+        <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
+          <Text style={s001.backText}>‹</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={{ color: Colors.text, fontWeight: '700', fontSize: 17 }}>{agentName}</Text>
+          <Text style={{ color: Colors.accentGreen, fontSize: 12, marginTop: 1 }}>● active</Text>
+        </View>
+        <View style={{ width: 44 }} />
+      </View>
+
+      {/* Messages */}
+      <FlatList
+        ref={flatRef}
+        data={reversed}
+        keyExtractor={(item) => item.id ?? String(item.created_at)}
+        inverted
+        contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+        ListHeaderComponent={agentDoc?.is_typing ? <TypingBubble /> : null}
+        ListEmptyComponent={
+          <View style={{ alignItems: 'center', paddingTop: 60, gap: 8 }}>
+            <Text style={{ color: Colors.textMuted, fontSize: 15 }}>Ask me anything about your portfolio.</Text>
+          </View>
+        }
+        renderItem={({ item }) => {
+          const isUser = item.direction === 'inbound'
+          return (
+            <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+              <View style={{
+                backgroundColor: isUser ? Colors.accentAmber : '#1a1a1a',
+                borderRadius: 14,
+                paddingHorizontal: 14,
+                paddingVertical: 10,
+                maxWidth: '88%',
+              }}>
+                <MessageText
+                  content={item.content ?? ''}
+                  outbound={isUser}
+                  textStyle={{ color: isUser ? '#281e1a' : Colors.textPrimary, fontSize: 15, lineHeight: 21 }}
+                />
+              </View>
+              <Text style={{ color: Colors.textMuted, fontSize: 11, marginTop: 3, marginHorizontal: 4 }}>
+                {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+              </Text>
+            </View>
+          )
+        }}
+      />
+
+      {/* Slash command picker */}
+      {cmdPickerVisible && (
+        <ScrollView style={styles.cmdPicker} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {MA_SLASH_COMMANDS.filter(c => c.cmd.startsWith(input)).map((c) => (
+            <TouchableOpacity
+              key={c.cmd}
+              style={styles.cmdPickerRow}
+              onPress={async () => {
+                setCmdPickerVisible(false)
+                setInput('')
+                if (!user) return
+                await addMessage(agentId, {
+                  agent_id: agentId,
+                  user_id: user.uid,
+                  direction: 'inbound',
+                  content: c.cmd,
+                })
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cmdPickerCmd}>{c.cmd}</Text>
+              <Text style={styles.cmdPickerDesc}>{c.desc}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {/* Input */}
+      <View style={s001.inputRow}>
+        <TextInput
+          style={s001.input}
+          value={input}
+          onChangeText={(v) => {
+            setInput(v)
+            const matches = MA_SLASH_COMMANDS.filter(c => c.cmd.startsWith(v))
+            setCmdPickerVisible(v.startsWith('/') && !v.includes(' ') && !(matches.length === 1 && matches[0].cmd === v))
+          }}
+          placeholder={`Message ${agentName}...`}
+          placeholderTextColor={Colors.textMuted}
+          onSubmitEditing={sendChat}
+          returnKeyType="send"
+          multiline
+        />
+        <TouchableOpacity onPress={sendChat} style={[s001.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]} disabled={!input.trim()}>
+          <Ionicons name="arrow-up" size={18} color="#fff" />
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  )
+}
+
 function Slug001Screen() {
   const [state, setState] = useState<PaperAgentState | null>(null)
   const [trades, setTrades] = useState<any[]>([])
@@ -1849,6 +1998,7 @@ export default function AgentDetailScreen() {
   if (agentSnap?.agent_type === 'cabal_trading_boy' && id) return <TradingBoyScreen agentId={id} />
   // Legacy connector-based Blue Chip
   if (agentSnap?.agent_type === 'cabal_blue_chip' && id) return <BlueChipScreen agentId={id} />
+  if (agentSnap?.agent_type === 'market_advisor' && id) return <MarketAdvisorScreen agentId={id} />
 
   const [tab, setTab] = useState<Tab>('chat')
   const [showShareCard, setShowShareCard] = useState(false)
