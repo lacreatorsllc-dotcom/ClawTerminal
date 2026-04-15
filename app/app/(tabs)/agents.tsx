@@ -243,8 +243,9 @@ export default function SlugsScreen() {
 
   // Subscribe to Slug #001 live state
   useEffect(() => {
+    if (!user) return
     return subscribeToSlug001((state) => setSlug001(state))
-  }, [])
+  }, [user?.uid])
 
   // Subscribe to user's own agents
   useEffect(() => {

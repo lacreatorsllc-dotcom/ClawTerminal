@@ -1220,9 +1220,9 @@ function Slug001Screen() {
   const flatRef = useRef<any>(null)
   const [atBottom, setAtBottom] = useState(true)
 
-  useEffect(() => { return subscribeToSlug001(setState) }, [])
-  useEffect(() => { return subscribeToSlug001Trades(setTrades) }, [])
-  useEffect(() => { return subscribeToMessages('slug-001', setMessages) }, [])
+  useEffect(() => { if (!user) return; return subscribeToSlug001(setState) }, [user?.uid])
+  useEffect(() => { if (!user) return; return subscribeToSlug001Trades(setTrades) }, [user?.uid])
+  useEffect(() => { if (!user) return; return subscribeToMessages('slug-001', setMessages) }, [user?.uid])
   // Inverted list: offset 0 = newest messages (visual bottom). atBottom = user sees newest.
   function handleScroll(e: any) {
     setAtBottom(e.nativeEvent.contentOffset.y < 40)
