@@ -620,8 +620,10 @@ export function startChatListener(
             processedIds.add(change.doc.id)
             continue
           }
-          // Unexpected transaction error — still attempt to process to avoid silent drops
-          claimed = true
+          // Transaction failed — do NOT fall through, skip to avoid duplicate error messages
+          console.error(`[chat:${firestoreAgentId}] claim transaction failed, skipping: ${claimErr?.message ?? claimErr}`)
+          processedIds.add(change.doc.id)
+          continue
         }
         if (!claimed) continue
         processedIds.add(change.doc.id)
@@ -768,6 +770,7 @@ Rules:
           ]
 
           console.log(`[chat:${firestoreAgentId}] calling AI (type=${ai.type} model=${ai.model})`)
+          await db.collection('agents').doc(firestoreAgentId).update({ is_typing: true }).catch(() => {})
           let rawReply: string
           try {
             rawReply = await callAI(ai, messages, 500)
@@ -826,9 +829,11 @@ Rules:
           } else {
             await writeReply(firestoreAgentId, rawReply)
           }
+          await db.collection('agents').doc(firestoreAgentId).update({ is_typing: false }).catch(() => {})
         } catch (err: any) {
           const msg = err?.message ?? String(err)
           console.error(`[chat:${firestoreAgentId}] error processing message: ${msg}`)
+          await db.collection('agents').doc(firestoreAgentId).update({ is_typing: false }).catch(() => {})
           await writeReply(firestoreAgentId, 'Error processing your message. Please try again.').catch(() => {})
         }
       }
@@ -895,6 +900,10 @@ export function startRangeFarmerChatListener(
           })
         } catch (e: any) {
           if (e?.skip) { processedIds.add(change.doc.id); continue }
+          // Transaction error — skip rather than risk duplicate reply
+          console.error(`[ranger:${firestoreAgentId}] claim failed, skipping: ${e?.message ?? e}`)
+          processedIds.add(change.doc.id)
+          continue
         }
         processedIds.add(change.doc.id)
         console.log(`[ranger:${firestoreAgentId}] received: ${text}`)
@@ -955,6 +964,7 @@ export function startRangeFarmerChatListener(
           ]
 
           console.log(`[ranger:${firestoreAgentId}] calling AI (type=${ai.type} model=${ai.model})`)
+          await db.collection('agents').doc(firestoreAgentId).update({ is_typing: true }).catch(() => {})
           let reply: string
           try {
             reply = await callAI(ai, messages, 400)
@@ -969,9 +979,11 @@ export function startRangeFarmerChatListener(
           }
 
           await writeReply(firestoreAgentId, reply)
+          await db.collection('agents').doc(firestoreAgentId).update({ is_typing: false }).catch(() => {})
         } catch (err: any) {
           const msg = err?.message ?? String(err)
           console.error(`[ranger:${firestoreAgentId}] error: ${msg}`)
+          await db.collection('agents').doc(firestoreAgentId).update({ is_typing: false }).catch(() => {})
           await writeReply(firestoreAgentId, 'Something went wrong. Try again.').catch(() => {})
         }
       }
@@ -1033,6 +1045,9 @@ export function startMarketAdvisorChatListener(
           })
         } catch (e: any) {
           if (e?.skip) { processedIds.add(change.doc.id); continue }
+          console.error(`[advisor:${firestoreAgentId}] claim failed, skipping: ${e?.message ?? e}`)
+          processedIds.add(change.doc.id)
+          continue
         }
         processedIds.add(change.doc.id)
 

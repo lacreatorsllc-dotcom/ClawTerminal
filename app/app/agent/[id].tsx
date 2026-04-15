@@ -791,6 +791,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
               onScroll={(e) => setShowScrollBtn(e.nativeEvent.contentOffset.y > 80)}
               scrollEventThrottle={100}
+              ListHeaderComponent={agentDoc?.is_typing ? <TypingBubble /> : null}
               renderItem={({ item }) => {
                 const isUser = item.direction === 'inbound'
                 const isAlert = item.alert === true
@@ -1219,6 +1220,7 @@ function Slug001Screen() {
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
   const [atBottom, setAtBottom] = useState(true)
+  const isTyping = (state as any)?.is_typing === true
 
   useEffect(() => { if (!user) return; return subscribeToSlug001(setState) }, [user?.uid])
   useEffect(() => { if (!user) return; return subscribeToSlug001Trades(setTrades) }, [user?.uid])
@@ -1362,6 +1364,7 @@ function Slug001Screen() {
             contentContainerStyle={{ padding: 16, gap: 8, paddingBottom: 16 }}
             onScroll={handleScroll}
             scrollEventThrottle={100}
+            ListHeaderComponent={isTyping ? <TypingBubble /> : null}
             ListEmptyComponent={
               <View style={s001.emptyTab}>
                 <Text style={s001.emptyTabText}>No messages yet. Say something.</Text>
