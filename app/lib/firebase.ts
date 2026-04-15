@@ -151,6 +151,11 @@ export function subscribeToRangeFarmerInstance(agentId: string, cb: (state: any)
   })
 }
 
+export async function deleteAgent(agentId: string) {
+  const { deleteDoc } = await import('firebase/firestore')
+  await deleteDoc(doc(db, 'agents', agentId))
+}
+
 export async function updateAgentStatus(agentId: string, status: string, metadata?: Record<string, unknown>) {
   const data: Record<string, unknown> = { status, last_seen: serverTimestamp() }
   if (metadata) data.metadata = metadata

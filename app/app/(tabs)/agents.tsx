@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, Platform,
-  Animated, Image as RNImage, Modal, ActivityIndicator, ScrollView, TextInput,
+  Animated, Image as RNImage, Modal, ActivityIndicator, ScrollView, TextInput, Alert,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import { router } from 'expo-router'
 import {
-  subscribeToSlug001, subscribeToUserAgents, createAgent,
+  subscribeToSlug001, subscribeToUserAgents, createAgent, deleteAgent,
   type PaperAgentState,
 } from '../../lib/firebase'
 import { useAgentsStore } from '../../stores/agentsStore'
@@ -156,10 +156,28 @@ function AgentCard({ agent, username }: { agent: Agent; username: string | null 
   const hasUnrealized = unrealized !== null && unrealized !== undefined
   const isPos = hasUnrealized && unrealized >= 0
 
+  function handleLongPress() {
+    Alert.alert(
+      'Remove Agent',
+      `Remove "${agent.name}"? This won't affect any live trading — it just removes it from your list.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove', style: 'destructive',
+          onPress: () => deleteAgent(agent.id).catch(() =>
+            Alert.alert('Error', 'Could not remove agent. Try again.')
+          ),
+        },
+      ]
+    )
+  }
+
   return (
     <TouchableOpacity
       style={styles.card}
       onPress={() => router.push(`/agent/${agent.id}` as any)}
+      onLongPress={handleLongPress}
+      delayLongPress={500}
       activeOpacity={0.8}
     >
       <View style={styles.cardTop}>
@@ -197,6 +215,13 @@ function AgentCard({ agent, username }: { agent: Agent; username: string | null 
             <Text style={styles.tagText}>{meta.platform as string}</Text>
           </View>
         )}
+        <TouchableOpacity
+          onPress={handleLongPress}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.removeBtn}
+        >
+          <Ionicons name="trash-outline" size={14} color={Colors.textMuted} />
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   )
@@ -456,6 +481,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 9, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2 },
   statValue: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   tag: { backgroundColor: '#1a1a1a', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
+  removeBtn: { padding: 4, marginLeft: 6 },
   tagText: { fontSize: 9, color: Colors.textMuted, fontWeight: '600', letterSpacing: 0.5 },
 
   hostedBadge: {
