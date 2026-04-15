@@ -672,7 +672,7 @@ function formatTime001(ts: string): string {
 
 // ── TradingBoyScreen ──────────────────────────────────────────────────────────
 
-type TbTab = 'chat' | 'status' | 'activity'
+type TbTab = 'chat' | 'trades' | 'positions' | 'status' | 'activity'
 
 const TB_SLASH_COMMANDS = [
   { cmd: '/help',               desc: 'Show available commands' },
@@ -698,6 +698,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [shareMsg, setShareMsg] = useState('')
+  const [showShare, setShowShare] = useState(false)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
 
@@ -778,33 +779,106 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
       keyboardVerticalOffset={0}
     >
       {/* Header */}
-      <View style={tb.header}>
-        <TouchableOpacity onPress={() => router.back()} style={tb.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
+      <View style={s001.header}>
+        <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
+          <Text style={s001.backText}>‹</Text>
         </TouchableOpacity>
-        <View style={{ flex: 1, alignItems: 'center' }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={tb.headerTitle}>{agentName}</Text>
-            <View style={[tb.statusDot, { backgroundColor: isConnected ? Colors.accentGreen : Colors.accentRed }]} />
-          </View>
-          <Text style={{ color: Colors.textMuted, fontSize: 12, marginTop: 1 }}>by Cabal Ventures</Text>
-        </View>
-        <TouchableOpacity
-          style={tb.controlBtn}
-          onPress={() => sendControl(isPaused ? '/resume' : '/pause')}
-        >
-          <Ionicons name={isPaused ? 'play' : 'pause'} size={16} color={Colors.textSecondary} />
+        <TouchableOpacity onPress={() => setShowShare(true)} style={s001.shareBtn}>
+          <Text style={s001.shareBtnText}>Share PnL</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Tabs */}
-      <View style={tb.tabBar}>
-        {(['chat', 'status', 'activity'] as TbTab[]).map((t) => (
-          <TouchableOpacity key={t} style={tb.tabBtn} onPress={() => setActiveTab(t)}>
-            <Text style={[tb.tabText, activeTab === t && tb.tabTextActive]}>
+      <ShareCardModal
+        visible={showShare}
+        onClose={() => setShowShare(false)}
+        agentName={agentName}
+        initialTrade={{
+          pair: agentDoc?.watchlist?.[0] ?? 'CRYPTO',
+          direction: 'LONG',
+          leverage: '',
+          pnl: Math.abs(agentDoc?.live_state?.dailyPnlUsd ?? 0).toFixed(2),
+          pnlPct: '',
+          isWin: (agentDoc?.live_state?.dailyPnlUsd ?? 0) >= 0,
+        }}
+      />
+
+      {/* Identity */}
+      <View style={[s001.identityRow, { paddingHorizontal: 20 }]}>
+        <View style={[s001.avatar, { borderColor: Colors.accentPurple }]}>
+          <Text style={s001.avatarText}>◎</Text>
+        </View>
+        <View style={{ flex: 1, gap: 3 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Text style={s001.name}>{agentName}</Text>
+            <View style={[s001.paperBadge, { borderColor: Colors.accentPurple }]}>
+              <Text style={[s001.paperBadgeText, { color: Colors.accentPurple }]}>CABAL</Text>
+            </View>
+          </View>
+          <Text style={s001.handle}>@cabal/trading-boy</Text>
+          <View style={s001.statusRow}>
+            <View style={[s001.statusDot, { backgroundColor: isConnected ? Colors.accentGreen : Colors.accentRed }]} />
+            <Text style={[s001.statusLabel, { color: isConnected ? Colors.accentGreen : Colors.accentRed }]}>
+              {isPaused ? 'Paused' : isConnected ? 'Active' : 'Disconnected'}
+            </Text>
+            <Text style={s001.bullet}>·</Text>
+            <Text style={s001.strategy}>Autonomous</Text>
+            <TouchableOpacity
+              onPress={() => sendControl(isPaused ? '/resume' : '/pause')}
+              style={{ marginLeft: 'auto', padding: 4 }}
+            >
+              <Ionicons name={isPaused ? 'play-circle-outline' : 'pause-circle-outline'} size={20} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
+      {/* Stats strip */}
+      {(() => {
+        const daily = agentDoc?.live_state?.dailyPnlUsd ?? 0
+        const isPos = daily >= 0
+        const unrealized = agentDoc?.live_state?.unrealizedPnlUsd ?? 0
+        const openPos = agentDoc?.live_state?.openPositions?.length ?? 0
+        const dailyTrades = agentDoc?.live_state?.dailyTradeCount ?? 0
+        return (
+          <View style={[s001.pnlStrip, { marginHorizontal: 20, marginTop: 12 }]}>
+            <View style={s001.pnlMain}>
+              <Text style={[s001.pnlValue, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
+                {isPos ? '+$' : '-$'}{Math.abs(daily).toFixed(2)}
+              </Text>
+              <Text style={s001.pnlLabel}>daily pnl</Text>
+            </View>
+            <View style={s001.stripDivider} />
+            <View style={s001.stripStat}>
+              <Text style={[s001.stripValue, { color: unrealized >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+                {unrealized >= 0 ? '+$' : '-$'}{Math.abs(unrealized).toFixed(2)}
+              </Text>
+              <Text style={s001.stripLabel}>unrealized</Text>
+            </View>
+            <View style={s001.stripDivider} />
+            <View style={s001.stripStat}>
+              <Text style={s001.stripValue}>{openPos}</Text>
+              <Text style={s001.stripLabel}>positions</Text>
+            </View>
+            <View style={s001.stripDivider} />
+            <View style={s001.stripStat}>
+              <Text style={s001.stripValue}>{dailyTrades}</Text>
+              <Text style={s001.stripLabel}>trades</Text>
+            </View>
+          </View>
+        )
+      })()}
+
+      {/* Tab pills */}
+      <View style={[s001.tabRow, { paddingHorizontal: 20, marginTop: 16, marginBottom: 4 }]}>
+        {(['chat', 'trades', 'positions', 'status', 'activity'] as TbTab[]).map((t) => (
+          <TouchableOpacity
+            key={t}
+            style={[s001.tabPill, activeTab === t && s001.tabPillActive]}
+            onPress={() => setActiveTab(t)}
+          >
+            <Text style={[s001.tabPillText, activeTab === t && s001.tabPillTextActive]}>
               {t.charAt(0).toUpperCase() + t.slice(1)}
             </Text>
-            {activeTab === t && <View style={tb.tabIndicator} />}
           </TouchableOpacity>
         ))}
       </View>
@@ -1050,6 +1124,87 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
                     {body}
                   </Text>
                 )}
+              </View>
+            )
+          }}
+        />
+      )}
+
+      {/* Trades tab */}
+      {activeTab === 'trades' && (
+        <FlatList
+          data={agentDoc?.live_state?.recentTrades ?? agentDoc?.live_state?.openPositions ?? []}
+          keyExtractor={(item, i) => item.id ?? String(i)}
+          contentContainerStyle={{ padding: 16, gap: 8 }}
+          ListEmptyComponent={
+            <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 32 }}>No trades yet</Text>
+          }
+          renderItem={({ item }) => {
+            const isBuy = (item.direction ?? item.side ?? '').toString().toUpperCase().includes('BUY') || (item.side ?? '').toString().toUpperCase() === 'BUY'
+            const pnl = item.pnl ?? item.realizedPnl ?? null
+            return (
+              <View style={tb.decisionRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 14 }}>
+                    {item.tokenSymbol ?? item.symbol ?? item.token ?? '?'}
+                  </Text>
+                  <View style={[tb.actionBadge, { backgroundColor: (isBuy ? Colors.accentGreen : Colors.accentRed) + '22', borderColor: isBuy ? Colors.accentGreen : Colors.accentRed }]}>
+                    <Text style={{ color: isBuy ? Colors.accentGreen : Colors.accentRed, fontSize: 10, fontWeight: '700' }}>
+                      {item.direction ?? item.side ?? '?'}
+                    </Text>
+                  </View>
+                  {pnl != null && (
+                    <Text style={{ color: pnl >= 0 ? Colors.accentGreen : Colors.accentRed, fontSize: 13, marginLeft: 'auto' }}>
+                      {pnl >= 0 ? '+' : ''}${Number(pnl).toFixed(2)}
+                    </Text>
+                  )}
+                </View>
+                {item.entryPrice != null && (
+                  <Text style={{ color: Colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                    Entry: ${item.entryPrice} · Size: ${item.sizeUsd ?? item.size ?? '?'}
+                  </Text>
+                )}
+              </View>
+            )
+          }}
+        />
+      )}
+
+      {/* Positions tab */}
+      {activeTab === 'positions' && (
+        <FlatList
+          data={agentDoc?.live_state?.openPositions ?? []}
+          keyExtractor={(item, i) => item.id ?? String(i)}
+          contentContainerStyle={{ padding: 16, gap: 8 }}
+          ListEmptyComponent={
+            <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 32 }}>No open positions</Text>
+          }
+          renderItem={({ item }) => {
+            const isBuy = (item.direction ?? '').toUpperCase().includes('BUY') || (item.side ?? '').toUpperCase() === 'BUY'
+            const upnl = item.unrealizedPnl ?? item.unrealizedPnlUsd ?? null
+            return (
+              <View style={tb.decisionRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 15 }}>
+                    {item.tokenSymbol ?? item.symbol ?? item.token ?? '?'}
+                  </Text>
+                  <View style={[tb.actionBadge, { backgroundColor: (isBuy ? Colors.accentGreen : Colors.accentRed) + '22', borderColor: isBuy ? Colors.accentGreen : Colors.accentRed }]}>
+                    <Text style={{ color: isBuy ? Colors.accentGreen : Colors.accentRed, fontSize: 10, fontWeight: '700' }}>
+                      {item.direction ?? item.side ?? 'LONG'}
+                    </Text>
+                  </View>
+                  {upnl != null && (
+                    <Text style={{ color: upnl >= 0 ? Colors.accentGreen : Colors.accentRed, fontSize: 14, fontWeight: '600', marginLeft: 'auto' }}>
+                      {upnl >= 0 ? '+' : ''}${Number(upnl).toFixed(2)}
+                    </Text>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
+                  {item.entryPrice != null && <Text style={{ color: Colors.textSecondary, fontSize: 12 }}>Entry: ${item.entryPrice}</Text>}
+                  {item.sizeUsd != null && <Text style={{ color: Colors.textSecondary, fontSize: 12 }}>Size: ${item.sizeUsd}</Text>}
+                  {item.stopLoss != null && <Text style={{ color: Colors.accentRed, fontSize: 12 }}>SL: ${item.stopLoss}</Text>}
+                  {item.takeProfit != null && <Text style={{ color: Colors.accentGreen, fontSize: 12 }}>TP: ${item.takeProfit}</Text>}
+                </View>
               </View>
             )
           }}
