@@ -122,11 +122,18 @@ export async function connect({ userId: rawToken, agentName }: ConnectOptions): 
   });
 
   // 4. Heartbeat every 30s
+  let heartbeatRunning = false;
   const heartbeat = setInterval(async () => {
-    await supabase
-      .from('agents')
-      .update({ status: 'connected', last_seen: new Date().toISOString() })
-      .eq('id', agentId);
+    if (heartbeatRunning) return;
+    heartbeatRunning = true;
+    try {
+      await supabase
+        .from('agents')
+        .update({ status: 'connected', last_seen: new Date().toISOString() })
+        .eq('id', agentId);
+    } finally {
+      heartbeatRunning = false;
+    }
   }, HEARTBEAT_INTERVAL_MS);
 
   // 5. Graceful shutdown

@@ -822,11 +822,18 @@ export async function runAgent({ userId, agentName, systemPrompt, apiKey, storag
       }
     });
 
+  let heartbeatRunning = false;
   const heartbeat = setInterval(async () => {
-    await supabase
-      .from('agents')
-      .update({ status: 'connected', last_seen: new Date().toISOString() })
-      .eq('id', agentId);
+    if (heartbeatRunning) return;
+    heartbeatRunning = true;
+    try {
+      await supabase
+        .from('agents')
+        .update({ status: 'connected', last_seen: new Date().toISOString() })
+        .eq('id', agentId);
+    } finally {
+      heartbeatRunning = false;
+    }
   }, HEARTBEAT_INTERVAL_MS);
 
   const handleExit = async () => {

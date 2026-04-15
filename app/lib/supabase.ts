@@ -5,23 +5,22 @@
 //   EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon-key>
 
 import { createClient } from '@supabase/supabase-js'
-import * as SecureStore from 'expo-secure-store'
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
 
-const ExpoSecureStoreAdapter = {
-  getItem: (key: string) => SecureStore.getItemAsync(key),
-  setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-  removeItem: (key: string) => SecureStore.deleteItemAsync(key),
+// App uses Firebase auth — no Supabase session to persist.
+// Use an in-memory stub so GoTrueClient never touches SecureStore,
+// which crashes on iOS Simulator with "Required entitlement isn't present".
+const noopStorage = {
+  getItem: (_key: string): string | null => null,
+  setItem: (_key: string, _value: string): void => {},
+  removeItem: (_key: string): void => {},
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    storage: ExpoSecureStoreAdapter,
-    // App uses Firebase auth — no active Supabase session.
-    // Disable autoRefreshToken to stop GoTrueClient's background tick,
-    // which calls SecureStore and crashes on iOS Simulator (missing entitlement).
+    storage: noopStorage as any,
     persistSession: false,
     autoRefreshToken: false,
     detectSessionInUrl: false,

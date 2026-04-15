@@ -70,6 +70,10 @@ async function executeTool(name: string, args: Record<string, unknown>): Promise
 }
 
 async function writeReply(content: string) {
+  if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    console.log('[chat] Skipping Firestore reply (no credentials):', content.slice(0, 60))
+    return
+  }
   await MESSAGES_COL.add({
     agent_id: 'slug-001',
     user_id: 'slug-001',
