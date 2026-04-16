@@ -4,9 +4,10 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
   Image, Linking, Alert, Modal, ScrollView, Dimensions, Clipboard, Animated,
 } from 'react-native'
+import { ShareCardModal, type TradeData } from '../../components/share-card'
+// Native-only modules — not available on web
 import * as FileSystem from 'expo-file-system'
 import * as MediaLibrary from 'expo-media-library'
-import { ShareCardModal, type TradeData } from '../../components/share-card'
 import * as ImagePicker from 'expo-image-picker'
 import { useLocalSearchParams, router } from 'expo-router'
 import { supabase, subscribeToAgent, sendMessage } from '../../lib/supabase'

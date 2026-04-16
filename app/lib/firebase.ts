@@ -2,10 +2,12 @@
 // Auth + Firestore replacing Supabase
 
 import { initializeApp, getApps } from 'firebase/app'
+import { Platform } from 'react-native'
 import {
   initializeAuth,
   getAuth,
   getReactNativePersistence,
+  browserLocalPersistence,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -50,8 +52,13 @@ const isFirstInit = getApps().length === 0
 const app = isFirstInit ? initializeApp(firebaseConfig) : getApps()[0]
 
 // initializeAuth must only be called once per app instance; use getAuth on re-renders/hot reload
+// On web use browserLocalPersistence; on native use AsyncStorage
 export const auth = isFirstInit
-  ? initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) })
+  ? initializeAuth(app, {
+      persistence: Platform.OS === 'web'
+        ? browserLocalPersistence
+        : getReactNativePersistence(AsyncStorage),
+    })
   : getAuth(app)
 
 export const db = getFirestore(app)
