@@ -8,6 +8,8 @@ import { Ionicons } from '@expo/vector-icons'
 import {
   subscribeToFollowing,
   subscribeToPublicFeed,
+  subscribeToTrackedAgents,
+  subscribeToTrackedAgentFeed,
   subscribeToUserAgentsPnl,
   publishAgentPnl,
   getPnlSharingPref,
@@ -182,9 +184,9 @@ function EmptyFollowing() {
     <View style={styles.emptyState}>
       <Text style={styles.emptyIcon}>◎</Text>
       <Text style={styles.emptyTitle}>No one here yet</Text>
-      <Text style={styles.emptySubtitle}>Follow traders to see their agents' PnLs in your feed.</Text>
+      <Text style={styles.emptySubtitle}>Follow traders or track specific slugs to see performance updates in your feed.</Text>
       <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/search' as any)}>
-        <Text style={styles.emptyBtnText}>Find Traders</Text>
+        <Text style={styles.emptyBtnText}>Find People & Slugs</Text>
       </TouchableOpacity>
     </View>
   )
@@ -195,7 +197,7 @@ function EmptyPosts() {
     <View style={styles.emptyState}>
       <Text style={styles.emptyIcon}>◎</Text>
       <Text style={styles.emptyTitle}>Feed is quiet</Text>
-      <Text style={styles.emptySubtitle}>The people you follow haven't shared any PnL yet.</Text>
+      <Text style={styles.emptySubtitle}>The people and slugs you follow have not shared any public updates yet.</Text>
     </View>
   )
 }
@@ -332,7 +334,10 @@ export default function FeedScreen() {
   const isDesktopWeb = useDesktopWebLayout()
   const { user } = useAuthStore()
   const [followingUids, setFollowingUids] = useState<string[]>([])
+  const [trackedAgentIds, setTrackedAgentIds] = useState<string[]>([])
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
+  const [followingFeed, setFollowingFeed] = useState<FeedItem[]>([])
+  const [trackedFeed, setTrackedFeed] = useState<FeedItem[]>([])
   const [userAgents, setUserAgents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [sharingPref, setSharingPref] = useState<SharingPref>(undefined as any)
@@ -360,20 +365,48 @@ export default function FeedScreen() {
     })
   }, [user?.uid])
 
+  useEffect(() => {
+    if (!user) return
+    return subscribeToTrackedAgents(user.uid, (ids) => {
+      setTrackedAgentIds(ids)
+    })
+  }, [user?.uid])
+
   // Subscribe to followed users' public feed
   useEffect(() => {
     if (!user) return
     if (followingUids.length === 0) {
-      setFeedItems([])
-      setLoading(false)
+      setFollowingFeed([])
       return
     }
     const unsub = subscribeToPublicFeed(followingUids, (events) => {
-      setFeedItems(events.map(toFeedItem))
-      setLoading(false)
+      setFollowingFeed(events.map(toFeedItem))
     })
     return unsub
   }, [user?.uid, followingUids.join(',')])
+
+  useEffect(() => {
+    if (!user) return
+    if (trackedAgentIds.length === 0) {
+      setTrackedFeed([])
+      return
+    }
+    const unsub = subscribeToTrackedAgentFeed(trackedAgentIds, (events) => {
+      setTrackedFeed(events.map(toFeedItem))
+    })
+    return unsub
+  }, [user?.uid, trackedAgentIds.join(',')])
+
+  useEffect(() => {
+    const merged = [...followingFeed, ...trackedFeed]
+      .reduce((rows, item) => {
+        if (!rows.some((row) => row.id === item.id)) rows.push(item)
+        return rows
+      }, [] as FeedItem[])
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    setFeedItems(merged)
+    setLoading(false)
+  }, [followingFeed, trackedFeed])
 
   // Subscribe to user's own agents with live PnL (for posting + prompt trigger)
   useEffect(() => {
@@ -424,7 +457,7 @@ export default function FeedScreen() {
         <View style={[styles.header, isDesktopWeb && styles.headerDesktop]}>
           <View>
             <Text style={styles.title}>Feed</Text>
-            {isDesktopWeb ? <Text style={styles.desktopSubtitle}>Performance from the traders and slugs you follow.</Text> : null}
+            {isDesktopWeb ? <Text style={styles.desktopSubtitle}>Performance from the traders you follow and the specific slugs you track.</Text> : null}
           </View>
           <View style={styles.headerRight}>
             {showPostBtn && (
@@ -441,7 +474,7 @@ export default function FeedScreen() {
         </View>
 
         {/* Feed */}
-        {loading ? null : followingUids.length === 0 ? (
+        {loading ? null : followingUids.length === 0 && trackedAgentIds.length === 0 ? (
           <EmptyFollowing />
         ) : feedItems.length === 0 ? (
           <EmptyPosts />

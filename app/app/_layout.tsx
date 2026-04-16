@@ -73,6 +73,9 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="agent/[id]" options={{ presentation: 'card' }} />
+        <Stack.Screen name="slug/[id]" options={{ presentation: 'card' }} />
+        <Stack.Screen name="chat/[threadId]" options={{ presentation: 'card' }} />
+        <Stack.Screen name="messages/[threadId]" options={{ presentation: 'card' }} />
         <Stack.Screen name="connect" options={{ presentation: 'modal' }} />
         <Stack.Screen name="skill/[id]" options={{ presentation: 'card' }} />
         <Stack.Screen name="account" options={{ presentation: 'card' }} />

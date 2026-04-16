@@ -93,6 +93,7 @@ export default function SearchScreen() {
   const [agents, setAgents] = useState<AgentResult[]>([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const search = useCallback(async (raw: string) => {
@@ -102,11 +103,13 @@ export default function SearchScreen() {
       setUsers([])
       setAgents([])
       setSearched(false)
+      setError(null)
       return
     }
 
     setLoading(true)
     setSearched(true)
+    setError(null)
 
     try {
       // Profiles and agents live in Firestore (Supabase users/agents are not synced from the app).
@@ -160,6 +163,11 @@ export default function SearchScreen() {
 
       setUsers(owner ? [] : userResults)
       setAgents(mergedAgents)
+    } catch (error) {
+      console.warn('[search] failed', error)
+      setUsers([])
+      setAgents([])
+      setError('Search failed. Try again.')
     } finally {
       setLoading(false)
     }
@@ -209,7 +217,12 @@ export default function SearchScreen() {
           <Text style={styles.emptyTitle}>Search people or agents</Text>
           <Text style={styles.emptyHint}>Try "@marketer" or "trader"</Text>
         </View>
-      ) : loading ? null : isEmpty ? (
+      ) : loading ? null : error ? (
+        <View style={styles.empty}>
+          <Text style={styles.emptyTitle}>{error}</Text>
+          <Text style={styles.emptyHint}>Try another search.</Text>
+        </View>
+      ) : isEmpty ? (
         <View style={styles.empty}>
           <Text style={styles.emptyTitle}>No results</Text>
           <Text style={styles.emptyHint}>Try a different name</Text>
@@ -237,6 +250,7 @@ export default function SearchScreen() {
 }
 
 function UserRow({ user, myUid }: { user: UserResult; myUid: string | null }) {
+  const safeUsername = user.username || 'user'
   return (
     <TouchableOpacity
       style={styles.row}
@@ -250,14 +264,14 @@ function UserRow({ user, myUid }: { user: UserResult; myUid: string | null }) {
       activeOpacity={0.75}
     >
       <View style={[styles.avatar, { borderColor: Colors.accentAmber }]}>
-        <View style={[styles.avatarInner, { backgroundColor: agentColor(user.username) + '22' }]}>
-          <Text style={[styles.avatarInitial, { color: agentColor(user.username) }]}>
-            {user.username[0].toUpperCase()}
+        <View style={[styles.avatarInner, { backgroundColor: agentColor(safeUsername) + '22' }]}>
+          <Text style={[styles.avatarInitial, { color: agentColor(safeUsername) }]}>
+            {safeUsername[0]?.toUpperCase() ?? '?'}
           </Text>
         </View>
       </View>
       <View style={styles.rowInfo}>
-        <Text style={styles.userHandle}>@{user.username}</Text>
+        <Text style={styles.userHandle}>@{safeUsername}</Text>
         {user.display_name ? (
           <Text style={styles.displayName}>{user.display_name}</Text>
         ) : null}
@@ -270,6 +284,7 @@ function UserRow({ user, myUid }: { user: UserResult; myUid: string | null }) {
 function AgentRow({ agent }: { agent: AgentResult }) {
   const isOnline = agent.status === 'connected'
   const statusColor = STATUS_COLOR[agent.status]
+  const safeName = agent.name || 'slug'
 
   return (
     <TouchableOpacity
@@ -278,9 +293,9 @@ function AgentRow({ agent }: { agent: AgentResult }) {
       activeOpacity={0.75}
     >
       <View style={[styles.avatar, { borderColor: statusColor }]}>
-        <View style={[styles.avatarInner, { backgroundColor: agentColor(agent.name) + '22' }]}>
-          <Text style={[styles.avatarInitial, { color: agentColor(agent.name) }]}>
-            {agent.name[0].toUpperCase()}
+        <View style={[styles.avatarInner, { backgroundColor: agentColor(safeName) + '22' }]}>
+          <Text style={[styles.avatarInitial, { color: agentColor(safeName) }]}>
+            {safeName[0]?.toUpperCase() ?? '?'}
           </Text>
         </View>
       </View>
@@ -289,9 +304,9 @@ function AgentRow({ agent }: { agent: AgentResult }) {
           {agent.ownerUsername && (
             <Text style={styles.ownerPart}>@{agent.ownerUsername}/</Text>
           )}
-          <Text style={styles.agentPart}>{agent.name.toLowerCase().replace(/\s+/g, '-')}</Text>
+          <Text style={styles.agentPart}>{safeName.toLowerCase().replace(/\s+/g, '-')}</Text>
         </View>
-        <Text style={styles.agentFriendlyName}>{agent.name}</Text>
+        <Text style={styles.agentFriendlyName}>{safeName}</Text>
       </View>
       <View style={styles.statusCol}>
         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />

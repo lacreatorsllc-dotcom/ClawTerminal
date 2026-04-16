@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   ActivityIndicator, Image,
 } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, router } from 'expo-router'
 import {
   getPublicProfileByUsername,
@@ -14,6 +15,8 @@ import {
   isFollowingUser,
   followUser,
   unfollowUser,
+  createOrGetDirectThread,
+  getDirectThreadId,
 } from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
 import { Colors } from '../../constants/colors'
@@ -147,6 +150,16 @@ export default function PublicProfileScreen() {
     }
   }, [me, profile, isFollowing])
 
+  const messageUser = useCallback(async () => {
+    if (!me?.uid || !profile?.id || me.uid === profile.id) return
+    const threadId = getDirectThreadId(me.uid, profile.id)
+    void createOrGetDirectThread(me.uid, profile.id)
+    router.push({
+      pathname: '/messages/[threadId]',
+      params: { threadId, otherUid: profile.id, username: profile.username },
+    })
+  }, [me?.uid, profile?.id, profile?.username])
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -167,6 +180,7 @@ export default function PublicProfileScreen() {
   }
 
   const connectedCount = agents.filter((a) => a.status === 'connected').length
+  const safeUsername = profile?.username || 'user'
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -185,13 +199,13 @@ export default function PublicProfileScreen() {
           ) : (
             <View style={styles.avatarCircle}>
               <Text style={styles.avatarInitial}>
-                {(profile?.username ?? '?')[0].toUpperCase()}
+                {safeUsername[0]?.toUpperCase() ?? '?'}
               </Text>
             </View>
           )}
         </View>
         <View style={styles.profileInfo}>
-          <Text style={styles.handle}>@{profile?.username}</Text>
+          <Text style={styles.handle}>@{safeUsername}</Text>
           {profile?.display_name ? (
             <Text style={styles.displayName}>{profile.display_name}</Text>
           ) : null}
@@ -219,6 +233,9 @@ export default function PublicProfileScreen() {
                 </Text>
             }
           </TouchableOpacity>
+          <TouchableOpacity style={styles.messageBtn} onPress={messageUser} activeOpacity={0.8}>
+            <Text style={styles.messageBtnText}>Message</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -241,30 +258,40 @@ export default function PublicProfileScreen() {
           <Text style={styles.sectionLabel}>SLUGS</Text>
           <View style={styles.card}>
             {agents.map((agent, i) => (
-              <View
+              (() => {
+                const safeAgentName = agent.name || 'slug'
+                return (
+              <TouchableOpacity
                 key={agent.id}
                 style={[styles.agentRow, i < agents.length - 1 && styles.agentRowBorder]}
+                activeOpacity={0.85}
+                onPress={() => router.push(`/slug/${agent.id}`)}
               >
                 <View style={styles.agentLeft}>
                   <View style={[styles.agentAvatar, { borderColor: STATUS_COLOR[agent.status] }]}>
-                    <View style={[styles.agentAvatarInner, { backgroundColor: agentColor(agent.name) + '22' }]}>
-                      <Text style={[styles.agentAvatarInitial, { color: agentColor(agent.name) }]}>
-                        {agent.name[0].toUpperCase()}
+                    <View style={[styles.agentAvatarInner, { backgroundColor: agentColor(safeAgentName) + '22' }]}>
+                      <Text style={[styles.agentAvatarInitial, { color: agentColor(safeAgentName) }]}>
+                        {safeAgentName[0]?.toUpperCase() ?? '?'}
                       </Text>
                     </View>
                   </View>
                   <View>
-                    <Text style={styles.agentName}>{agent.name}</Text>
+                    <Text style={styles.agentName}>{safeAgentName}</Text>
                     <Text style={styles.agentSlug}>
-                      @{profile?.username}/{agent.name.toLowerCase().replace(/\s+/g, '-')}
+                      @{safeUsername}/{safeAgentName.toLowerCase().replace(/\s+/g, '-')}
                     </Text>
                   </View>
                 </View>
                 <View style={styles.agentRight}>
                   <Text style={styles.lastSeen}>{timeAgo(agent.last_seen)}</Text>
-                  <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[agent.status] }]} />
+                  <View style={styles.agentRightMeta}>
+                    <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[agent.status] }]} />
+                    <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
+                  </View>
                 </View>
-              </View>
+              </TouchableOpacity>
+                )
+              })()
             ))}
           </View>
         </View>
@@ -281,9 +308,9 @@ export default function PublicProfileScreen() {
                 style={[styles.feedRow, i < feed.length - 1 && styles.feedRowBorder]}
               >
                 <View style={styles.feedTypeTag}>
-                  <Text style={styles.feedTypeText}>{event.type}</Text>
+                  <Text style={styles.feedTypeText}>{event.type || 'update'}</Text>
                 </View>
-                <Text style={styles.feedContent} numberOfLines={3}>{event.content}</Text>
+                <Text style={styles.feedContent} numberOfLines={3}>{event.content || 'No details yet.'}</Text>
                 <Text style={styles.feedTime}>{timeAgo(event.created_at)}</Text>
               </View>
             ))}
@@ -356,11 +383,12 @@ const styles = StyleSheet.create({
   followCountBold: { fontWeight: '700', color: Colors.textSecondary },
   followDot: { fontSize: 12, color: Colors.textMuted },
 
-  followBtnRow: { paddingHorizontal: 16, marginBottom: 16 },
+  followBtnRow: { paddingHorizontal: 16, marginBottom: 16, flexDirection: 'row', gap: 10 },
   followBtn: {
     backgroundColor: Colors.accentAmber,
     borderRadius: 12,
     paddingVertical: 11,
+    flex: 1,
     alignItems: 'center',
   },
   followBtnActive: {
@@ -370,6 +398,17 @@ const styles = StyleSheet.create({
   },
   followBtnText: { fontSize: 15, fontWeight: '700', color: Colors.bgPrimary },
   followBtnTextActive: { color: Colors.accentAmber },
+  messageBtn: {
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    backgroundColor: Colors.bgElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  messageBtnText: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
 
   statsRow: {
     flexDirection: 'row',
@@ -415,6 +454,7 @@ const styles = StyleSheet.create({
   agentName: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
   agentSlug: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
   agentRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  agentRightMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   lastSeen: { fontSize: 11, color: Colors.textMuted },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
 

@@ -383,6 +383,12 @@ export async function addFeedEvent(data: {
   payload?: Record<string, unknown>
   is_public?: boolean
 }) {
+  if (data.is_public && data.agent_id) {
+    const agentSnap = await getDoc(doc(db, 'agents', data.agent_id))
+    if (agentSnap.exists() && agentSnap.data().broadcast_enabled === false) {
+      return null
+    }
+  }
   await addDoc(collection(db, 'feed_events'), {
     ...data,
     payload: data.payload ?? {},
@@ -465,6 +471,10 @@ export async function publishAgentPnl(
   unrealizedPnl: number,
   dailyPnl?: number | null,
 ) {
+  const agentSnap = await getDoc(doc(db, 'agents', agentId))
+  if (agentSnap.exists() && agentSnap.data().broadcast_enabled === false) {
+    return false
+  }
   await addDoc(collection(db, 'feed_events'), {
     user_id: uid,
     agent_id: agentId,
@@ -479,6 +489,7 @@ export async function publishAgentPnl(
     is_public: true,
     created_at: serverTimestamp(),
   })
+  return true
 }
 
 // Get/set pnl_sharing preference stored on the user profile
@@ -728,6 +739,268 @@ export async function listFollowersOf(targetUid: string): Promise<PublicUserList
     .map((row) => row.uid)
 
   return getPublicUsersByIds(orderedIds)
+}
+
+function getAgentTypeLabel(agent: Record<string, any>): string {
+  const type = String(agent.agent_type ?? agent.metadata?.agent_type ?? '').toLowerCase()
+  if (type === 'range_farmer') return 'Range Farmer'
+  if (type === 'market_advisor') return 'Market Advisor'
+  if (type === 'cabal_trading_boy') return 'Trading Boy'
+  if (type === 'cabal_blue_chip') return 'Blue Chip'
+  return 'Slug'
+}
+
+function getAgentDescription(agent: Record<string, any>): string {
+  const metadata = (agent.metadata as Record<string, any> | undefined) ?? {}
+  const type = String(agent.agent_type ?? metadata.agent_type ?? '').toLowerCase()
+
+  if (type === 'range_farmer') {
+    const coin = String(agent.coin ?? metadata.coin ?? 'BTC').toUpperCase()
+    return `Runs a dynamic paper grid on ${coin}, farming volatility with laddered buys and sells around a moving center.`
+  }
+  if (type === 'market_advisor') {
+    return 'Reviews portfolio context, answers market questions, and gives chat-based guidance grounded in the user’s current positions.'
+  }
+  if (type === 'cabal_trading_boy') {
+    return 'Monitors live setups, manages entries and exits, and publishes performance updates as market structure changes.'
+  }
+  if (type === 'cabal_blue_chip') {
+    return 'Acts like a connected operator slug for commentary, signals, and shared agent updates inside the social feed.'
+  }
+  return 'A public slug profile with live status, recent updates, and trackable performance.'
+}
+
+function getAgentStrategyLabel(agent: Record<string, any>): string {
+  const metadata = (agent.metadata as Record<string, any> | undefined) ?? {}
+  const type = String(agent.agent_type ?? metadata.agent_type ?? '').toLowerCase()
+  if (type === 'range_farmer') return 'Dynamic Grid'
+  if (type === 'market_advisor') return 'Portfolio Copilot'
+  if (type === 'cabal_trading_boy') return 'Autonomous Momentum'
+  if (type === 'cabal_blue_chip') return 'Social Signal'
+  return 'General Slug'
+}
+
+export async function getPublicAgentProfile(agentId: string): Promise<{
+  id: string
+  user_id: string
+  owner_username: string
+  owner_display_name: string | null
+  name: string
+  status: string
+  last_seen: string | null
+  agent_type: string | null
+  strategy_label: string
+  description: string
+  broadcast_enabled: boolean
+  live_state: Record<string, any> | null
+  metadata: Record<string, unknown>
+} | null> {
+  const snap = await getDoc(doc(db, 'agents', agentId))
+  if (!snap.exists()) return null
+
+  const data = snap.data()
+  const userId = String(data.user_id ?? '')
+  if (!userId) return null
+
+  const owner = await getPublicProfileByUid(userId)
+  if (!owner) return null
+
+  return {
+    id: snap.id,
+    user_id: userId,
+    owner_username: owner.username,
+    owner_display_name: owner.display_name,
+    name: String(data.name ?? 'Slug'),
+    status: String(data.status ?? 'disconnected'),
+    last_seen: tsToISO(data.last_seen as Timestamp | null),
+    agent_type: (data.agent_type as string) ?? ((data.metadata as Record<string, any> | undefined)?.agent_type as string) ?? null,
+    strategy_label: getAgentStrategyLabel(data),
+    description: getAgentDescription(data),
+    broadcast_enabled: data.broadcast_enabled !== false,
+    live_state: (data.live_state as Record<string, any>) ?? null,
+    metadata: (data.metadata as Record<string, unknown>) ?? {},
+  }
+}
+
+export async function listPublicFeedEventsForAgent(
+  agentId: string,
+  limitCount = 20,
+): Promise<Array<{ id: string; type: string; content: string; created_at: string; agent_id: string; agent_name: string; user_id: string }>> {
+  const q = query(
+    collection(db, 'feed_events'),
+    orderBy('created_at', 'desc'),
+    limit(Math.max(limitCount * 6, 90))
+  )
+  const snap = await getDocs(q)
+  return snap.docs
+    .map((d) => {
+      const data = d.data()
+      return {
+        id: d.id,
+        type: String(data.type ?? ''),
+        content: String(data.content ?? ''),
+        created_at: tsToISO(data.created_at as Timestamp | null) ?? new Date().toISOString(),
+        agent_id: String(data.agent_id ?? ''),
+        agent_name: String(data.agent_name ?? ''),
+        user_id: String(data.user_id ?? ''),
+        is_public: Boolean(data.is_public),
+      }
+    })
+    .filter((row) => row.is_public && row.agent_id === agentId)
+    .slice(0, limitCount)
+    .map(({ is_public: _isPublic, ...row }) => row)
+}
+
+export async function setAgentBroadcastEnabled(agentId: string, enabled: boolean) {
+  await updateDoc(doc(db, 'agents', agentId), {
+    broadcast_enabled: enabled,
+    updated_at: serverTimestamp(),
+  })
+}
+
+export async function isTrackingAgent(uid: string, agentId: string): Promise<boolean> {
+  const snap = await getDoc(doc(db, 'users', uid, 'tracked_agents', agentId))
+  return snap.exists()
+}
+
+export async function trackAgent(uid: string, agentId: string, ownerUid?: string | null) {
+  await setDoc(doc(db, 'users', uid, 'tracked_agents', agentId), {
+    agent_id: agentId,
+    owner_uid: ownerUid ?? null,
+    tracked_at: serverTimestamp(),
+  })
+}
+
+export async function untrackAgent(uid: string, agentId: string) {
+  const { deleteDoc } = await import('firebase/firestore')
+  await deleteDoc(doc(db, 'users', uid, 'tracked_agents', agentId))
+}
+
+export function subscribeToTrackedAgents(uid: string, cb: (agentIds: string[]) => void) {
+  return onSnapshot(collection(db, 'users', uid, 'tracked_agents'), (snap) => {
+    cb(snap.docs.map((d) => d.id))
+  })
+}
+
+export function subscribeToTrackedAgentFeed(agentIds: string[], cb: (events: any[]) => void) {
+  if (agentIds.length === 0) { cb([]); return () => {} }
+  const tracked = new Set(agentIds.slice(0, 50))
+  const q = query(collection(db, 'feed_events'), orderBy('created_at', 'desc'), limit(180))
+  return onSnapshot(q, (snap) => {
+    const rows = snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+      created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
+    }))
+    cb(rows.filter((row: any) => row.is_public === true && tracked.has(String(row.agent_id ?? ''))).slice(0, 60))
+  })
+}
+
+export async function listTrackedAgentProfiles(uid: string): Promise<Array<{
+  id: string
+  name: string
+  owner_username: string
+  description: string
+  status: string
+  last_seen: string | null
+}>> {
+  const snap = await getDocs(collection(db, 'users', uid, 'tracked_agents'))
+  const rows = await Promise.all(snap.docs.map(async (trackedDoc) => {
+    const profile = await getPublicAgentProfile(trackedDoc.id)
+    if (!profile) return null
+    return {
+      id: profile.id,
+      name: profile.name,
+      owner_username: profile.owner_username,
+      description: profile.description,
+      status: profile.status,
+      last_seen: profile.last_seen,
+    }
+  }))
+  return rows.filter((row): row is NonNullable<typeof row> => row !== null)
+}
+
+function directThreadId(a: string, b: string) {
+  return [a, b].sort().join('__')
+}
+
+export function getDirectThreadId(uidA: string, uidB: string) {
+  return directThreadId(uidA, uidB)
+}
+
+export async function createOrGetDirectThread(uidA: string, uidB: string): Promise<string> {
+  const threadId = directThreadId(uidA, uidB)
+  const ref = doc(db, 'direct_threads', threadId)
+
+  try {
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref)
+      if (snap.exists()) return
+      tx.set(ref, {
+        members: [uidA, uidB].sort(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+        last_message_text: '',
+        last_message_at: null,
+      })
+    })
+  } catch (error) {
+    console.warn('[direct-thread] createOrGet failed, using deterministic id', error)
+  }
+
+  return threadId
+}
+
+export function subscribeToDirectThreads(uid: string, cb: (threads: any[]) => void) {
+  const q = query(collection(db, 'direct_threads'), where('members', 'array-contains', uid))
+  return onSnapshot(q, async (snap) => {
+    const rows = await Promise.all(snap.docs.map(async (d) => {
+      const data = d.data()
+      const members = (data.members as string[] | undefined) ?? []
+      const otherUid = members.find((member) => member !== uid) ?? uid
+      const otherProfile = await getPublicProfileByUid(otherUid)
+      return {
+        id: d.id,
+        ...data,
+        updated_at: tsToISO(data.updated_at as Timestamp | null),
+        last_message_at: tsToISO(data.last_message_at as Timestamp | null),
+        other_user: otherProfile,
+      }
+    }))
+    rows.sort((a, b) => new Date(b.last_message_at ?? b.updated_at ?? 0).getTime() - new Date(a.last_message_at ?? a.updated_at ?? 0).getTime())
+    cb(rows)
+  }, _noop)
+}
+
+export function subscribeToDirectMessages(threadId: string, cb: (messages: any[]) => void) {
+  const q = query(
+    collection(db, 'direct_threads', threadId, 'messages'),
+    orderBy('created_at', 'desc'),
+    limit(200)
+  )
+  return onSnapshot(q, (snap) => {
+    const rows = snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+      created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
+    }))
+    cb(rows.reverse())
+  }, _noop)
+}
+
+export async function sendDirectMessage(threadId: string, senderUid: string, content: string) {
+  const trimmed = content.trim()
+  if (!trimmed) return
+  await addDoc(collection(db, 'direct_threads', threadId, 'messages'), {
+    sender_uid: senderUid,
+    content: trimmed,
+    created_at: serverTimestamp(),
+  })
+  await setDoc(doc(db, 'direct_threads', threadId), {
+    updated_at: serverTimestamp(),
+    last_message_text: trimmed,
+    last_message_at: serverTimestamp(),
+  }, { merge: true })
 }
 
 export async function createMarketAdvisorAgent(uid: string, name: string, geminiApiKey: string): Promise<string> {

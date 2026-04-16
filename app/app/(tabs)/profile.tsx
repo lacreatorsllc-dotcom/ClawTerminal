@@ -282,7 +282,7 @@ export default function ProfileTabScreen() {
                       key={agent.id}
                       style={[styles.agentRow, index < agents.length - 1 && styles.rowBorder]}
                       activeOpacity={0.85}
-                      onPress={() => router.push(`/agent/${agent.id}`)}
+                      onPress={() => router.push(`/slug/${agent.id}`)}
                     >
                       <View style={styles.agentLeft}>
                         <View style={[styles.agentAvatar, { borderColor: STATUS_COLOR[agent.status] }]}>
