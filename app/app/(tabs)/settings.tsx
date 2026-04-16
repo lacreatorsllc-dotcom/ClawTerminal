@@ -82,6 +82,9 @@ export default function SettingsScreen() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView style={s.container} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.header}>
+          <TouchableOpacity style={s.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
+            <Ionicons name="chevron-back" size={18} color={Colors.textPrimary} />
+          </TouchableOpacity>
           <Text style={s.title}>Settings</Text>
         </View>
 
@@ -213,7 +216,17 @@ export default function SettingsScreen() {
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
   content: { paddingBottom: 60 },
-  header: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 24 },
+  header: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 24, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
 
   section: { marginBottom: 24, paddingHorizontal: 16 },

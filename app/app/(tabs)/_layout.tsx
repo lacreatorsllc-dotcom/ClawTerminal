@@ -54,13 +54,17 @@ export default function TabsLayout() {
         options={{ href: null }}
       />
       <Tabs.Screen
-        name="settings"
+        name="profile"
         options={{
           title: 'Profile',
           tabBarIcon: ({ color }) => (
             <Ionicons name={color === Colors.accentAmber ? 'person-circle' : 'person-circle-outline'} size={26} color={color} />
           ),
         }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{ href: null }}
       />
     </Tabs>
   )

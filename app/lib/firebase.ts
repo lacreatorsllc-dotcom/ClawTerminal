@@ -30,7 +30,7 @@ import {
   serverTimestamp,
   getDocs,
   collectionGroup,
-  documentId,
+  runTransaction,
   type DocumentData,
   type Timestamp,
 } from 'firebase/firestore'
@@ -88,6 +88,92 @@ export async function setProfile(uid: string, data: Record<string, unknown>) {
   await setDoc(doc(db, 'users', uid), data, { merge: true })
 }
 
+function sanitizeUsernameSeed(raw: string): string {
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_')
+  return (cleaned || 'user').slice(0, 20)
+}
+
+function usernameFromEmail(email?: string | null): string {
+  const localPart = email?.split('@')[0]?.trim() || email?.trim() || 'user'
+  return sanitizeUsernameSeed(localPart)
+}
+
+function usernameCandidate(base: string, attempt: number): string {
+  if (attempt === 0) return base
+  const suffix = String(attempt + 1)
+  return `${base.slice(0, Math.max(3, 20 - suffix.length))}${suffix}`
+}
+
+async function reserveUsername(uid: string, preferred: string): Promise<string> {
+  const base = sanitizeUsernameSeed(preferred)
+  const userRef = doc(db, 'users', uid)
+
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidate = usernameCandidate(base, attempt)
+    const usernameRef = doc(db, 'usernames', candidate)
+
+    try {
+      await runTransaction(db, async (tx) => {
+        const [usernameSnap, userSnap] = await Promise.all([tx.get(usernameRef), tx.get(userRef)])
+        const claimedBy = usernameSnap.exists() ? usernameSnap.data().uid : null
+        if (typeof claimedBy === 'string' && claimedBy !== uid) {
+          throw new Error('TAKEN')
+        }
+
+        tx.set(usernameRef, { uid })
+        tx.set(userRef, {
+          username: candidate,
+          created_at: userSnap.exists() ? (userSnap.data().created_at ?? serverTimestamp()) : serverTimestamp(),
+          updated_at: serverTimestamp(),
+        }, { merge: true })
+      })
+
+      return candidate
+    } catch (error) {
+      if (error instanceof Error && error.message === 'TAKEN') continue
+      throw error
+    }
+  }
+
+  throw new Error('Could not reserve a username')
+}
+
+export async function ensureUserProfile(uid: string, email?: string | null) {
+  const existing = await getProfile(uid)
+  const normalizedEmail = email?.trim().toLowerCase() ?? null
+
+  if (existing?.username) {
+    const usernameRef = doc(db, 'usernames', String(existing.username).toLowerCase())
+    const usernameSnap = await getDoc(usernameRef)
+    if (!usernameSnap.exists() || usernameSnap.data().uid !== uid) {
+      await setDoc(usernameRef, { uid })
+    }
+    if (normalizedEmail && existing.email !== normalizedEmail) {
+      await setProfile(uid, { email: normalizedEmail, updated_at: serverTimestamp() })
+    }
+    return existing
+  }
+
+  const reserved = await reserveUsername(uid, usernameFromEmail(normalizedEmail))
+  await setProfile(uid, {
+    email: normalizedEmail,
+    display_name: existing?.display_name ?? null,
+    avatar_url: existing?.avatar_url ?? null,
+    username: reserved,
+    updated_at: serverTimestamp(),
+  })
+
+  return {
+    ...(existing ?? {}),
+    email: normalizedEmail,
+    username: reserved,
+  }
+}
+
 // Username uniqueness check via /usernames/{username} → { uid }
 export async function isUsernameTaken(username: string): Promise<boolean> {
   const snap = await getDoc(doc(db, 'usernames', username.toLowerCase()))
@@ -96,8 +182,32 @@ export async function isUsernameTaken(username: string): Promise<boolean> {
 
 export async function claimUsername(uid: string, username: string) {
   const lower = username.toLowerCase()
-  await setDoc(doc(db, 'usernames', lower), { uid })
-  await setProfile(uid, { username: lower })
+  const userRef = doc(db, 'users', uid)
+  const usernameRef = doc(db, 'usernames', lower)
+
+  const previous = await getProfile(uid)
+  const previousUsername = typeof previous?.username === 'string' ? previous.username.toLowerCase() : null
+  if (previousUsername === lower) return
+
+  await runTransaction(db, async (tx) => {
+    const usernameSnap = await tx.get(usernameRef)
+    const claimedBy = usernameSnap.exists() ? usernameSnap.data().uid : null
+    if (typeof claimedBy === 'string' && claimedBy !== uid) {
+      throw new Error('Username already taken')
+    }
+
+    tx.set(usernameRef, { uid })
+    tx.set(userRef, { username: lower, updated_at: serverTimestamp() }, { merge: true })
+  })
+
+  if (previousUsername && previousUsername !== lower) {
+    const oldRef = doc(db, 'usernames', previousUsername)
+    const oldSnap = await getDoc(oldRef)
+    if (oldSnap.exists() && oldSnap.data().uid === uid) {
+      const { deleteDoc } = await import('firebase/firestore')
+      await deleteDoc(oldRef)
+    }
+  }
 }
 
 // /agents — user's agents
@@ -197,15 +307,16 @@ export function subscribeToPublicFeed(uids: string[], cb: (events: any[]) => voi
   const q = query(
     collection(db, 'feed_events'),
     where('user_id', 'in', uids.slice(0, 30)),
-    where('is_public', '==', true),
     orderBy('created_at', 'desc'),
-    limit(60)
+    limit(120)
   )
   return onSnapshot(q, (snap) => {
-    cb(snap.docs.map((d) => ({
-      id: d.id, ...d.data(),
+    const rows = snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
       created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
-    })))
+    }))
+    cb(rows.filter((row: any) => row.is_public === true).slice(0, 60))
   })
 }
 
@@ -282,7 +393,10 @@ export function subscribeToFollowing(uid: string, cb: (followingIds: string[]) =
 }
 
 export async function followUser(myUid: string, targetUid: string) {
-  await setDoc(doc(db, 'users', myUid, 'following', targetUid), { followed_at: serverTimestamp() })
+  await setDoc(doc(db, 'users', myUid, 'following', targetUid), {
+    followed_at: serverTimestamp(),
+    target_uid: targetUid,
+  })
 }
 
 export async function unfollowUser(myUid: string, targetUid: string) {
@@ -418,10 +532,19 @@ export async function batchGetUsernames(userIds: string[]): Promise<Record<strin
 }
 
 export async function getUidForUsername(raw: string): Promise<string | null> {
-  const snap = await getDoc(doc(db, 'usernames', raw.toLowerCase()))
-  if (!snap.exists()) return null
-  const uid = snap.data().uid
-  return typeof uid === 'string' ? uid : null
+  const lower = raw.toLowerCase()
+  const mappingSnap = await getDoc(doc(db, 'usernames', lower))
+  if (mappingSnap.exists()) {
+    const uid = mappingSnap.data().uid
+    return typeof uid === 'string' ? uid : null
+  }
+
+  // Fallback for older profiles that have `users/{uid}.username` but no `usernames/{slug}` doc yet.
+  const q = query(collection(db, 'users'), where('username', '==', lower), limit(1))
+  const snap = await getDocs(q)
+  if (snap.empty) return null
+
+  return snap.docs[0].id
 }
 
 export async function getPublicProfileByUsername(raw: string): Promise<{
@@ -439,6 +562,28 @@ export async function getPublicProfileByUsername(raw: string): Promise<{
   return {
     id: uid,
     username: (data.username as string) ?? raw.toLowerCase(),
+    display_name: (data.display_name as string) ?? (data.displayName as string) ?? null,
+    avatar_url: (data.avatar_url as string) ?? (data.avatarUrl as string) ?? null,
+    created_at: tsToISO(data.created_at as Timestamp | null) ?? new Date(0).toISOString(),
+  }
+}
+
+export async function getPublicProfileByUid(uid: string): Promise<{
+  id: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+  created_at: string
+} | null> {
+  const snap = await getDoc(doc(db, 'users', uid))
+  if (!snap.exists()) return null
+  const data = snap.data()
+  const username = typeof data.username === 'string' ? data.username.toLowerCase() : null
+  if (!username) return null
+
+  return {
+    id: uid,
+    username,
     display_name: (data.display_name as string) ?? (data.displayName as string) ?? null,
     avatar_url: (data.avatar_url as string) ?? (data.avatarUrl as string) ?? null,
     created_at: tsToISO(data.created_at as Timestamp | null) ?? new Date(0).toISOString(),
@@ -479,28 +624,39 @@ export async function listPublicFeedEventsForUser(
   const q = query(
     collection(db, 'feed_events'),
     where('user_id', '==', uid),
-    where('is_public', '==', true),
     orderBy('created_at', 'desc'),
-    limit(limitCount)
+    limit(Math.max(limitCount * 3, 60))
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => {
-    const data = d.data()
-    return {
-      id: d.id,
-      type: String(data.type ?? ''),
-      content: String(data.content ?? ''),
-      created_at: tsToISO(data.created_at as Timestamp | null) ?? new Date().toISOString(),
-      agent_id: String(data.agent_id ?? ''),
-    }
-  })
+  return snap.docs
+    .map((d) => {
+      const data = d.data()
+      return {
+        id: d.id,
+        type: String(data.type ?? ''),
+        content: String(data.content ?? ''),
+        created_at: tsToISO(data.created_at as Timestamp | null) ?? new Date().toISOString(),
+        agent_id: String(data.agent_id ?? ''),
+        is_public: Boolean(data.is_public),
+      }
+    })
+    .filter((row) => row.is_public)
+    .slice(0, limitCount)
+    .map(({ is_public: _isPublic, ...row }) => row)
 }
 
 /** Users who follow targetUid (subcollection doc id = followee uid) */
 export async function countFollowersOf(targetUid: string): Promise<number> {
-  const q = query(collectionGroup(db, 'following'), where(documentId(), '==', targetUid))
-  const snap = await getDocs(q)
-  return snap.size
+  // Avoid collectionGroup index requirements by scanning user docs and checking the
+  // per-user following document directly. This is less efficient but reliable.
+  const usersSnap = await getDocs(collection(db, 'users'))
+  const followerChecks = await Promise.all(
+    usersSnap.docs.map(async (userDoc) => {
+      const followSnap = await getDoc(doc(db, 'users', userDoc.id, 'following', targetUid))
+      return followSnap.exists()
+    })
+  )
+  return followerChecks.filter(Boolean).length
 }
 
 export async function countFollowingOf(uid: string): Promise<number> {
@@ -511,6 +667,61 @@ export async function countFollowingOf(uid: string): Promise<number> {
 export async function isFollowingUser(myUid: string, targetUid: string): Promise<boolean> {
   const snap = await getDoc(doc(db, 'users', myUid, 'following', targetUid))
   return snap.exists()
+}
+
+export interface PublicUserListItem {
+  id: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+}
+
+async function getPublicUsersByIds(uids: string[]): Promise<PublicUserListItem[]> {
+  const uniqueUids = [...new Set(uids.filter(Boolean))]
+  const rows = await Promise.all(uniqueUids.map(async (uid) => {
+    const profile = await getPublicProfileByUid(uid)
+    if (!profile) return null
+    return {
+      id: profile.id,
+      username: profile.username,
+      display_name: profile.display_name,
+      avatar_url: profile.avatar_url,
+    }
+  }))
+  return rows.filter((row): row is PublicUserListItem => row !== null)
+}
+
+export async function listFollowingUsers(uid: string): Promise<PublicUserListItem[]> {
+  const snap = await getDocs(collection(db, 'users', uid, 'following'))
+  const orderedIds = snap.docs
+    .sort((a, b) => {
+      const ta = tsToISO(a.data().created_at as Timestamp | null)
+      const tb = tsToISO(b.data().created_at as Timestamp | null)
+      return new Date(tb ?? 0).getTime() - new Date(ta ?? 0).getTime()
+    })
+    .map((docSnap) => docSnap.id)
+  return getPublicUsersByIds(orderedIds)
+}
+
+export async function listFollowersOf(targetUid: string): Promise<PublicUserListItem[]> {
+  const usersSnap = await getDocs(collection(db, 'users'))
+  const followerIds = await Promise.all(
+    usersSnap.docs.map(async (userDoc) => {
+      const followSnap = await getDoc(doc(db, 'users', userDoc.id, 'following', targetUid))
+      if (!followSnap.exists()) return null
+      return {
+        uid: userDoc.id,
+        created_at: tsToISO(followSnap.data().created_at as Timestamp | null),
+      }
+    })
+  )
+
+  const orderedIds = followerIds
+    .filter((row): row is { uid: string; created_at: string | null } => row !== null)
+    .sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime())
+    .map((row) => row.uid)
+
+  return getPublicUsersByIds(orderedIds)
 }
 
 export async function createMarketAdvisorAgent(uid: string, name: string, geminiApiKey: string): Promise<string> {

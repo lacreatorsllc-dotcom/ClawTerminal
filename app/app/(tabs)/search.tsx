@@ -13,6 +13,7 @@ import {
 } from '../../lib/firebase'
 import { Colors } from '../../constants/colors'
 import type { AgentStatus } from '../../lib/types'
+import { useAuthStore } from '../../stores/authStore'
 
 function agentColor(name: string): string {
   const palette = ['#f59e0b', '#2dd4bf', '#a78bfa', '#60a5fa', '#34d399']
@@ -86,6 +87,7 @@ function coerceAgentStatus(s: unknown): AgentStatus {
 }
 
 export default function SearchScreen() {
+  const { user } = useAuthStore()
   const [query, setQuery] = useState('')
   const [users, setUsers] = useState<UserResult[]>([])
   const [agents, setAgents] = useState<AgentResult[]>([])
@@ -112,22 +114,35 @@ export default function SearchScreen() {
       let agentDocs: Array<{ id: string; user_id?: string; name?: string; status?: string; last_seen?: unknown }> = []
 
       if (owner && !term) {
-        agentDocs = await getRecentAgents(30)
+        try {
+          agentDocs = await getRecentAgents(30)
+        } catch {
+          agentDocs = []
+        }
       } else if (owner && term) {
-        agentDocs = await searchAgents(term)
+        try {
+          agentDocs = await searchAgents(term)
+        } catch {
+          agentDocs = []
+        }
       } else if (!owner && term) {
-        const [uRows, aRows] = await Promise.all([
+        const [uRows, aRows] = await Promise.allSettled([
           searchUsers(term.toLowerCase()),
           searchAgents(term),
         ])
-        userResults = uRows
+        userResults = (uRows.status === 'fulfilled' ? uRows.value : [])
           .map((r) => firestoreUserToResult(r as { id: string } & Record<string, unknown>))
           .filter((u) => u.username.length > 0)
-        agentDocs = aRows as typeof agentDocs
+        agentDocs = aRows.status === 'fulfilled' ? (aRows.value as typeof agentDocs) : []
       }
 
       const userIds = [...new Set(agentDocs.map((a) => a.user_id as string).filter(Boolean))]
-      const usernameMap = await batchGetUsernames(userIds)
+      let usernameMap: Record<string, string> = {}
+      try {
+        usernameMap = await batchGetUsernames(userIds)
+      } catch {
+        usernameMap = {}
+      }
 
       let mergedAgents: AgentResult[] = agentDocs.map((a) => ({
         id: a.id,
@@ -208,7 +223,7 @@ export default function SearchScreen() {
           )}
           renderItem={({ item, section }) =>
             section.type === 'user'
-              ? <UserRow user={item as UserResult} />
+              ? <UserRow user={item as UserResult} myUid={user?.uid ?? null} />
               : <AgentRow agent={item as AgentResult} />
           }
           contentContainerStyle={styles.list}
@@ -221,11 +236,17 @@ export default function SearchScreen() {
   )
 }
 
-function UserRow({ user }: { user: UserResult }) {
+function UserRow({ user, myUid }: { user: UserResult; myUid: string | null }) {
   return (
     <TouchableOpacity
       style={styles.row}
-      onPress={() => router.push(`/profile/${user.username}`)}
+      onPress={() => {
+        if (myUid && user.id === myUid) {
+          router.push('/(tabs)/profile')
+          return
+        }
+        router.push({ pathname: '/profile/[username]', params: { username: user.username, uid: user.id } })
+      }}
       activeOpacity={0.75}
     >
       <View style={[styles.avatar, { borderColor: Colors.accentAmber }]}>

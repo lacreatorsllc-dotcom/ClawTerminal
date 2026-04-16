@@ -23,6 +23,10 @@ import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
 
+function nowMs() {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
 function parsePositionsFromResponse(text: string): TradeData[] {
   const positions: TradeData[] = []
 
@@ -355,7 +359,18 @@ function TypingBubble() {
   }, [])
 
   return (
-    <View style={[styles.bubble, styles.bubbleOut, { paddingVertical: 12, paddingHorizontal: 14 }]}>
+    <View
+      style={[
+        styles.bubble,
+        {
+          alignSelf: 'flex-start',
+          backgroundColor: '#1a1a1a',
+          borderBottomLeftRadius: 4,
+          paddingVertical: 12,
+          paddingHorizontal: 14,
+        },
+      ]}
+    >
       <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
         {([dot1, dot2, dot3] as Animated.Value[]).map((dot, i) => (
           <Animated.View key={i} style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: Colors.textMuted, opacity: dot }} />
@@ -363,6 +378,11 @@ function TypingBubble() {
       </View>
     </View>
   )
+}
+
+function hasPendingReply(messages: Array<{ direction?: string }> | undefined | null): boolean {
+  if (!messages || messages.length === 0) return false
+  return messages[messages.length - 1]?.direction === 'inbound'
 }
 
 const MOCK_OPEN_TRADES: TradeData[] = [
@@ -697,6 +717,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
   const [input, setInput] = useState('')
   const [cmdPickerVisible, setCmdPickerVisible] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [pendingReplies, setPendingReplies] = useState(0)
   const [sharing, setSharing] = useState(false)
   const [shareMsg, setShareMsg] = useState('')
   const [showShare, setShowShare] = useState(false)
@@ -740,10 +761,18 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
     return unsub
   }, [agentId])
 
+  useEffect(() => {
+    if (messages.length === 0) return
+    if (messages[messages.length - 1]?.direction === 'outbound') {
+      setPendingReplies(0)
+    }
+  }, [messages])
+
   async function sendChat() {
     const text = input.trim()
     if (!text || !user) return
     setInput('')
+    setPendingReplies((count) => count + 1)
     await addMessage(agentId, {
       agent_id: agentId,
       user_id: user.uid ?? (user as any).id,
@@ -754,6 +783,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
 
   async function sendControl(cmd: '/pause' | '/resume') {
     if (!user) return
+    setPendingReplies((count) => count + 1)
     await addMessage(agentId, {
       agent_id: agentId,
       user_id: user.uid ?? (user as any).id,
@@ -766,6 +796,18 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
   const isConnected = agentDoc?.status === 'connected'
   const isPaused = agentDoc?.live_admin?.paused === true
   const agentName = agentDoc?.name ?? 'Agent'
+  const liveState = agentDoc?.live_state ?? {}
+  const tbRecentTrades = liveState?.recentTrades ?? liveState?.openPositions ?? []
+  const tbWatchlist = Array.isArray(agentDoc?.watchlist) ? agentDoc.watchlist : []
+  const tbOpenPositions = Array.isArray(liveState?.openPositions) ? liveState.openPositions.length : 0
+  const tbDailyTrades = Number(liveState?.dailyTradeCount ?? tbRecentTrades.length ?? 0)
+  const tbActiveSetups = Number(liveState?.activeConditionalSetups ?? 0)
+  const tbModeLabel = isPaused ? 'Paused' : isConnected ? 'Autonomous' : 'Offline'
+  const tbStrategyBrief =
+    tbWatchlist.length > 0
+      ? `Monitoring ${tbWatchlist.slice(0, 4).join(', ')}${tbWatchlist.length > 4 ? ' and other names' : ''}. Trading Boy scans for live setups, manages risk automatically, and updates entries as market structure changes.`
+      : 'Scanning for high-conviction setups, sizing entries automatically, and managing open risk as conditions change.'
+  const showTyping = agentDoc?.is_typing || pendingReplies > 0 || hasPendingReply(messages)
 
   function decisionColor(actionType: string): string {
     if (actionType === 'BUY' || actionType?.includes('BUY')) return Colors.accentGreen
@@ -870,19 +912,27 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
       })()}
 
       {/* Tab pills */}
-      <View style={[s001.tabRow, { paddingHorizontal: 20, marginTop: 16, marginBottom: 4 }]}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={tb.tabScroller}
+        contentContainerStyle={tb.tabScrollContent}
+      >
         {(['chat', 'trades', 'positions', 'status', 'activity'] as TbTab[]).map((t) => (
           <TouchableOpacity
             key={t}
-            style={[s001.tabPill, activeTab === t && s001.tabPillActive]}
+            style={[tb.tabPill, activeTab === t && tb.tabPillActive]}
             onPress={() => setActiveTab(t)}
+            activeOpacity={1}
           >
-            <Text style={[s001.tabPillText, activeTab === t && s001.tabPillTextActive]}>
-              {t.charAt(0).toUpperCase() + t.slice(1)}
-            </Text>
+            <View style={tb.tabPillInner}>
+              <Text style={[tb.tabPillText, activeTab === t && tb.tabPillTextActive]}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </Text>
+            </View>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Chat tab */}
       {activeTab === 'chat' && (
@@ -896,7 +946,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
               onScroll={(e) => setShowScrollBtn(e.nativeEvent.contentOffset.y > 80)}
               scrollEventThrottle={100}
-              ListHeaderComponent={agentDoc?.is_typing ? <TypingBubble /> : null}
+              ListHeaderComponent={showTyping ? <TypingBubble /> : null}
               renderItem={({ item }) => {
                 const isUser = item.direction === 'inbound'
                 const isAlert = item.alert === true
@@ -959,6 +1009,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
                     setCmdPickerVisible(false)
                     setInput('')
                     if (!user) return
+                    setPendingReplies((count) => count + 1)
                     await addMessage(agentId, {
                       agent_id: agentId,
                       user_id: user.uid ?? (user as any).id,
@@ -1039,6 +1090,18 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
                 <Text style={[tb.cardValue, { color: unrealized >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
                   {unrealized >= 0 ? '+' : '-'}${Math.abs(unrealized).toFixed(2)}
                 </Text>
+              </View>
+            )
+          })()}
+
+          {/* PnL History chart — mirrors Slug #001 sparkline */}
+          {(() => {
+            const hist: number[] | undefined = agentDoc?.live_state?.pnlHistory ?? agentDoc?.live_state?.pnl_history
+            if (!hist || hist.length < 2) return null
+            return (
+              <View style={s001.chartCard}>
+                <Text style={s001.chartLabel}>PnL History</Text>
+                <Sparkline history={hist} />
               </View>
             )
           })()}
@@ -1133,42 +1196,102 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
 
       {/* Trades tab */}
       {activeTab === 'trades' && (
-        <FlatList
-          data={agentDoc?.live_state?.recentTrades ?? agentDoc?.live_state?.openPositions ?? []}
-          keyExtractor={(item, i) => item.id ?? String(i)}
-          contentContainerStyle={{ padding: 16, gap: 8 }}
-          ListEmptyComponent={
-            <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 32 }}>No trades yet</Text>
-          }
-          renderItem={({ item }) => {
-            const isBuy = (item.direction ?? item.side ?? '').toString().toUpperCase().includes('BUY') || (item.side ?? '').toString().toUpperCase() === 'BUY'
-            const pnl = item.pnl ?? item.realizedPnl ?? null
+        <ScrollView contentContainerStyle={tb.tradesContent} showsVerticalScrollIndicator={false}>
+          <Text style={tb.strategyBrief}>{tbStrategyBrief}</Text>
+
+          <View style={tb.strategyCard}>
+            <Text style={tb.strategyCardLabel}>TRADING PLAN</Text>
+            <View style={tb.strategyStats}>
+              <View style={tb.strategyStat}>
+                <Text style={tb.strategyStatLabel}>mode</Text>
+                <Text style={tb.strategyStatValue}>{tbModeLabel}</Text>
+              </View>
+              <View style={tb.strategyDivider} />
+              <View style={tb.strategyStat}>
+                <Text style={tb.strategyStatLabel}>setups</Text>
+                <Text style={tb.strategyStatValue}>{tbActiveSetups}</Text>
+              </View>
+              <View style={tb.strategyDivider} />
+              <View style={tb.strategyStat}>
+                <Text style={tb.strategyStatLabel}>trades</Text>
+                <Text style={tb.strategyStatValue}>{tbDailyTrades}</Text>
+              </View>
+              <View style={tb.strategyDivider} />
+              <View style={tb.strategyStat}>
+                <Text style={tb.strategyStatLabel}>open</Text>
+                <Text style={tb.strategyStatValue}>{tbOpenPositions}</Text>
+              </View>
+            </View>
+            {tbWatchlist.length > 0 && (
+              <View style={tb.strategyTags}>
+                {tbWatchlist.slice(0, 5).map((sym: string) => (
+                  <View key={sym} style={tb.strategyTag}>
+                    <Text style={tb.strategyTagText}>{sym}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {tbRecentTrades.length === 0 ? (
+            <View style={tb.emptyTradesCard}>
+              <Text style={tb.emptyTradesText}>No trades yet</Text>
+            </View>
+          ) : tbRecentTrades.map((item: any, i: number) => {
+            const sideRaw = (item.direction ?? item.side ?? '').toString().toUpperCase()
+            const isBuy = sideRaw.includes('BUY') || sideRaw === 'LONG'
+            const pnl = item.pnl ?? item.realizedPnl ?? item.unrealizedPnl ?? item.unrealizedPnlUsd ?? null
+            const symbol = item.tokenSymbol ?? item.symbol ?? item.token ?? 'MARKET'
+            const tradeType = item.type ?? item.strategy ?? (item.takeProfit != null || item.stopLoss != null ? 'Managed' : 'Spot')
+            const entry = item.entryPrice ?? item.fillPrice ?? null
+            const size = item.sizeUsd ?? item.size ?? item.qty ?? null
+
             return (
-              <View style={tb.decisionRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 14 }}>
-                    {item.tokenSymbol ?? item.symbol ?? item.token ?? '?'}
-                  </Text>
-                  <View style={[tb.actionBadge, { backgroundColor: (isBuy ? Colors.accentGreen : Colors.accentRed) + '22', borderColor: isBuy ? Colors.accentGreen : Colors.accentRed }]}>
-                    <Text style={{ color: isBuy ? Colors.accentGreen : Colors.accentRed, fontSize: 10, fontWeight: '700' }}>
-                      {item.direction ?? item.side ?? '?'}
+              <View key={item.id ?? `${symbol}-${i}`} style={tb.tradeCard}>
+                <View style={tb.tradeTopRow}>
+                  <View style={[tb.tradeSideBadge, { backgroundColor: isBuy ? 'rgba(0,200,150,0.12)' : 'rgba(255,69,58,0.12)' }]}>
+                    <Text style={[tb.tradeSideText, { color: isBuy ? Colors.accentGreen : Colors.accentRed }]}>
+                      {sideRaw || '?'}
                     </Text>
                   </View>
+                  <Text style={tb.tradePair}>{symbol}</Text>
+                  <View style={tb.tradeAgentTag}>
+                    <Text style={tb.tradeAgentTagText}>{agentName}</Text>
+                  </View>
+                  <View style={{ flex: 1 }} />
                   {pnl != null && (
-                    <Text style={{ color: pnl >= 0 ? Colors.accentGreen : Colors.accentRed, fontSize: 13, marginLeft: 'auto' }}>
-                      {pnl >= 0 ? '+' : ''}${Number(pnl).toFixed(2)}
+                    <Text style={[tb.tradePnl, { color: Number(pnl) >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+                      {Number(pnl) >= 0 ? '+' : ''}${Math.abs(Number(pnl)).toFixed(2)}
                     </Text>
                   )}
                 </View>
-                {item.entryPrice != null && (
-                  <Text style={{ color: Colors.textSecondary, fontSize: 12, marginTop: 4 }}>
-                    Entry: ${item.entryPrice} · Size: ${item.sizeUsd ?? item.size ?? '?'}
+
+                <View style={tb.tradeMetaRow}>
+                  {entry != null && (
+                    <View style={tb.tradeMetaCol}>
+                      <Text style={tb.tradeMetaLabel}>entry</Text>
+                      <Text style={tb.tradeMetaValue}>${Number(entry).toLocaleString('en-US', { maximumFractionDigits: 2 })}</Text>
+                    </View>
+                  )}
+                  {size != null && (
+                    <View style={tb.tradeMetaCol}>
+                      <Text style={tb.tradeMetaLabel}>size</Text>
+                      <Text style={tb.tradeMetaValue}>{typeof size === 'number' ? size : String(size)}</Text>
+                    </View>
+                  )}
+                  <View style={tb.tradeMetaCol}>
+                    <Text style={tb.tradeMetaLabel}>type</Text>
+                    <Text style={tb.tradeMetaValue}>{String(tradeType)}</Text>
+                  </View>
+                  <View style={{ flex: 1 }} />
+                  <Text style={tb.tradeTime}>
+                    {item.created_at ? formatTime001(item.created_at) : ''}
                   </Text>
-                )}
+                </View>
               </View>
             )
-          }}
-        />
+          })}
+        </ScrollView>
       )}
 
       {/* Positions tab */}
@@ -1266,6 +1389,81 @@ const tb = StyleSheet.create({
     borderWidth: 1, borderColor: '#333330',
   },
   chipText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' },
+  tabScroller: { flexGrow: 0, marginTop: 16, marginBottom: 4 },
+  tabScrollContent: {
+    paddingHorizontal: 20,
+    paddingRight: 24,
+    gap: 10,
+    alignItems: 'center',
+  },
+  tabPill: {
+    width: 96,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    overflow: 'hidden',
+  },
+  tabPillInner: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabPillActive: {
+    backgroundColor: 'rgba(217,119,87,0.12)',
+    borderColor: Colors.accentAmber,
+  },
+  tabPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    includeFontPadding: false,
+    color: Colors.textMuted,
+  },
+  tabPillTextActive: {
+    color: Colors.accentAmber,
+  },
+  tradesContent: { padding: 16, gap: 12, paddingBottom: 28 },
+  strategyBrief: { color: Colors.textSecondary, fontSize: 14, lineHeight: 22 },
+  strategyCard: {
+    backgroundColor: '#141412',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#252522',
+    gap: 12,
+  },
+  strategyCardLabel: {
+    color: Colors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  strategyStats: { flexDirection: 'row', alignItems: 'center' },
+  strategyStat: { flex: 1, gap: 3, alignItems: 'center' },
+  strategyStatLabel: {
+    color: Colors.textMuted,
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  strategyStatValue: { color: Colors.textPrimary, fontSize: 13, fontWeight: '700' },
+  strategyDivider: { width: 1, alignSelf: 'stretch', backgroundColor: '#252522' },
+  strategyTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  strategyTag: {
+    backgroundColor: '#1c1c19',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#2b2b27',
+  },
+  strategyTagText: { color: Colors.textSecondary, fontSize: 11, fontWeight: '600' },
   decisionRow: {
     backgroundColor: '#1a1a18', borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: '#2a2a28',
@@ -1273,6 +1471,57 @@ const tb = StyleSheet.create({
   actionBadge: {
     paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1,
   },
+  emptyTradesCard: {
+    backgroundColor: '#141412',
+    borderRadius: 16,
+    paddingVertical: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#252522',
+  },
+  emptyTradesText: { color: Colors.textMuted, fontSize: 13 },
+  tradeCard: {
+    backgroundColor: '#161613',
+    borderRadius: 16,
+    padding: 14,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#252522',
+  },
+  tradeTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tradeSideBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  tradeSideText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.6 },
+  tradePair: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
+  tradeAgentTag: {
+    backgroundColor: 'rgba(217,119,87,0.12)',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,87,0.24)',
+  },
+  tradeAgentTagText: { color: Colors.accentAmber, fontSize: 10, fontWeight: '700' },
+  tradePnl: {
+    fontSize: 16,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  tradeMetaRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 16 },
+  tradeMetaCol: { gap: 3 },
+  tradeMetaLabel: {
+    color: Colors.textMuted,
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  tradeMetaValue: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  tradeTime: { color: Colors.textMuted, fontSize: 11 },
   shareBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     borderWidth: 1, borderColor: Colors.accentAmber, borderRadius: 14,
@@ -1297,10 +1546,17 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
   const [input, setInput] = useState('')
   const [cmdPickerVisible, setCmdPickerVisible] = useState(false)
   const [atBottom, setAtBottom] = useState(true)
+  const [pendingReplies, setPendingReplies] = useState(0)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
 
   useEffect(() => subscribeToMessages(agentId, setMessages), [agentId])
+  useEffect(() => {
+    if (messages.length === 0) return
+    if (messages[messages.length - 1]?.direction === 'outbound') {
+      setPendingReplies(0)
+    }
+  }, [messages])
 
   function handleScroll(e: any) {
     setAtBottom(e.nativeEvent.contentOffset.y < 40)
@@ -1310,6 +1566,7 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
     const text = input.trim()
     if (!text || !user) return
     setInput('')
+    setPendingReplies((count) => count + 1)
     await addMessage(agentId, {
       agent_id: agentId,
       user_id: user.id,
@@ -1319,6 +1576,7 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
   }
 
   const reversed = [...messages].reverse()
+  const showTyping = pendingReplies > 0 || hasPendingReply(messages)
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
@@ -1343,6 +1601,7 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
         onScroll={handleScroll}
         scrollEventThrottle={100}
         contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+        ListHeaderComponent={showTyping ? <TypingBubble /> : null}
         renderItem={({ item }) => {
           const isUser = item.direction === 'inbound'
           return (
@@ -1375,6 +1634,7 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
                 setCmdPickerVisible(false)
                 setInput('')
                 if (!user) return
+                setPendingReplies((count) => count + 1)
                 await addMessage(agentId, {
                   agent_id: agentId,
                   user_id: (user as any).id ?? (user as any).uid,
@@ -1392,9 +1652,9 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
       )}
 
       {/* Input */}
-      <View style={s001.inputRow}>
+      <View style={s001.inputBar}>
         <TextInput
-          style={s001.input}
+          style={s001.inputField}
           value={input}
           onChangeText={(v) => {
             setInput(v)
@@ -1430,6 +1690,7 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
   const [agentDoc, setAgentDoc] = useState<any>(null)
   const [input, setInput] = useState('')
   const [cmdPickerVisible, setCmdPickerVisible] = useState(false)
+  const [pendingReplies, setPendingReplies] = useState(0)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
 
@@ -1445,34 +1706,44 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
     return unsub
   }, [agentId])
 
-  async function sendChat() {
-    const text = input.trim()
-    if (!text || !user) return
-    setInput('')
-    setCmdPickerVisible(false)
+  const sendMarketAdvisorMessage = useCallback(async (text: string) => {
+    const trimmed = text.trim()
+    if (!trimmed || !user) return
     const name = agentDoc?.name ?? 'Market Advisor'
+    setPendingReplies((count) => count + 1)
     try {
       const messageDocId = await addMessage(agentId, {
         agent_id: agentId,
         user_id: user.uid,
         direction: 'inbound',
-        content: text,
+        content: trimmed,
       })
-      void processMarketAdvisorInbound({
+      await processMarketAdvisorInbound({
         agentId,
         userId: user.uid,
         messageDocId,
-        userText: text,
+        userText: trimmed,
         agentName: name,
       })
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Could not send message'
       Alert.alert('Chat', msg)
+    } finally {
+      setPendingReplies((count) => Math.max(0, count - 1))
     }
+  }, [agentDoc?.name, agentId, user])
+
+  async function sendChat() {
+    const text = input.trim()
+    if (!text || !user) return
+    setInput('')
+    setCmdPickerVisible(false)
+    await sendMarketAdvisorMessage(text)
   }
 
   const reversed = [...messages].reverse()
   const agentName = agentDoc?.name ?? 'Market Advisor'
+  const showTyping = agentDoc?.is_typing || pendingReplies > 0 || hasPendingReply(messages)
 
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bgPrimary }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
@@ -1491,13 +1762,21 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
       {/* Messages */}
       <FlatList
         ref={flatRef}
+        style={{ flex: 1 }}
         data={reversed}
         keyExtractor={(item) => item.id ?? String(item.created_at)}
         inverted
-        contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
-        ListHeaderComponent={agentDoc?.is_typing ? <TypingBubble /> : null}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 8,
+          justifyContent: reversed.length === 0 ? 'center' : 'flex-start',
+        }}
+        ListHeaderComponent={showTyping ? <TypingBubble /> : null}
         ListEmptyComponent={
-          <View style={{ alignItems: 'center', paddingTop: 60, gap: 8 }}>
+          <View style={{ alignItems: 'center', gap: 8, paddingHorizontal: 24 }}>
             <Text style={{ color: Colors.textMuted, fontSize: 15 }}>Ask me anything about your portfolio.</Text>
           </View>
         }
@@ -1536,25 +1815,7 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
               onPress={async () => {
                 setCmdPickerVisible(false)
                 setInput('')
-                if (!user) return
-                try {
-                  const messageDocId = await addMessage(agentId, {
-                    agent_id: agentId,
-                    user_id: user.uid,
-                    direction: 'inbound',
-                    content: c.cmd,
-                  })
-                  void processMarketAdvisorInbound({
-                    agentId,
-                    userId: user.uid,
-                    messageDocId,
-                    userText: c.cmd,
-                    agentName,
-                  })
-                } catch (e: unknown) {
-                  const msg = e instanceof Error ? e.message : 'Could not send'
-                  Alert.alert('Chat', msg)
-                }
+                await sendMarketAdvisorMessage(c.cmd)
               }}
               activeOpacity={0.7}
             >
@@ -1566,9 +1827,9 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
       )}
 
       {/* Input */}
-      <View style={s001.inputRow}>
+      <View style={s001.inputBar}>
         <TextInput
-          style={s001.input}
+          style={s001.inputField}
           value={input}
           onChangeText={(v) => {
             setInput(v)
@@ -2267,6 +2528,7 @@ export default function AgentDetailScreen() {
   const [orModels, setOrModels] = useState<{ id: string; name: string }[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
   const [savingModel, setSavingModel] = useState(false)
+  const sendTimingRef = useRef<Record<string, { startedAt: number; contentPreview: string }>>({})
 
   const { agents, getConnectionStatus, upsertAgent } = useAgentsStore()
   const { user, session, isLoading: authLoading } = useAuthStore()
@@ -2333,6 +2595,7 @@ export default function AgentDetailScreen() {
     if (!agentTabs.includes(tab)) setTab('chat')
   }, [agentTabs])
   const messages = messagesByAgent[id] ?? []
+  const hasPendingReplyFromHistory = useMemo(() => hasPendingReply(messages), [messages])
   // Inverted FlatList needs data in reverse order (newest first = renders at visual bottom)
   const messagesReversed = useMemo(() => [...messages].reverse(), [messages])
   const status = id ? getConnectionStatus(id) : 'disconnected'
@@ -2466,6 +2729,18 @@ export default function AgentDetailScreen() {
     if (!id) return
     channelRef.current = subscribeToAgent(id, {
       onMessage: (payload) => {
+        if (payload.direction === 'outbound') {
+          const pending = Object.entries(sendTimingRef.current)[0]
+          if (pending) {
+            const [key, meta] = pending
+            console.log('[agentTiming]', 'outbound-received', {
+              agentId: id,
+              elapsedMs: Math.round(nowMs() - meta.startedAt),
+              contentPreview: meta.contentPreview,
+            })
+            delete sendTimingRef.current[key]
+          }
+        }
         const msgId = (payload as any).id ?? String(payload.ts)
         const msg: Message = {
           id: msgId,
@@ -2485,9 +2760,9 @@ export default function AgentDetailScreen() {
     }
   }, [id])
 
-  // Reset unread badge and typing state when switching tabs
+  // Reset unread badge when switching tabs.
   useEffect(() => {
-    if (tab !== 'chat') { setIsAgentTyping(false); return }
+    if (tab !== 'chat') return
     isAtBottomRef.current = true
     setShowScrollBtn(false)
     setUnreadWhileScrolled(0)
@@ -2594,6 +2869,12 @@ export default function AgentDetailScreen() {
   async function handleSend() {
     if ((!input.trim() && attachments.length === 0) || !user || !id) return
     const content = input.trim() || (attachments.length > 0 ? '[image]' : '')
+    const sendStartedAt = nowMs()
+    const pendingKey = `${id}-${Date.now()}`
+    sendTimingRef.current[pendingKey] = {
+      startedAt: sendStartedAt,
+      contentPreview: content.slice(0, 48),
+    }
     setInput('')
     const urls = attachments.filter((a) => a.remote).map((a) => a.remote!)
     const meta = urls.length > 0 ? { attachments: urls } : undefined
@@ -2611,33 +2892,56 @@ export default function AgentDetailScreen() {
       created_at: sentAt,
       metadata: meta ?? null,
     })
+    console.log('[agentTiming]', 'local-send-start', {
+      agentId: id,
+      contentPreview: content.slice(0, 48),
+      attachmentCount: urls.length,
+    })
 
-    if (agent?.metadata?.paired) setIsAgentTyping(true)
+    setIsAgentTyping(true)
 
     if (agent?.metadata?.type === 'telegram') {
       // Telegram: persist inbound + forward via edge function
       await supabase.from('messages').insert({
         agent_id: id, user_id: user.id, direction: 'inbound' as const, content,
       })
+      console.log('[agentTiming]', 'telegram-insert-complete', {
+        agentId: id,
+        elapsedMs: Math.round(nowMs() - sendStartedAt),
+      })
       fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/telegram-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ agentId: id, userId: user.id, text: content }),
-      }).catch(() => {})
+      }).catch(() => { setIsAgentTyping(false) })
     } else if (agent?.metadata?.paired) {
       // Connector agent: persist inbound + relay via Realtime for connector to pick up
       const { error: insertError } = await supabase.from('messages').insert({
         agent_id: id, user_id: user.id, direction: 'inbound' as const, content,
       })
+      console.log('[agentTiming]', 'paired-insert-complete', {
+        agentId: id,
+        elapsedMs: Math.round(nowMs() - sendStartedAt),
+        insertError: insertError?.message ?? null,
+      })
       if (insertError) showToast('Message not saved')
       await sendMessage(channelRef.current, id, user.id, content, meta)
+      console.log('[agentTiming]', 'paired-relay-sent', {
+        agentId: id,
+        elapsedMs: Math.round(nowMs() - sendStartedAt),
+      })
     } else {
       // Platform agent: persist inbound first, then call chat edge function
       await supabase.from('messages').insert({
         agent_id: id, user_id: user.id, direction: 'inbound' as const, content,
       })
+      console.log('[agentTiming]', 'platform-insert-complete', {
+        agentId: id,
+        elapsedMs: Math.round(nowMs() - sendStartedAt),
+      })
       const { data: { session: freshSession } } = await supabase.auth.getSession()
       if (!freshSession?.access_token) {
+        setIsAgentTyping(false)
         showToast('Session expired — please sign in again')
         return
       }
@@ -2649,7 +2953,14 @@ export default function AgentDetailScreen() {
         },
         body: JSON.stringify({ agent_id: id, content }),
       }).then(async (r) => {
+        console.log('[agentTiming]', 'chat-function-response', {
+          agentId: id,
+          elapsedMs: Math.round(nowMs() - sendStartedAt),
+          ok: r.ok,
+          status: r.status,
+        })
         if (!r.ok) {
+          setIsAgentTyping(false)
           const err = await r.json().catch(() => ({}))
           showToast((err as any).error ?? `Error ${r.status}`)
           return
@@ -2663,7 +2974,10 @@ export default function AgentDetailScreen() {
           .order('created_at', { ascending: false })
           .limit(1)
         if (data?.[0]) addMessage(id, data[0])
-      }).catch(() => showToast('Failed to reach agent'))
+      }).catch(() => {
+        setIsAgentTyping(false)
+        showToast('Failed to reach agent')
+      })
     }
   }
 
@@ -2958,7 +3272,7 @@ export default function AgentDetailScreen() {
               keyExtractor={(m) => m.id}
               renderItem={renderMessage}
               contentContainerStyle={styles.chatList}
-              ListHeaderComponent={isAgentTyping ? <TypingBubble /> : null}
+              ListHeaderComponent={isAgentTyping || hasPendingReplyFromHistory ? <TypingBubble /> : null}
               inverted
               removeClippedSubviews={true}
               windowSize={10}

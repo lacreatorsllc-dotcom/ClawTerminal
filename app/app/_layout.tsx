@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Stack, router } from 'expo-router'
 import { StatusBar, View, ActivityIndicator } from 'react-native'
-import { auth, onAuthStateChanged, getProfile } from '../lib/firebase'
+import { auth, onAuthStateChanged, ensureUserProfile } from '../lib/firebase'
 import { useAuthStore } from '../stores/authStore'
 import { Colors } from '../constants/colors'
 
@@ -30,7 +30,7 @@ export default function RootLayout() {
       setUser(user)
 
       try {
-        const profile = await getProfile(user.uid)
+        const profile = await ensureUserProfile(user.uid, user.email)
         setUsername(profile?.username ?? null)
         if (!profile?.username) {
           safeReplace('/set-username')
@@ -38,7 +38,7 @@ export default function RootLayout() {
           safeReplace('/(tabs)/agents')
         }
       } catch (e) {
-        console.warn('[_layout] getProfile failed', e)
+        console.warn('[_layout] ensureUserProfile failed', e)
         safeReplace('/set-username')
       } finally {
         setLoading(false)

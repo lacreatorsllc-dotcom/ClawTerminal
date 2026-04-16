@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -11,12 +11,19 @@ import { Colors } from '../constants/colors'
 const USERNAME_RE = /^[a-z0-9_]{3,20}$/
 
 export default function SetUsernameScreen() {
-  const { user, setUsername: storeUsername } = useAuthStore()
-  const [username, setUsernameLocal] = useState('')
+  const { user, username: currentUsername, setUsername: storeUsername } = useAuthStore()
+  const [username, setUsernameLocal] = useState(currentUsername ?? '')
   const [checking, setChecking] = useState(false)
   const [available, setAvailable] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (currentUsername) {
+      setUsernameLocal(currentUsername)
+      setAvailable(true)
+    }
+  }, [currentUsername])
 
   async function onChangeText(value: string) {
     const lower = value.toLowerCase()
@@ -24,6 +31,10 @@ export default function SetUsernameScreen() {
     setAvailable(null)
     setError(null)
     if (!USERNAME_RE.test(lower)) return
+    if (lower === currentUsername) {
+      setAvailable(true)
+      return
+    }
     setChecking(true)
     const taken = await isUsernameTaken(lower)
     setChecking(false)
@@ -37,7 +48,7 @@ export default function SetUsernameScreen() {
     try {
       await claimUsername(user.uid, username)
       storeUsername(username)
-      router.replace('/(tabs)/agents' as any)
+      router.replace('/(tabs)/settings' as any)
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -59,9 +70,9 @@ export default function SetUsernameScreen() {
       </TouchableOpacity>
 
       <View style={styles.inner}>
-        <Text style={styles.title}>Choose your slug</Text>
+        <Text style={styles.title}>Edit your slug</Text>
         <Text style={styles.subtitle}>
-          Your unique identity on SLUGS.{'\n'}You can't change it later.
+          Update the username people use to find you on SLUGS.
         </Text>
 
         <View style={styles.inputRow}>
@@ -98,7 +109,9 @@ export default function SetUsernameScreen() {
         >
           {loading
             ? <ActivityIndicator color={Colors.bgPrimary} />
-            : <Text style={styles.claimBtnText}>Claim @{username || 'slug'}</Text>
+            : <Text style={styles.claimBtnText}>
+                {username === currentUsername ? `Keep @${username || 'slug'}` : `Save @${username || 'slug'}`}
+              </Text>
           }
         </TouchableOpacity>
       </View>

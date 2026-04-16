@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Image, Linking,
 } from 'react-native'
-import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from '../lib/firebase'
+import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, ensureUserProfile } from '../lib/firebase'
 import { Colors } from '../constants/colors'
 import type { WalletProvider } from '../lib/phantomConnect'
 
@@ -53,8 +53,9 @@ export default function AuthScreen() {
     setLoading(true)
     setError(null)
     try {
-      await createUserWithEmailAndPassword(auth, email, password)
-      // _layout.tsx routes new users (no username) to /set-username
+      const cred = await createUserWithEmailAndPassword(auth, email, password)
+      await ensureUserProfile(cred.user.uid, cred.user.email)
+      // _layout.tsx handles routing after auth state settles
     } catch (e: any) {
       setError(e.message)
     } finally {

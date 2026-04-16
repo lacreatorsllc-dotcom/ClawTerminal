@@ -18,6 +18,15 @@ import {
 } from 'firebase/firestore'
 import { db, getProfile } from './firebase'
 
+function nowMs() {
+  return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
+function logMarketAdvisorTiming(step: string, startedAt: number, extra?: Record<string, unknown>) {
+  const elapsedMs = Math.round(nowMs() - startedAt)
+  console.log('[marketAdvisorTiming]', step, { elapsedMs, ...(extra ?? {}) })
+}
+
 async function callLlm(apiKey: string, messages: { role: 'system' | 'user' | 'assistant'; content: string }[]): Promise<string> {
   const key = apiKey.trim()
   if (key.startsWith('sk-') && !key.startsWith('sk-ant-')) {
@@ -89,6 +98,7 @@ export async function processMarketAdvisorInbound(params: {
 }): Promise<void> {
   const { agentId, userId, messageDocId, userText, agentName } = params
   const msgRef = doc(db, 'agents', agentId, 'messages', messageDocId)
+  const startedAt = nowMs()
 
   try {
     await runTransaction(db, async (tx) => {
@@ -108,6 +118,7 @@ export async function processMarketAdvisorInbound(params: {
     console.warn('[marketAdvisorClient] claim:', msg)
     return
   }
+  logMarketAdvisorTiming('claim-complete', startedAt, { agentId })
 
   const writeOut = async (content: string) => {
     await addDoc(collection(db, 'agents', agentId, 'messages'), {
@@ -117,10 +128,12 @@ export async function processMarketAdvisorInbound(params: {
       user_id: userId,
       created_at: serverTimestamp(),
     })
+    logMarketAdvisorTiming('outbound-written', startedAt, { agentId, contentLength: content.length })
   }
 
   try {
     const profile = await getProfile(userId)
+    logMarketAdvisorTiming('profile-loaded', startedAt, { hasProfile: !!profile })
     const apiKey = ((profile?.ai_api_key as string) ?? '').trim()
 
     if (!apiKey) {
@@ -131,6 +144,7 @@ export async function processMarketAdvisorInbound(params: {
     }
 
     const portfolioContext = await buildPortfolioContext(userId)
+    logMarketAdvisorTiming('portfolio-context-built', startedAt)
     let marketContext = ''
     try {
       const slugSnap = await getDoc(doc(db, 'agents', 'slug-001'))
@@ -152,6 +166,7 @@ export async function processMarketAdvisorInbound(params: {
         limit(20),
       ),
     )
+    logMarketAdvisorTiming('history-loaded', startedAt, { historyCount: histSnap.size })
     const history = histSnap.docs
       .map((x) => x.data())
       .reverse()
@@ -173,7 +188,13 @@ export async function processMarketAdvisorInbound(params: {
       { role: 'user', content: userText },
     ]
 
+    const llmStartedAt = nowMs()
     const reply = await callLlm(apiKey, msgs)
+    console.log('[marketAdvisorTiming]', 'llm-complete', {
+      elapsedMs: Math.round(nowMs() - llmStartedAt),
+      provider: apiKey.startsWith('AIza') ? 'gemini' : 'openai',
+      promptMessages: msgs.length,
+    })
     await writeOut(reply)
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)

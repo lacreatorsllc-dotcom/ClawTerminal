@@ -6,6 +6,7 @@ import {
 import { useLocalSearchParams, router } from 'expo-router'
 import {
   getPublicProfileByUsername,
+  getPublicProfileByUid,
   listAgentsForUser,
   listPublicFeedEventsForUser,
   countFollowersOf,
@@ -67,7 +68,7 @@ function timeAgo(iso: string | null): string {
 }
 
 export default function PublicProfileScreen() {
-  const { username } = useLocalSearchParams<{ username: string }>()
+  const { username, uid } = useLocalSearchParams<{ username: string; uid?: string }>()
   const { user: me } = useAuthStore()
 
   const [profile, setProfile] = useState<PublicProfile | null>(null)
@@ -79,6 +80,7 @@ export default function PublicProfileScreen() {
   const [followingCount, setFollowingCount] = useState(0)
   const [isFollowing, setIsFollowing] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
+  const isOwnProfile = !!me?.uid && !!profile?.id && me.uid === profile.id
 
   useEffect(() => {
     if (!username) return
@@ -88,37 +90,41 @@ export default function PublicProfileScreen() {
   async function loadProfile() {
     setLoading(true)
     setNotFound(false)
+    try {
+      const uname = Array.isArray(username) ? username[0] : username
+      const userId = Array.isArray(uid) ? uid[0] : uid
+      if (!uname && !userId) return
 
-    const uname = Array.isArray(username) ? username[0] : username
-    if (!uname) {
-      setLoading(false)
-      return
-    }
+      const profileData = userId
+        ? await getPublicProfileByUid(userId)
+        : await getPublicProfileByUsername(uname)
+      if (!profileData) {
+        setNotFound(true)
+        return
+      }
 
-    const profileData = await getPublicProfileByUsername(uname)
-    if (!profileData) {
+      setProfile(profileData as PublicProfile)
+
+      const myUid = me?.uid ?? null
+      const [agentRows, feedRows, followers, following, amFollowing] = await Promise.all([
+        listAgentsForUser(profileData.id),
+        listPublicFeedEventsForUser(profileData.id, 20),
+        countFollowersOf(profileData.id),
+        countFollowingOf(profileData.id),
+        myUid ? isFollowingUser(myUid, profileData.id) : Promise.resolve(false),
+      ])
+
+      setAgents(agentRows as unknown as PublicAgent[])
+      setFeed(feedRows)
+      setFollowerCount(followers)
+      setFollowingCount(following)
+      setIsFollowing(amFollowing)
+    } catch (error) {
+      console.warn('[profile] loadProfile failed', error)
       setNotFound(true)
+    } finally {
       setLoading(false)
-      return
     }
-
-    setProfile(profileData as PublicProfile)
-
-    const myUid = me?.uid ?? null
-    const [agentRows, feedRows, followers, following, amFollowing] = await Promise.all([
-      listAgentsForUser(profileData.id),
-      listPublicFeedEventsForUser(profileData.id, 20),
-      countFollowersOf(profileData.id),
-      countFollowingOf(profileData.id),
-      myUid ? isFollowingUser(myUid, profileData.id) : Promise.resolve(false),
-    ])
-
-    setAgents(agentRows as unknown as PublicAgent[])
-    setFeed(feedRows)
-    setFollowerCount(followers)
-    setFollowingCount(following)
-    setIsFollowing(amFollowing)
-    setLoading(false)
   }
 
   const toggleFollow = useCallback(async () => {
@@ -198,7 +204,7 @@ export default function PublicProfileScreen() {
       </View>
 
       {/* Follow button */}
-      {me && (
+      {me && !isOwnProfile && (
         <View style={styles.followBtnRow}>
           <TouchableOpacity
             style={[styles.followBtn, isFollowing && styles.followBtnActive]}
