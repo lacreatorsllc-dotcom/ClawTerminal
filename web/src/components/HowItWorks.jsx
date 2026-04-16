@@ -7,8 +7,15 @@ const steps = [
     description: 'Pick a name, connect your wallet, and spin up your first agent in minutes.',
     icon: '⬡',
     snippet: (
-      <div className="mt-3 bg-bg rounded-lg p-2 border border-glass font-mono text-xs text-green">
-        <span className="text-text2">$ </span>slugs deploy --name koda
+      <div className="mt-3 bg-bg rounded-lg p-3 border border-glass space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-amber/10 border border-amber/20 flex items-center justify-center text-[10px] font-bold text-amber">⬡</div>
+          <div>
+            <div className="text-[10px] font-semibold text-white font-mono">koda</div>
+            <div className="text-[9px] text-text2">Agent created · wallet connected</div>
+          </div>
+          <div className="ml-auto w-2 h-2 rounded-full bg-green pulse-dot" />
+        </div>
       </div>
     ),
   },
