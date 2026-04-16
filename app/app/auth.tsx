@@ -6,10 +6,12 @@ import {
 import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, ensureUserProfile } from '../lib/firebase'
 import { Colors } from '../constants/colors'
 import type { WalletProvider } from '../lib/phantomConnect'
+import { useDesktopWebLayout } from '../lib/responsive'
 
 type Mode = 'signin' | 'signup' | 'forgot'
 
 export default function AuthScreen() {
+  const isDesktopWeb = useDesktopWebLayout()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [mode, setMode] = useState<Mode>('signin')
@@ -81,14 +83,91 @@ export default function AuthScreen() {
   if (mode === 'forgot') {
     return (
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.inner}>
-          <Image source={require('../assets/slugs-logo.png')} style={styles.logoImage} resizeMode="contain" />
-          <Text style={styles.usernameTitle}>Reset password</Text>
-          <Text style={styles.usernameSubtitle}>Enter your email and we'll send a reset link.</Text>
+        <View style={styles.shell}>
+          <View style={[styles.inner, isDesktopWeb && styles.innerDesktop]}>
+            {isDesktopWeb && (
+              <View style={styles.desktopShowcase}>
+                <View style={styles.desktopGlow} />
+                <Text style={styles.desktopEyebrow}>SLUGS Command</Text>
+                <Text style={styles.desktopTitle}>Recover your account without losing your place.</Text>
+                <Text style={styles.desktopBody}>
+                  Reset your password, then jump back into your agents, feed, and search from the same profile.
+                </Text>
+              </View>
+            )}
 
-          {resetSent ? (
-            <Text style={styles.resetSentText}>Check your inbox — reset link sent to {email}</Text>
-          ) : (
+            <View style={[styles.formCard, isDesktopWeb && styles.formCardDesktop]}>
+              <Image source={require('../assets/slugs-logo.png')} style={styles.logoImage} resizeMode="contain" />
+              <Text style={styles.usernameTitle}>Reset password</Text>
+              <Text style={styles.usernameSubtitle}>Enter your email and we'll send a reset link.</Text>
+
+              {resetSent ? (
+                <Text style={styles.resetSentText}>Check your inbox — reset link sent to {email}</Text>
+              ) : (
+                <View style={styles.form}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Email"
+                    placeholderTextColor={Colors.textMuted}
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    autoFocus
+                  />
+                  {error && <Text style={styles.error}>{error}</Text>}
+                  <TouchableOpacity style={styles.primaryBtn} onPress={handleForgotPassword} disabled={loading}>
+                    {loading
+                      ? <ActivityIndicator color={Colors.bgPrimary} />
+                      : <Text style={styles.primaryBtnText}>Send reset link</Text>
+                    }
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <TouchableOpacity onPress={() => { setMode('signin'); setError(null); setResetSent(false) }}>
+                <Text style={styles.toggleText}>Back to sign in</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    )
+  }
+
+  // ── Credentials step ───────────────────────────────────────────────────────
+  return (
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.shell}>
+        <View style={[styles.inner, isDesktopWeb && styles.innerDesktop]}>
+          {isDesktopWeb && (
+            <View style={styles.desktopShowcase}>
+              <View style={styles.desktopGlow} />
+              <Text style={styles.desktopEyebrow}>Desktop Command Center</Text>
+              <Text style={styles.desktopTitle}>Run your agent roster like a real trading floor.</Text>
+              <Text style={styles.desktopBody}>
+                Watch feed activity, search other operators, and manage your slugs from one desktop workspace built for longer sessions.
+              </Text>
+              <View style={styles.desktopSignalRow}>
+                <View style={styles.desktopSignalCard}>
+                  <Text style={styles.desktopSignalValue}>Live</Text>
+                  <Text style={styles.desktopSignalLabel}>Agent feed</Text>
+                </View>
+                <View style={styles.desktopSignalCard}>
+                  <Text style={styles.desktopSignalValue}>Unified</Text>
+                  <Text style={styles.desktopSignalLabel}>Web, iOS, Android</Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          <View style={[styles.formCard, isDesktopWeb && styles.formCardDesktop]}>
+            <View style={styles.logoRow}>
+              <Image source={require('../assets/slugs-logo.png')} style={styles.logoImage} resizeMode="contain" />
+            </View>
+            <Text style={styles.tagline}>Mobile command center for AI agents</Text>
+
             <View style={styles.form}>
               <TextInput
                 style={styles.input}
@@ -99,106 +178,69 @@ export default function AuthScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoCorrect={false}
-                autoFocus
               />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor={Colors.textMuted}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+
               {error && <Text style={styles.error}>{error}</Text>}
-              <TouchableOpacity style={styles.primaryBtn} onPress={handleForgotPassword} disabled={loading}>
+
+              <TouchableOpacity
+                style={styles.primaryBtn}
+                onPress={mode === 'signin' ? handleSignIn : handleSignUp}
+                disabled={loading}
+              >
                 {loading
                   ? <ActivityIndicator color={Colors.bgPrimary} />
-                  : <Text style={styles.primaryBtnText}>Send reset link</Text>
+                  : <Text style={styles.primaryBtnText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
                 }
               </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(null) }}>
+                <Text style={styles.toggleText}>
+                  {mode === 'signin' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
+                </Text>
+              </TouchableOpacity>
+
+              {mode === 'signin' && (
+                <TouchableOpacity onPress={() => { setMode('forgot'); setError(null) }}>
+                  <Text style={styles.forgotText}>Forgot password?</Text>
+                </TouchableOpacity>
+              )}
+
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>or</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              {([
+                { id: 'phantom', label: 'Phantom', icon: '◎' },
+                { id: 'backpack', label: 'Backpack', icon: '⬡' },
+              ] as { id: WalletProvider; label: string; icon: string }[]).map(({ id, label, icon }) => (
+                <TouchableOpacity
+                  key={id}
+                  style={styles.walletBtn}
+                  onPress={() => handleWalletConnect(id)}
+                  disabled={!!connectingWallet}
+                >
+                  {connectingWallet === id
+                    ? <ActivityIndicator color={Colors.textPrimary} />
+                    : <>
+                        <Text style={styles.walletBtnText}>{icon}  {label}</Text>
+                        <Text style={styles.walletBtnSub}>Solana wallet</Text>
+                      </>
+                  }
+                </TouchableOpacity>
+              ))}
             </View>
-          )}
-
-          <TouchableOpacity onPress={() => { setMode('signin'); setError(null); setResetSent(false) }}>
-            <Text style={styles.toggleText}>Back to sign in</Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    )
-  }
-
-  // ── Credentials step ───────────────────────────────────────────────────────
-  return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.inner}>
-        <View style={styles.logoRow}>
-          <Image source={require('../assets/slugs-logo.png')} style={styles.logoImage} resizeMode="contain" />
-        </View>
-        <Text style={styles.tagline}>Mobile command center for AI agents</Text>
-
-        <View style={styles.form}>
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor={Colors.textMuted}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor={Colors.textMuted}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-
-          {error && <Text style={styles.error}>{error}</Text>}
-
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={mode === 'signin' ? handleSignIn : handleSignUp}
-            disabled={loading}
-          >
-            {loading
-              ? <ActivityIndicator color={Colors.bgPrimary} />
-              : <Text style={styles.primaryBtnText}>{mode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
-            }
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(null) }}>
-            <Text style={styles.toggleText}>
-              {mode === 'signin' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}
-            </Text>
-          </TouchableOpacity>
-
-          {mode === 'signin' && (
-            <TouchableOpacity onPress={() => { setMode('forgot'); setError(null) }}>
-              <Text style={styles.forgotText}>Forgot password?</Text>
-            </TouchableOpacity>
-          )}
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>or</Text>
-            <View style={styles.dividerLine} />
           </View>
-
-          {([
-            { id: 'phantom', label: 'Phantom', icon: '◎' },
-            { id: 'backpack', label: 'Backpack', icon: '⬡' },
-          ] as { id: WalletProvider; label: string; icon: string }[]).map(({ id, label, icon }) => (
-            <TouchableOpacity
-              key={id}
-              style={styles.walletBtn}
-              onPress={() => handleWalletConnect(id)}
-              disabled={!!connectingWallet}
-            >
-              {connectingWallet === id
-                ? <ActivityIndicator color={Colors.textPrimary} />
-                : <>
-                    <Text style={styles.walletBtnText}>{icon}  {label}</Text>
-                    <Text style={styles.walletBtnSub}>Solana wallet</Text>
-                  </>
-              }
-            </TouchableOpacity>
-          ))}
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -207,7 +249,84 @@ export default function AuthScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
-  inner: { flex: 1, justifyContent: 'center', paddingHorizontal: 24 },
+  shell: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 32 },
+  inner: { flex: 1, justifyContent: 'center' },
+  innerDesktop: {
+    width: '100%',
+    maxWidth: 1160,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    gap: 28,
+    flex: 0,
+  },
+  desktopShowcase: {
+    flex: 1,
+    minHeight: 620,
+    backgroundColor: '#181715',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    paddingHorizontal: 36,
+    paddingVertical: 40,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
+  desktopGlow: {
+    position: 'absolute',
+    top: -80,
+    right: -40,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: 'rgba(217, 119, 87, 0.14)',
+  },
+  desktopEyebrow: {
+    color: Colors.accentAmber,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  desktopTitle: {
+    color: Colors.textPrimary,
+    fontSize: 42,
+    lineHeight: 48,
+    fontWeight: '800',
+    maxWidth: 440,
+    marginTop: 18,
+  },
+  desktopBody: {
+    color: Colors.textSecondary,
+    fontSize: 17,
+    lineHeight: 28,
+    maxWidth: 470,
+    marginTop: 16,
+  },
+  desktopSignalRow: { flexDirection: 'row', gap: 14, marginTop: 28 },
+  desktopSignalCard: {
+    flex: 1,
+    backgroundColor: '#211f1c',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
+  desktopSignalValue: { color: Colors.textPrimary, fontSize: 19, fontWeight: '700', marginBottom: 6 },
+  desktopSignalLabel: { color: Colors.textSecondary, fontSize: 13, lineHeight: 20 },
+  formCard: { width: '100%' },
+  formCardDesktop: {
+    width: 440,
+    backgroundColor: '#181715',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    paddingHorizontal: 32,
+    paddingVertical: 34,
+    alignSelf: 'center',
+  },
   logoRow: { alignItems: 'flex-start', marginBottom: 8 },
   logoImage: { width: 160, height: 60, marginBottom: 8 },
   tagline: { fontSize: 14, color: Colors.textSecondary, marginBottom: 48 },

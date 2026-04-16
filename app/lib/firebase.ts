@@ -7,7 +7,6 @@ import {
   initializeAuth,
   getAuth,
   getReactNativePersistence,
-  browserLocalPersistence,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -51,15 +50,15 @@ const firebaseConfig = {
 const isFirstInit = getApps().length === 0
 const app = isFirstInit ? initializeApp(firebaseConfig) : getApps()[0]
 
-// initializeAuth must only be called once per app instance; use getAuth on re-renders/hot reload
-// On web use browserLocalPersistence; on native use AsyncStorage
-export const auth = isFirstInit
-  ? initializeAuth(app, {
-      persistence: Platform.OS === 'web'
-        ? browserLocalPersistence
-        : getReactNativePersistence(AsyncStorage),
-    })
-  : getAuth(app)
+// On web, let the Firebase web SDK initialize auth with its default browser-safe persistence.
+// On native, initialize once with AsyncStorage-backed persistence.
+export const auth = Platform.OS === 'web'
+  ? getAuth(app)
+  : (isFirstInit
+      ? initializeAuth(app, {
+          persistence: getReactNativePersistence(AsyncStorage),
+        })
+      : getAuth(app))
 
 export const db = getFirestore(app)
 

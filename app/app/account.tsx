@@ -7,7 +7,7 @@ import { auth, signOut } from '../lib/firebase'
 import { Colors } from '../constants/colors'
 
 export default function SettingsScreen() {
-  const { user, username, walletAddress, walletProvider } = useAuthStore()
+  const { user, username, walletAddress, walletProvider, setLoading } = useAuthStore()
 
   const initials = (() => {
     if (username) {
@@ -25,8 +25,8 @@ export default function SettingsScreen() {
   }
 
   async function handleSignOut() {
+    setLoading(true)
     await signOut(auth)
-    router.replace('/auth')
   }
 
   function confirmSignOut() {

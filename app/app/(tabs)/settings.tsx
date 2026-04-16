@@ -18,7 +18,7 @@ function detectProvider(key: string): AIProvider {
 }
 
 export default function SettingsScreen() {
-  const { user } = useAuthStore()
+  const { user, setLoading: setAuthLoading } = useAuthStore()
   const [aiKey, setAiKey] = useState('')
   const [savedKey, setSavedKey] = useState('')
   const [showKey, setShowKey] = useState(false)
@@ -67,15 +67,19 @@ export default function SettingsScreen() {
   }
 
   async function handleSignOut() {
+    setAuthLoading(true)
     await signOut(auth)
-    router.replace('/auth')
   }
 
   function confirmSignOut() {
-    Alert.alert('Sign Out', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: handleSignOut },
-    ])
+    if (Platform.OS === 'web') {
+      if (window.confirm('Sign out of SLUGS?')) handleSignOut()
+    } else {
+      Alert.alert('Sign Out', 'Are you sure?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: handleSignOut },
+      ])
+    }
   }
 
   return (

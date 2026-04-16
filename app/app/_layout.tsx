@@ -16,9 +16,13 @@ function safeReplace(path: string) {
 
 export default function RootLayout() {
   const { setUser, setUsername, setLoading, isLoading } = useAuthStore()
+  const authChangeIdRef = useRef(0)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
+      const authChangeId = authChangeIdRef.current + 1
+      authChangeIdRef.current = authChangeId
+
       if (!user) {
         setUser(null)
         setUsername(null)
@@ -31,6 +35,7 @@ export default function RootLayout() {
 
       try {
         const profile = await ensureUserProfile(user.uid, user.email)
+        if (authChangeIdRef.current !== authChangeId) return
         setUsername(profile?.username ?? null)
         if (!profile?.username) {
           safeReplace('/set-username')
@@ -38,9 +43,11 @@ export default function RootLayout() {
           safeReplace('/(tabs)/agents')
         }
       } catch (e) {
+        if (authChangeIdRef.current !== authChangeId) return
         console.warn('[_layout] ensureUserProfile failed', e)
         safeReplace('/set-username')
       } finally {
+        if (authChangeIdRef.current !== authChangeId) return
         setLoading(false)
       }
     })

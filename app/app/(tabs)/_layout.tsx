@@ -1,23 +1,58 @@
 import { Tabs } from 'expo-router'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
+import { useDesktopWebLayout } from '../../lib/responsive'
 
 export default function TabsLayout() {
+  const isDesktopWeb = useDesktopWebLayout()
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: false,
-        tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: 'rgba(0, 0, 0, 0.85)',
-          borderTopWidth: 0,
-          height: 88,
-          paddingBottom: 28,
-          paddingTop: 10,
-          borderTopLeftRadius: 24,
-          borderTopRightRadius: 24,
+        sceneStyle: {
+          backgroundColor: Colors.bgPrimary,
         },
+        tabBarShowLabel: isDesktopWeb,
+        tabBarLabelPosition: isDesktopWeb ? 'beside-icon' : undefined,
+        tabBarLabelStyle: {
+          fontSize: isDesktopWeb ? 16 : 14,
+          fontWeight: '700',
+          marginLeft: 0,
+        },
+        tabBarIconStyle: isDesktopWeb ? { marginBottom: 0, marginRight: 12 } : undefined,
+        tabBarItemStyle: isDesktopWeb
+          ? {
+              width: 224,
+              minHeight: 58,
+              marginHorizontal: 12,
+              marginVertical: 6,
+              borderRadius: 18,
+            }
+          : undefined,
+        tabBarPosition: isDesktopWeb ? 'left' : 'bottom',
+        tabBarVariant: isDesktopWeb ? 'material' : 'uikit',
+        tabBarStyle: isDesktopWeb
+          ? {
+              backgroundColor: '#11100f',
+              borderRightWidth: 1,
+              borderRightColor: Colors.bgBorder,
+              borderTopWidth: 0,
+              width: 272,
+              paddingTop: 44,
+              paddingBottom: 28,
+              paddingHorizontal: 10,
+            }
+          : {
+              position: 'absolute',
+              backgroundColor: 'rgba(0, 0, 0, 0.85)',
+              borderTopWidth: 0,
+              height: 88,
+              paddingBottom: 28,
+              paddingTop: 10,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+            },
         tabBarActiveTintColor: Colors.accentAmber,
         tabBarInactiveTintColor: Colors.textMuted,
       }}

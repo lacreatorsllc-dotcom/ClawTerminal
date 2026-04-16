@@ -4,9 +4,8 @@ import {
   ScrollView, TextInput, ActivityIndicator, Platform, Image,
 } from 'react-native'
 import ViewShot from 'react-native-view-shot'
-import * as Sharing from 'expo-sharing'
-import * as MediaLibrary from 'expo-media-library'
 import { Colors } from '../../constants/colors'
+import { useDesktopWebLayout } from '../../lib/responsive'
 
 const SLUG_PFP = require('../../assets/slug-pfp.png')
 const SLUGS_LOGO = require('../../assets/slugs-logo.png')
@@ -119,6 +118,7 @@ interface Props {
 }
 
 export function ShareCardModal({ visible, onClose, agentName, initialTrade }: Props) {
+  const isDesktopWeb = useDesktopWebLayout()
   const [trade, setTrade] = useState<TradeData>({ ...DEFAULT_TRADE, ...initialTrade })
   const [sharing, setSharing] = useState(false)
   const cardRef = useRef<ViewShot>(null)
@@ -131,11 +131,13 @@ export function ShareCardModal({ visible, onClose, agentName, initialTrade }: Pr
     setSharing(true)
     try {
       const uri = await (cardRef.current as any).capture()
+      const Sharing = await import('expo-sharing')
       const canShare = await Sharing.isAvailableAsync()
       if (canShare) {
         await Sharing.shareAsync(uri, { mimeType: 'image/png', dialogTitle: 'Share agent card' })
       } else {
         // Fallback: save to camera roll
+        const MediaLibrary = await import('expo-media-library')
         const { status } = await MediaLibrary.requestPermissionsAsync()
         if (status === 'granted') {
           await MediaLibrary.saveToLibraryAsync(uri)
@@ -165,7 +167,7 @@ export function ShareCardModal({ visible, onClose, agentName, initialTrade }: Pr
           </ViewShot>
 
           {/* Fields */}
-          <View style={styles.section}>
+          <View style={[styles.section, isDesktopWeb && styles.sectionDesktop]}>
             <Text style={styles.sectionLabel}>Trade Details</Text>
 
             <View style={styles.fieldRow}>
@@ -273,8 +275,12 @@ export function ShareCardModal({ visible, onClose, agentName, initialTrade }: Pr
         </ScrollView>
 
         {/* Share button */}
-        <View style={styles.footer}>
-          <TouchableOpacity style={[styles.shareBtn, sharing && styles.shareBtnLoading]} onPress={handleShare} disabled={sharing}>
+        <View style={[styles.footer, isDesktopWeb && styles.footerDesktop]}>
+          <TouchableOpacity
+            style={[styles.shareBtn, isDesktopWeb && styles.shareBtnDesktop, sharing && styles.shareBtnLoading]}
+            onPress={handleShare}
+            disabled={sharing}
+          >
             {sharing
               ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
               : <Text style={styles.shareBtnText}>Export & Share</Text>
@@ -430,6 +436,7 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   section: { width: '100%', gap: 16 },
+  sectionDesktop: { maxWidth: 720 },
   sectionLabel: {
     color: Colors.textMuted,
     fontSize: 11,
@@ -471,11 +478,21 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.bgBorder,
   },
+  footerDesktop: {
+    alignItems: 'center',
+    paddingTop: 22,
+    paddingBottom: 24,
+  },
   shareBtn: {
     backgroundColor: Colors.accentCrimson,
     borderRadius: 14,
     paddingVertical: 16,
+    paddingHorizontal: 24,
     alignItems: 'center',
+  },
+  shareBtnDesktop: {
+    width: 280,
+    maxWidth: '100%',
   },
   shareBtnLoading: { opacity: 0.7 },
   shareBtnText: { color: Colors.bgPrimary, fontSize: 16, fontWeight: '600' },

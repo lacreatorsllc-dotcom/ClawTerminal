@@ -14,6 +14,7 @@ import { useAgentsStore } from '../../stores/agentsStore'
 import { useAuthStore } from '../../stores/authStore'
 import { Colors } from '../../constants/colors'
 import type { Agent, AgentStatus } from '../../lib/types'
+import { useDesktopWebLayout } from '../../lib/responsive'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -230,6 +231,7 @@ function AgentCard({ agent, username }: { agent: Agent; username: string | null 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function SlugsScreen() {
+  const isDesktopWeb = useDesktopWebLayout()
   const { agents, setAgents, upsertAgent, loading, setLoading } = useAgentsStore()
   const { user, username } = useAuthStore()
   const [slug001, setSlug001] = useState<PaperAgentState | null>(null)
@@ -291,25 +293,27 @@ export default function SlugsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <RNImage
-            source={require('../../assets/slugs-logo.png')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
-          {username && <Text style={styles.handleText}>@{username}</Text>}
+      <View style={[styles.pageFrame, isDesktopWeb && styles.pageFrameDesktop]}>
+        {/* Header */}
+        <View style={[styles.header, isDesktopWeb && styles.headerDesktop]}>
+          <View style={styles.headerLeft}>
+            <RNImage
+              source={require('../../assets/slugs-logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+            {username && <Text style={styles.handleText}>@{username}</Text>}
+            {isDesktopWeb ? <Text style={styles.desktopSubtitle}>Manage your connected slugs, paper traders, and live agents.</Text> : null}
+          </View>
+          <View style={styles.headerBtns}>
+            <TouchableOpacity style={styles.connectBtn} onPress={() => router.push('/deploy' as any)}>
+              <Text style={styles.connectBtnText}>+ Deploy</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <View style={styles.headerBtns}>
-          <TouchableOpacity style={styles.connectBtn} onPress={() => router.push('/deploy' as any)}>
-            <Text style={styles.connectBtnText}>+ Deploy</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
 
-      {/* Deploy modal */}
-      <Modal visible={deployVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeDeploy}>
+        {/* Deploy modal */}
+        <Modal visible={deployVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeDeploy}>
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{deployedAgent ? 'Agent Deployed' : 'Deploy a Slug'}</Text>
@@ -379,9 +383,9 @@ export default function SlugsScreen() {
             )}
           </ScrollView>
         </View>
-      </Modal>
+        </Modal>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, isDesktopWeb && styles.scrollContentDesktop]} showsVerticalScrollIndicator={false}>
         {/* Featured: Slug #001 */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionLabel}>FEATURED</Text>
@@ -416,7 +420,8 @@ export default function SlugsScreen() {
             </TouchableOpacity>
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
+      </View>
     </View>
   )
 }
@@ -425,6 +430,8 @@ export default function SlugsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
+  pageFrame: { flex: 1, width: '100%' },
+  pageFrameDesktop: { maxWidth: 1120, alignSelf: 'center' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -433,9 +440,15 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
   },
+  headerDesktop: {
+    paddingTop: 42,
+    paddingHorizontal: 20,
+    alignItems: 'flex-start',
+  },
   headerLeft: { gap: 2 },
   logoImage: { width: 90, height: 27, tintColor: Colors.accentAmber },
   handleText: { fontSize: 11, color: Colors.textMuted, fontWeight: '500', letterSpacing: 0.3 },
+  desktopSubtitle: { fontSize: 14, lineHeight: 22, color: Colors.textMuted, maxWidth: 460, marginTop: 8 },
   headerBtns: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   connectBtn: {
     backgroundColor: 'rgba(217,119,87,0.1)',
@@ -446,6 +459,7 @@ const styles = StyleSheet.create({
   connectBtnText: { color: Colors.accentAmber, fontSize: 13, fontWeight: '600' },
 
   scrollContent: { paddingHorizontal: 16, paddingBottom: 120 },
+  scrollContentDesktop: { paddingHorizontal: 20, paddingBottom: 56, maxWidth: 920, alignSelf: 'center', width: '100%' },
 
   sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   sectionLabel: { fontSize: 10, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.5 },

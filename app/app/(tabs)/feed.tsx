@@ -15,6 +15,7 @@ import {
 } from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
 import { Colors } from '../../constants/colors'
+import { useDesktopWebLayout } from '../../lib/responsive'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -328,6 +329,7 @@ function PostPnlModal({
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
+  const isDesktopWeb = useDesktopWebLayout()
   const { user } = useAuthStore()
   const [followingUids, setFollowingUids] = useState<string[]>([])
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
@@ -417,37 +419,47 @@ export default function FeedScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Feed</Text>
-        <View style={styles.headerRight}>
-          {showPostBtn && (
-            <TouchableOpacity
-              style={[styles.postBtn, posting && { opacity: 0.5 }]}
-              onPress={() => !posting && setShowPostModal(true)}
-              disabled={posting}
-            >
-              <Ionicons name="send" size={13} color={Colors.accentAmber} />
-              <Text style={styles.postBtnText}>Post PnL</Text>
-            </TouchableOpacity>
-          )}
+      <View style={[styles.pageFrame, isDesktopWeb && styles.pageFrameDesktop]}>
+        {/* Header */}
+        <View style={[styles.header, isDesktopWeb && styles.headerDesktop]}>
+          <View>
+            <Text style={styles.title}>Feed</Text>
+            {isDesktopWeb ? <Text style={styles.desktopSubtitle}>Performance from the traders and slugs you follow.</Text> : null}
+          </View>
+          <View style={styles.headerRight}>
+            {showPostBtn && (
+              <TouchableOpacity
+                style={[styles.postBtn, posting && { opacity: 0.5 }]}
+                onPress={() => !posting && setShowPostModal(true)}
+                disabled={posting}
+              >
+                <Ionicons name="send" size={13} color={Colors.accentAmber} />
+                <Text style={styles.postBtnText}>Post PnL</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </View>
 
-      {/* Feed */}
-      {loading ? null : followingUids.length === 0 ? (
-        <EmptyFollowing />
-      ) : feedItems.length === 0 ? (
-        <EmptyPosts />
-      ) : (
-        <FlatList
-          data={feedItems}
-          keyExtractor={(i) => i.id}
-          renderItem={({ item }) => renderCard(item)}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+        {/* Feed */}
+        {loading ? null : followingUids.length === 0 ? (
+          <EmptyFollowing />
+        ) : feedItems.length === 0 ? (
+          <EmptyPosts />
+        ) : (
+          <FlatList
+            style={styles.feedList}
+            data={feedItems}
+            keyExtractor={(i) => i.id}
+            renderItem={({ item }) => (
+              <View style={isDesktopWeb ? styles.desktopListItem : undefined}>
+                {renderCard(item)}
+              </View>
+            )}
+            contentContainerStyle={[styles.list, isDesktopWeb && styles.listDesktop]}
+            showsVerticalScrollIndicator={false}
+          />
+        )}
+      </View>
 
       {/* Modals */}
       <PnlSharingPrompt
@@ -468,6 +480,11 @@ export default function FeedScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
+  pageFrame: { flex: 1, width: '100%' },
+  pageFrameDesktop: {
+    alignSelf: 'center',
+    maxWidth: 1080,
+  },
 
   header: {
     paddingHorizontal: 24,
@@ -477,7 +494,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
+  headerDesktop: {
+    paddingTop: 42,
+    paddingHorizontal: 20,
+  },
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
+  desktopSubtitle: { fontSize: 14, color: Colors.textMuted, marginTop: 4 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
   postBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -487,7 +509,10 @@ const styles = StyleSheet.create({
   },
   postBtnText: { color: Colors.accentAmber, fontSize: 13, fontWeight: '600' },
 
+  feedList: { flex: 1 },
   list: { paddingHorizontal: 16, paddingBottom: 120, gap: 10 },
+  listDesktop: { paddingHorizontal: 20, paddingBottom: 48 },
+  desktopListItem: { width: '100%', maxWidth: 760, alignSelf: 'center' },
 
   // Cards
   card: { backgroundColor: '#0f0f0f', borderRadius: 16, padding: 16, gap: 10 },

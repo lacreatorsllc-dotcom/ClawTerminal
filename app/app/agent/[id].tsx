@@ -2,13 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
   StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator,
-  Image, Linking, Alert, Modal, ScrollView, Dimensions, Clipboard, Animated,
+  Image, Linking, Alert, Modal, ScrollView, Dimensions, Animated,
 } from 'react-native'
 import { ShareCardModal, type TradeData } from '../../components/share-card'
-// Native-only modules — not available on web
-import * as FileSystem from 'expo-file-system'
-import * as MediaLibrary from 'expo-media-library'
-import * as ImagePicker from 'expo-image-picker'
+import * as Clipboard from 'expo-clipboard'
 import { useLocalSearchParams, router } from 'expo-router'
 import { supabase, subscribeToAgent, sendMessage } from '../../lib/supabase'
 import { useAgentsStore } from '../../stores/agentsStore'
@@ -192,6 +189,12 @@ function ImageBubble({ url }: { url: string }) {
   async function handleDownload() {
     setDownloading(true)
     try {
+      if (Platform.OS === 'web') {
+        Linking.openURL(url)
+        return
+      }
+      const MediaLibrary = await import('expo-media-library')
+      const FileSystem = await import('expo-file-system')
       const { status } = await MediaLibrary.requestPermissionsAsync()
       if (status !== 'granted') { Alert.alert('Permission needed', 'Allow photo library access to save images.'); return }
       const fileName = url.split('/').pop() ?? 'koda-image.png'
@@ -313,7 +316,7 @@ const MessageBubble = memo(function MessageBubble({ item }: { item: Message }) {
 
   function handleLongPress() {
     if (item.content && item.content !== '[image]') {
-      Clipboard.setString(item.content)
+      Clipboard.setStringAsync(item.content)
       setPressed(true)
       setTimeout(() => setPressed(false), 600)
     }
@@ -2818,6 +2821,11 @@ export default function AgentDetailScreen() {
   }
 
   async function handlePickImage() {
+    if (Platform.OS === 'web') {
+      Alert.alert('Uploads on web', 'Image upload from the browser is not wired up yet.')
+      return
+    }
+    const ImagePicker = await import('expo-image-picker')
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (status !== 'granted') { Alert.alert('Permission needed', 'Allow photo access to send images.'); return }
     const result = await ImagePicker.launchImageLibraryAsync({
