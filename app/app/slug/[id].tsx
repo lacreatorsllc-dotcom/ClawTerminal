@@ -7,6 +7,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Switch,
+  Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -21,7 +22,9 @@ import {
   getDirectThreadId,
 } from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
+import { useChatDockStore } from '../../stores/chatDockStore'
 import { Colors } from '../../constants/colors'
+import { useDesktopWebLayout } from '../../lib/responsive'
 
 function agentColor(name: string): string {
   const palette = ['#f59e0b', '#2dd4bf', '#a78bfa', '#60a5fa', '#34d399']
@@ -48,6 +51,8 @@ function formatCurrency(value: number | null | undefined) {
 export default function PublicSlugScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const { user } = useAuthStore()
+  const openConversation = useChatDockStore((state) => state.openConversation)
+  const isDesktopWeb = useDesktopWebLayout()
   const [loading, setLoading] = useState(true)
   const [slug, setSlug] = useState<any | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -133,6 +138,10 @@ export default function PublicSlugScreen() {
     if (!user?.uid || !slug?.user_id || user.uid === slug.user_id) return
     const threadId = getDirectThreadId(user.uid, slug.user_id)
     void createOrGetDirectThread(user.uid, slug.user_id)
+    if (Platform.OS === 'web') {
+      openConversation({ threadId, otherUid: slug.user_id, username: slug.owner_username })
+      return
+    }
     router.push({ pathname: '/messages/[threadId]', params: { threadId, otherUid: slug.user_id, username: slug.owner_username } })
   }
 

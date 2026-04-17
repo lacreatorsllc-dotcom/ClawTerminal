@@ -17,6 +17,15 @@ function detectProvider(key: string): AIProvider {
   return null
 }
 
+function BackMark() {
+  return (
+    <View style={s.backMark}>
+      <View style={[s.backStroke, s.backStrokeTop]} />
+      <View style={[s.backStroke, s.backStrokeBottom]} />
+    </View>
+  )
+}
+
 export default function SettingsScreen() {
   const { user, setLoading: setAuthLoading } = useAuthStore()
   const [aiKey, setAiKey] = useState('')
@@ -87,7 +96,7 @@ export default function SettingsScreen() {
       <ScrollView style={s.container} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
         <View style={s.header}>
           <TouchableOpacity style={s.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
-            <Ionicons name="chevron-back" size={18} color={Colors.textPrimary} />
+            {Platform.OS === 'web' ? <BackMark /> : <Ionicons name="chevron-back" size={18} color={Colors.textPrimary} />}
           </TouchableOpacity>
           <Text style={s.title}>Settings</Text>
         </View>
@@ -231,6 +240,17 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  backMark: { width: 10, height: 14, alignItems: 'center', justifyContent: 'center' },
+  backStroke: {
+    position: 'absolute',
+    width: 8,
+    height: 1.8,
+    borderRadius: 2,
+    backgroundColor: Colors.textPrimary,
+    left: 1,
+  },
+  backStrokeTop: { top: 4, transform: [{ rotate: '-45deg' }] },
+  backStrokeBottom: { bottom: 4, transform: [{ rotate: '45deg' }] },
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
 
   section: { marginBottom: 24, paddingHorizontal: 16 },

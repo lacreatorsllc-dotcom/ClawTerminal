@@ -21,6 +21,14 @@ import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
 type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'studio'
 
+function WebBackLabel() {
+  return <Text style={styles.webBackLabel}>Back</Text>
+}
+
+function WebGlyph({ children, style }: { children: string; style?: any }) {
+  return <Text style={[styles.webGlyph, style]}>{children}</Text>
+}
+
 function nowMs() {
   return typeof performance !== 'undefined' ? performance.now() : Date.now()
 }
@@ -828,7 +836,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
       {/* Header */}
       <View style={s001.header}>
         <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
-          <Text style={s001.backText}>‹</Text>
+          {Platform.OS === 'web' ? <WebBackLabel /> : <Text style={s001.backText}>‹</Text>}
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setShowShare(true)} style={s001.shareBtn}>
           <Text style={s001.shareBtnText}>Share PnL</Text>
@@ -873,7 +881,11 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               onPress={() => sendControl(isPaused ? '/resume' : '/pause')}
               style={{ marginLeft: 'auto', padding: 4 }}
             >
-              <Ionicons name={isPaused ? 'play-circle-outline' : 'pause-circle-outline'} size={20} color={Colors.textMuted} />
+              {Platform.OS === 'web' ? (
+                <Text style={s001.controlGlyph}>{isPaused ? '▶' : 'Ⅱ'}</Text>
+              ) : (
+                <Ionicons name={isPaused ? 'play-circle-outline' : 'pause-circle-outline'} size={20} color={Colors.textMuted} />
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -998,7 +1010,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
                   setShowScrollBtn(false)
                 }}
               >
-                <Ionicons name="arrow-down" size={14} color={Colors.textSecondary} />
+                {Platform.OS === 'web' ? <WebGlyph style={styles.webMiniGlyph}>v</WebGlyph> : <Ionicons name="arrow-down" size={14} color={Colors.textSecondary} />}
                 <Text style={{ color: Colors.textSecondary, fontSize: 13 }}>Latest</Text>
               </TouchableOpacity>
             )}
@@ -1045,7 +1057,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               multiline
             />
             <TouchableOpacity onPress={sendChat} style={[tb.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]} disabled={!input.trim()}>
-              <Ionicons name="arrow-up" size={18} color="#fff" />
+              {Platform.OS === 'web' ? <WebGlyph style={styles.webSendGlyph}>^</WebGlyph> : <Ionicons name="arrow-up" size={18} color="#fff" />}
             </TouchableOpacity>
           </View>
         </>
@@ -1150,7 +1162,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
             disabled={sharing}
             activeOpacity={0.8}
           >
-            <Ionicons name="share-outline" size={16} color={Colors.accentAmber} />
+            {Platform.OS !== 'web' && <Ionicons name="share-outline" size={16} color={Colors.accentAmber} />}
             <Text style={tb.shareBtnText}>{sharing ? 'Sharing…' : 'Share P&L to Feed'}</Text>
           </TouchableOpacity>
           {!!shareMsg && (
@@ -1403,18 +1415,27 @@ const tb = StyleSheet.create({
   tabPill: {
     width: 96,
     height: 40,
+    minWidth: 96,
+    maxWidth: 96,
+    minHeight: 40,
+    maxHeight: 40,
     borderRadius: 20,
     backgroundColor: Colors.bgElevated,
     borderWidth: 1,
     borderColor: Colors.bgBorder,
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'center',
     flexShrink: 0,
     overflow: 'hidden',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   tabPillInner: {
     width: '100%',
     height: '100%',
+    minHeight: 40,
+    maxHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1424,9 +1445,11 @@ const tb = StyleSheet.create({
   },
   tabPillText: {
     fontSize: 12,
+    lineHeight: 12,
     fontWeight: '600',
     includeFontPadding: false,
     color: Colors.textMuted,
+    textAlign: 'center',
   },
   tabPillTextActive: {
     color: Colors.accentAmber,
@@ -1587,7 +1610,7 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
       {/* Header */}
       <View style={s001.header}>
         <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
-          <Text style={s001.backText}>‹</Text>
+          {Platform.OS === 'web' ? <WebBackLabel /> : <Text style={s001.backText}>‹</Text>}
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: 'center' }}>
           <Text style={{ color: Colors.text, fontWeight: '700', fontSize: 17 }}>Blue Chip</Text>
@@ -1672,7 +1695,7 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
           multiline
         />
         <TouchableOpacity onPress={sendChat} style={[s001.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]} disabled={!input.trim()}>
-          <Ionicons name="arrow-up" size={18} color="#fff" />
+          {Platform.OS === 'web' ? <WebGlyph style={styles.webSendGlyph}>^</WebGlyph> : <Ionicons name="arrow-up" size={18} color="#fff" />}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -1754,7 +1777,7 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
       {/* Header */}
       <View style={s001.header}>
         <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
-          <Text style={s001.backText}>‹</Text>
+          {Platform.OS === 'web' ? <WebBackLabel /> : <Text style={s001.backText}>‹</Text>}
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: 'center' }}>
           <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 17 }}>{agentName}</Text>
@@ -1847,7 +1870,7 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
           multiline
         />
         <TouchableOpacity onPress={sendChat} style={[s001.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]} disabled={!input.trim()}>
-          <Ionicons name="arrow-up" size={18} color="#fff" />
+          {Platform.OS === 'web' ? <WebGlyph style={styles.webSendGlyph}>^</WebGlyph> : <Ionicons name="arrow-up" size={18} color="#fff" />}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -1911,7 +1934,7 @@ function Slug001Screen() {
       {/* Header */}
       <View style={s001.header}>
         <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
-          <Text style={s001.backText}>‹</Text>
+          {Platform.OS === 'web' ? <WebBackLabel /> : <Text style={s001.backText}>‹</Text>}
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setShowShare(true)} style={s001.shareBtn}>
           <Text style={s001.shareBtnText}>Share PnL</Text>
@@ -2341,6 +2364,7 @@ const s001 = StyleSheet.create({
   statusLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   bullet: { color: Colors.textMuted, fontSize: 11 },
   strategy: { fontSize: 11, color: Colors.textMuted, fontWeight: '500' },
+  controlGlyph: { color: Colors.textMuted, fontSize: 17, lineHeight: 20, fontWeight: '700', minWidth: 16, textAlign: 'center' },
   paperBadge: {
     backgroundColor: 'rgba(217,119,87,0.12)', borderRadius: 6,
     paddingHorizontal: 7, paddingVertical: 2,
@@ -3231,7 +3255,7 @@ export default function AgentDetailScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>‹</Text>
+          {Platform.OS === 'web' ? <WebBackLabel /> : <Text style={styles.backBtnText}>‹</Text>}
         </TouchableOpacity>
         <View style={styles.headerInfo}>
           <Text style={styles.agentName}>{agent.name}</Text>
@@ -3299,7 +3323,7 @@ export default function AgentDetailScreen() {
                     </Text>
                   </View>
                 )}
-                <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
+                {Platform.OS === 'web' ? <WebGlyph style={styles.webChevronGlyph}>v</WebGlyph> : <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />}
               </TouchableOpacity>
             )}
           </View>
@@ -3571,7 +3595,7 @@ export default function AgentDetailScreen() {
                     >
                       {selectMode && (
                         <View style={[styles.skillCheckbox, selected && styles.skillCheckboxSelected]}>
-                          {selected && <Ionicons name="checkmark" size={12} color="#fff" />}
+                          {selected && (Platform.OS === 'web' ? <WebGlyph style={styles.webCheckGlyph}>ok</WebGlyph> : <Ionicons name="checkmark" size={12} color="#fff" />)}
                         </View>
                       )}
                       <View style={[styles.skillIcon, { backgroundColor: categoryColor(item.category) + '22' }]}>
@@ -3728,6 +3752,12 @@ const styles = StyleSheet.create({
   shareBtnText: { color: Colors.accentCrimson, fontSize: 13, fontWeight: '600' },
   backBtn: { padding: 4 },
   backBtnText: { fontSize: 28, color: Colors.textSecondary, lineHeight: 28 },
+  webBackLabel: { color: Colors.accentAmber, fontSize: 16, lineHeight: 20, fontWeight: '700' },
+  webGlyph: { color: Colors.textSecondary, fontSize: 14, lineHeight: 14, fontWeight: '700', textAlign: 'center' },
+  webMiniGlyph: { fontSize: 12, lineHeight: 12 },
+  webSendGlyph: { color: '#fff', fontSize: 16, lineHeight: 16 },
+  webChevronGlyph: { fontSize: 16, lineHeight: 16 },
+  webCheckGlyph: { color: '#fff', fontSize: 9, lineHeight: 9, textTransform: 'uppercase' },
   headerInfo: { flex: 1 },
   agentName: { fontSize: 20, fontWeight: '700', color: Colors.textPrimary },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },

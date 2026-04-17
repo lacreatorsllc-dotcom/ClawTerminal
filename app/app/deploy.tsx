@@ -20,6 +20,33 @@ interface DeployedAgent {
   type: 'range_farmer' | 'cabal_trading_boy' | 'market_advisor'
 }
 
+function BackMark() {
+  return (
+    <View style={s.backMark}>
+      <View style={[s.backStroke, s.backStrokeTop]} />
+      <View style={[s.backStroke, s.backStrokeBottom]} />
+    </View>
+  )
+}
+
+function ChevronMark() {
+  return (
+    <View style={s.chevronMark}>
+      <View style={[s.chevronStroke, s.chevronStrokeTop]} />
+      <View style={[s.chevronStroke, s.chevronStrokeBottom]} />
+    </View>
+  )
+}
+
+function CheckMark() {
+  return (
+    <View style={s.checkMark}>
+      <View style={[s.checkStroke, s.checkStrokeShort]} />
+      <View style={[s.checkStroke, s.checkStrokeLong]} />
+    </View>
+  )
+}
+
 export default function DeployScreen() {
   const { user } = useAuthStore()
   const [step, setStep] = useState<Step>('pick')
@@ -93,7 +120,7 @@ export default function DeployScreen() {
     <SafeAreaView style={s.root}>
       <View style={s.header}>
         <TouchableOpacity onPress={goBack} style={s.backBtn}>
-          <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
+          {Platform.OS === 'web' ? <BackMark /> : <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />}
         </TouchableOpacity>
         <Text style={s.headerTitle}>{headerTitle}</Text>
         <View style={{ width: 36 }} />
@@ -126,7 +153,7 @@ export default function DeployScreen() {
                   ))}
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+              {Platform.OS === 'web' ? <ChevronMark /> : <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />}
             </TouchableOpacity>
 
             {/* Range Farmer */}
@@ -152,7 +179,7 @@ export default function DeployScreen() {
                   ))}
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+              {Platform.OS === 'web' ? <ChevronMark /> : <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />}
             </TouchableOpacity>
 
             {/* Market Advisor */}
@@ -175,12 +202,12 @@ export default function DeployScreen() {
                   ))}
                 </View>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+              {Platform.OS === 'web' ? <ChevronMark /> : <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />}
             </TouchableOpacity>
 
             <TouchableOpacity style={s.byoRow} onPress={() => router.push('/connect' as any)}>
               <Text style={s.byoText}>Bring your own agent</Text>
-              <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
+              {Platform.OS === 'web' ? <ChevronMark /> : <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />}
             </TouchableOpacity>
           </>
         )}
@@ -211,7 +238,9 @@ export default function DeployScreen() {
                 secureTextEntry={!showTbKey}
               />
               <TouchableOpacity style={s.eyeBtn} onPress={() => setShowTbKey(v => !v)}>
-                <Ionicons name={showTbKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
+                {Platform.OS === 'web'
+                  ? <Text style={s.eyeFallback}>{showTbKey ? 'Hide' : 'Show'}</Text>
+                  : <Ionicons name={showTbKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />}
               </TouchableOpacity>
             </View>
             <Text style={s.hintText}>Starts with tb_live_. Find it in your cabal.ventures dashboard.</Text>
@@ -320,7 +349,7 @@ export default function DeployScreen() {
         {step === 'success' && deployed && (
           <View style={s.successBlock}>
             <View style={s.successIcon}>
-              <Ionicons name="checkmark" size={32} color={Colors.accentGreen} />
+              {Platform.OS === 'web' ? <CheckMark /> : <Ionicons name="checkmark" size={32} color={Colors.accentGreen} />}
             </View>
             <Text style={s.successTitle}>{deployed.name}</Text>
             <Text style={s.successDesc}>
@@ -358,6 +387,47 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12,
   },
   backBtn: { width: 36, height: 36, justifyContent: 'center' },
+  backMark: { width: 10, height: 14, alignItems: 'center', justifyContent: 'center' },
+  backStroke: {
+    position: 'absolute',
+    width: 8,
+    height: 1.8,
+    borderRadius: 2,
+    backgroundColor: Colors.textPrimary,
+    left: 1,
+  },
+  backStrokeTop: { top: 4, transform: [{ rotate: '-45deg' }] },
+  backStrokeBottom: { bottom: 4, transform: [{ rotate: '45deg' }] },
+  chevronMark: { width: 10, height: 14, alignItems: 'center', justifyContent: 'center' },
+  chevronStroke: {
+    position: 'absolute',
+    width: 7,
+    height: 1.8,
+    borderRadius: 2,
+    backgroundColor: Colors.textMuted,
+    right: 0,
+  },
+  chevronStrokeTop: { top: 4, transform: [{ rotate: '45deg' }] },
+  chevronStrokeBottom: { bottom: 4, transform: [{ rotate: '-45deg' }] },
+  checkMark: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
+  checkStroke: {
+    position: 'absolute',
+    height: 2.4,
+    borderRadius: 2,
+    backgroundColor: Colors.accentGreen,
+  },
+  checkStrokeShort: {
+    width: 9,
+    left: 3,
+    top: 14,
+    transform: [{ rotate: '45deg' }],
+  },
+  checkStrokeLong: {
+    width: 16,
+    right: 1,
+    top: 11,
+    transform: [{ rotate: '-45deg' }],
+  },
   headerTitle: { fontSize: 17, fontWeight: '600', color: Colors.textPrimary },
   body: { padding: 20, gap: 16 },
   subtitle: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
@@ -421,6 +491,7 @@ const s = StyleSheet.create({
     flex: 1, padding: 14, fontSize: 15, color: Colors.textPrimary,
   },
   eyeBtn: { paddingHorizontal: 14, paddingVertical: 14 },
+  eyeFallback: { color: Colors.textMuted, fontSize: 12, fontWeight: '700' },
 
   hintText: { fontSize: 12, color: Colors.textMuted, lineHeight: 17 },
   errorText: { fontSize: 13, color: Colors.accentRed },

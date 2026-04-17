@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { Stack, router } from 'expo-router'
-import { StatusBar, View, ActivityIndicator } from 'react-native'
+import { StatusBar, View, ActivityIndicator, Platform } from 'react-native'
 import { auth, onAuthStateChanged, ensureUserProfile } from '../lib/firebase'
 import { useAuthStore } from '../stores/authStore'
 import { Colors } from '../constants/colors'
+import { DesktopChatDock } from '../components/DesktopChatDock'
 
 let lastRouterAction: string | null = null
 
@@ -15,7 +16,7 @@ function safeReplace(path: string) {
 }
 
 export default function RootLayout() {
-  const { setUser, setUsername, setLoading, isLoading } = useAuthStore()
+  const { setUser, setUsername, setLoading, isLoading, user } = useAuthStore()
   const authChangeIdRef = useRef(0)
 
   useEffect(() => {
@@ -81,6 +82,7 @@ export default function RootLayout() {
         <Stack.Screen name="account" options={{ presentation: 'card' }} />
         <Stack.Screen name="profile/[username]" options={{ presentation: 'card' }} />
       </Stack>
+      {Platform.OS === 'web' && user ? <DesktopChatDock /> : null}
     </>
   )
 }

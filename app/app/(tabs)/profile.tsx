@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Modal,
+  Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, router } from 'expo-router'
@@ -60,6 +61,15 @@ function timeAgo(iso: string | null): string {
   return `${Math.floor(secs / 86400)}d ago`
 }
 
+function ChevronMark() {
+  return (
+    <View style={styles.chevronMark}>
+      <View style={[styles.chevronStroke, styles.chevronStrokeTop]} />
+      <View style={[styles.chevronStroke, styles.chevronStrokeBottom]} />
+    </View>
+  )
+}
+
 function UserListModal({
   visible,
   title,
@@ -71,6 +81,7 @@ function UserListModal({
   users: PublicUserListItem[]
   onClose: () => void
 }) {
+  const showGlyphIcons = Platform.OS !== 'web'
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
@@ -78,7 +89,7 @@ function UserListModal({
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{title}</Text>
             <TouchableOpacity onPress={onClose} style={styles.modalCloseBtn} activeOpacity={0.8}>
-              <Ionicons name="close" size={18} color={Colors.textSecondary} />
+              {showGlyphIcons ? <Ionicons name="close" size={18} color={Colors.textSecondary} /> : <Text style={styles.modalCloseFallback}>Close</Text>}
             </TouchableOpacity>
           </View>
 
@@ -110,7 +121,7 @@ function UserListModal({
                     <Text style={styles.userHandle}>@{entry.username}</Text>
                     {!!entry.display_name && <Text style={styles.userDisplay}>{entry.display_name}</Text>}
                   </View>
-                  <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                  {showGlyphIcons ? <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} /> : <ChevronMark />}
                 </TouchableOpacity>
               ))
             )}
@@ -122,6 +133,7 @@ function UserListModal({
 }
 
 export default function ProfileTabScreen() {
+  const showGlyphIcons = Platform.OS !== 'web'
   const { user, username } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState<string | null>(null)
@@ -189,7 +201,7 @@ export default function ProfileTabScreen() {
             <Text style={styles.headerSubtitle}>Your public home on SLUGS</Text>
           </View>
           <TouchableOpacity style={styles.headerIconBtn} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.8}>
-            <Ionicons name="settings-outline" size={20} color={Colors.textPrimary} />
+            {showGlyphIcons ? <Ionicons name="settings-outline" size={20} color={Colors.textPrimary} /> : <Text style={styles.headerIconFallback}>Settings</Text>}
           </TouchableOpacity>
         </View>
 
@@ -212,11 +224,11 @@ export default function ProfileTabScreen() {
 
           <View style={styles.heroActions}>
             <TouchableOpacity style={styles.primaryBtn} onPress={() => router.push('/set-username')} activeOpacity={0.85}>
-              <Ionicons name="create-outline" size={16} color={Colors.bgPrimary} />
+              {showGlyphIcons ? <Ionicons name="create-outline" size={16} color={Colors.bgPrimary} /> : null}
               <Text style={styles.primaryBtnText}>Edit username</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.85}>
-              <Ionicons name="key-outline" size={16} color={Colors.accentAmber} />
+              {showGlyphIcons ? <Ionicons name="key-outline" size={16} color={Colors.accentAmber} /> : null}
               <Text style={styles.secondaryBtnText}>{aiKey ? 'Manage AI key' : 'Add AI key'}</Text>
             </TouchableOpacity>
           </View>
@@ -253,7 +265,7 @@ export default function ProfileTabScreen() {
             {!aiKey && (
               <View style={styles.setupCard}>
                 <View style={styles.setupBadge}>
-                  <Ionicons name="flash-outline" size={14} color={Colors.accentAmber} />
+                  {showGlyphIcons ? <Ionicons name="flash-outline" size={14} color={Colors.accentAmber} /> : <View style={styles.setupBadgeDot} />}
                   <Text style={styles.setupBadgeText}>Complete your profile</Text>
                 </View>
                 <Text style={styles.setupTitle}>Add an AI key to unlock agent chat</Text>
@@ -350,6 +362,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.bgBorder,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerIconFallback: {
+    color: Colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
   },
 
   heroCard: {
@@ -519,6 +536,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  modalCloseFallback: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
   modalEmpty: { color: Colors.textMuted, fontSize: 14, padding: 8 },
   userRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 4 },
   userRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.bgBorder },
@@ -527,4 +545,21 @@ const styles = StyleSheet.create({
   userAvatarInitial: { fontSize: 15, fontWeight: '800' },
   userHandle: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
   userDisplay: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
+  chevronMark: { width: 10, height: 14, alignItems: 'center', justifyContent: 'center' },
+  chevronStroke: {
+    position: 'absolute',
+    width: 7,
+    height: 1.8,
+    borderRadius: 2,
+    backgroundColor: Colors.textMuted,
+    right: 0,
+  },
+  chevronStrokeTop: { top: 4, transform: [{ rotate: '45deg' }] },
+  chevronStrokeBottom: { bottom: 4, transform: [{ rotate: '-45deg' }] },
+  setupBadgeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: Colors.accentAmber,
+  },
 })

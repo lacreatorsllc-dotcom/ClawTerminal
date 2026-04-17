@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Image,
+  ActivityIndicator, Image, Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useLocalSearchParams, router } from 'expo-router'
@@ -19,7 +19,9 @@ import {
   getDirectThreadId,
 } from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
+import { useChatDockStore } from '../../stores/chatDockStore'
 import { Colors } from '../../constants/colors'
+import { useDesktopWebLayout } from '../../lib/responsive'
 import type { AgentStatus } from '../../lib/types'
 
 function agentColor(name: string): string {
@@ -73,6 +75,8 @@ function timeAgo(iso: string | null): string {
 export default function PublicProfileScreen() {
   const { username, uid } = useLocalSearchParams<{ username: string; uid?: string }>()
   const { user: me } = useAuthStore()
+  const openConversation = useChatDockStore((state) => state.openConversation)
+  const isDesktopWeb = useDesktopWebLayout()
 
   const [profile, setProfile] = useState<PublicProfile | null>(null)
   const [agents, setAgents] = useState<PublicAgent[]>([])
@@ -87,7 +91,7 @@ export default function PublicProfileScreen() {
 
   useEffect(() => {
     if (!username) return
-    loadProfile()
+    void loadProfile()
   }, [username, me?.uid])
 
   async function loadProfile() {
@@ -132,33 +136,35 @@ export default function PublicProfileScreen() {
 
   const toggleFollow = useCallback(async () => {
     if (!me || !profile) return
-    const myUid = me.uid
     setFollowLoading(true)
-
     try {
       if (isFollowing) {
-        await unfollowUser(myUid, profile.id)
+        await unfollowUser(me.uid, profile.id)
         setIsFollowing(false)
-        setFollowerCount((c) => Math.max(0, c - 1))
+        setFollowerCount((count) => Math.max(0, count - 1))
       } else {
-        await followUser(myUid, profile.id)
+        await followUser(me.uid, profile.id)
         setIsFollowing(true)
-        setFollowerCount((c) => c + 1)
+        setFollowerCount((count) => count + 1)
       }
     } finally {
       setFollowLoading(false)
     }
-  }, [me, profile, isFollowing])
+  }, [isFollowing, me, profile])
 
   const messageUser = useCallback(async () => {
     if (!me?.uid || !profile?.id || me.uid === profile.id) return
     const threadId = getDirectThreadId(me.uid, profile.id)
     void createOrGetDirectThread(me.uid, profile.id)
+    if (Platform.OS === 'web') {
+      openConversation({ threadId, otherUid: profile.id, username: profile.username })
+      return
+    }
     router.push({
       pathname: '/messages/[threadId]',
       params: { threadId, otherUid: profile.id, username: profile.username },
     })
-  }, [me?.uid, profile?.id, profile?.username])
+  }, [me?.uid, openConversation, profile?.id, profile?.username])
 
   if (loading) {
     return (
@@ -179,145 +185,149 @@ export default function PublicProfileScreen() {
     )
   }
 
-  const connectedCount = agents.filter((a) => a.status === 'connected').length
+  const connectedCount = agents.filter((agent) => agent.status === 'connected').length
   const safeUsername = profile?.username || 'user'
+  const secondaryIdentity = profile?.display_name && profile.display_name !== `@${safeUsername}`
+    ? profile.display_name
+    : null
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={[styles.pageFrame, isDesktopWeb && styles.pageFrameDesktop]}>
+        <TouchableOpacity style={[styles.backRow, isDesktopWeb && styles.backRowDesktop]} onPress={() => router.back()}>
+          <Text style={styles.backArrow}>‹</Text>
+          <Text style={styles.backLabel}>Search</Text>
+        </TouchableOpacity>
 
-      {/* Back */}
-      <TouchableOpacity style={styles.backRow} onPress={() => router.back()}>
-        <Text style={styles.backArrow}>‹</Text>
-        <Text style={styles.backLabel}>Search</Text>
-      </TouchableOpacity>
-
-      {/* Profile header */}
-      <View style={styles.profileHeader}>
-        <View style={styles.avatarRing}>
-          {profile?.avatar_url ? (
-            <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
-          ) : (
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarInitial}>
-                {safeUsername[0]?.toUpperCase() ?? '?'}
-              </Text>
-            </View>
-          )}
+        <View style={styles.headerBlock}>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <Text style={styles.headerSubtitle}>Public home on SLUGS</Text>
         </View>
-        <View style={styles.profileInfo}>
-          <Text style={styles.handle}>@{safeUsername}</Text>
-          {profile?.display_name ? (
-            <Text style={styles.displayName}>{profile.display_name}</Text>
+
+        <View style={[styles.heroCard, isDesktopWeb && styles.heroCardDesktop]}>
+          <View style={[styles.profileHeader, isDesktopWeb && styles.profileHeaderDesktop]}>
+            <View style={styles.avatarRing}>
+              {profile?.avatar_url ? (
+                <Image source={{ uri: profile.avatar_url }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatarCircle}>
+                  <Text style={styles.avatarInitial}>{safeUsername[0]?.toUpperCase() ?? '?'}</Text>
+                </View>
+              )}
+            </View>
+            <View style={[styles.profileInfo, isDesktopWeb && styles.profileInfoDesktop]}>
+              <Text style={[styles.handle, isDesktopWeb && styles.handleDesktop]}>@{safeUsername}</Text>
+              {secondaryIdentity ? <Text style={styles.displayName}>{secondaryIdentity}</Text> : null}
+              <View style={styles.statusRow}>
+                <View style={[styles.statusDot, { backgroundColor: Colors.accentGreen }]} />
+                <Text style={styles.statusText}>Public profile</Text>
+              </View>
+            </View>
+          </View>
+
+          {me && !isOwnProfile ? (
+            <View style={[styles.followBtnRow, isDesktopWeb && styles.followBtnRowDesktop]}>
+              <TouchableOpacity
+                style={[styles.primaryBtn, isFollowing && styles.secondaryBtn]}
+                onPress={toggleFollow}
+                disabled={followLoading}
+                activeOpacity={0.85}
+              >
+                {followLoading ? (
+                  <ActivityIndicator size="small" color={isFollowing ? Colors.accentAmber : Colors.bgPrimary} />
+                ) : (
+                  <Text style={[styles.primaryBtnText, isFollowing && styles.secondaryBtnText]}>
+                    {isFollowing ? 'Following' : 'Follow'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={messageUser} activeOpacity={0.85}>
+                <Text style={styles.secondaryBtnText}>Message</Text>
+              </TouchableOpacity>
+            </View>
           ) : null}
-          <View style={styles.followCounts}>
-            <Text style={styles.followCount}><Text style={styles.followCountBold}>{followerCount}</Text> followers</Text>
-            <Text style={styles.followDot}>·</Text>
-            <Text style={styles.followCount}><Text style={styles.followCountBold}>{followingCount}</Text> following</Text>
+        </View>
+
+        <View style={styles.statStrip}>
+          <View style={styles.statCell}>
+            <Text style={styles.statValue}>{followerCount}</Text>
+            <Text style={styles.statLabel}>Followers</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCell}>
+            <Text style={styles.statValue}>{followingCount}</Text>
+            <Text style={styles.statLabel}>Following</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCell}>
+            <Text style={styles.statValue}>{agents.length}</Text>
+            <Text style={styles.statLabel}>Slugs</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statCell}>
+            <Text style={styles.statValue}>{connectedCount}</Text>
+            <Text style={styles.statLabel}>Active</Text>
           </View>
         </View>
-      </View>
 
-      {/* Follow button */}
-      {me && !isOwnProfile && (
-        <View style={styles.followBtnRow}>
-          <TouchableOpacity
-            style={[styles.followBtn, isFollowing && styles.followBtnActive]}
-            onPress={toggleFollow}
-            disabled={followLoading}
-            activeOpacity={0.8}
-          >
-            {followLoading
-              ? <ActivityIndicator size="small" color={isFollowing ? Colors.accentAmber : Colors.bgPrimary} />
-              : <Text style={[styles.followBtnText, isFollowing && styles.followBtnTextActive]}>
-                  {isFollowing ? 'Following' : 'Follow'}
-                </Text>
-            }
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.messageBtn} onPress={messageUser} activeOpacity={0.8}>
-            <Text style={styles.messageBtnText}>Message</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>{agents.length}</Text>
-          <Text style={styles.statLabel}>Slugs</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>{connectedCount}</Text>
-          <Text style={styles.statLabel}>Active</Text>
-        </View>
-      </View>
-
-      {/* Their slugs */}
-      {agents.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>SLUGS</Text>
-          <View style={styles.card}>
-            {agents.map((agent, i) => (
-              (() => {
+        {agents.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Their slugs</Text>
+            </View>
+            <View style={styles.card}>
+              {agents.map((agent, index) => {
                 const safeAgentName = agent.name || 'slug'
                 return (
-              <TouchableOpacity
-                key={agent.id}
-                style={[styles.agentRow, i < agents.length - 1 && styles.agentRowBorder]}
-                activeOpacity={0.85}
-                onPress={() => router.push(`/slug/${agent.id}`)}
-              >
-                <View style={styles.agentLeft}>
-                  <View style={[styles.agentAvatar, { borderColor: STATUS_COLOR[agent.status] }]}>
-                    <View style={[styles.agentAvatarInner, { backgroundColor: agentColor(safeAgentName) + '22' }]}>
-                      <Text style={[styles.agentAvatarInitial, { color: agentColor(safeAgentName) }]}>
-                        {safeAgentName[0]?.toUpperCase() ?? '?'}
-                      </Text>
+                  <TouchableOpacity
+                    key={agent.id}
+                    style={[styles.agentRow, index < agents.length - 1 && styles.rowBorder]}
+                    activeOpacity={0.85}
+                    onPress={() => router.push(`/slug/${agent.id}`)}
+                  >
+                    <View style={styles.agentLeft}>
+                      <View style={[styles.agentAvatar, { borderColor: STATUS_COLOR[agent.status] }]}>
+                        <View style={[styles.agentAvatarInner, { backgroundColor: `${agentColor(safeAgentName)}22` }]}>
+                          <Text style={[styles.agentAvatarInitial, { color: agentColor(safeAgentName) }]}>
+                            {safeAgentName[0]?.toUpperCase() ?? '?'}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.agentCopy}>
+                        <Text style={styles.agentName}>{safeAgentName}</Text>
+                        <Text style={styles.agentHandle}>@{safeUsername}/{safeAgentName.toLowerCase().replace(/\s+/g, '-')}</Text>
+                      </View>
                     </View>
-                  </View>
-                  <View>
-                    <Text style={styles.agentName}>{safeAgentName}</Text>
-                    <Text style={styles.agentSlug}>
-                      @{safeUsername}/{safeAgentName.toLowerCase().replace(/\s+/g, '-')}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.agentRight}>
-                  <Text style={styles.lastSeen}>{timeAgo(agent.last_seen)}</Text>
-                  <View style={styles.agentRightMeta}>
-                    <View style={[styles.statusDot, { backgroundColor: STATUS_COLOR[agent.status] }]} />
-                    <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
-                  </View>
-                </View>
-              </TouchableOpacity>
+                    <View style={styles.agentRight}>
+                      <Text style={styles.agentTime}>{timeAgo(agent.last_seen)}</Text>
+                      <View style={[styles.agentStatusDot, { backgroundColor: STATUS_COLOR[agent.status] }]} />
+                    </View>
+                  </TouchableOpacity>
                 )
-              })()
-            ))}
+              })}
+            </View>
           </View>
-        </View>
-      )}
+        ) : null}
 
-      {/* Public feed */}
-      {feed.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>RECENT ACTIVITY</Text>
-          <View style={styles.card}>
-            {feed.map((event, i) => (
-              <View
-                key={event.id}
-                style={[styles.feedRow, i < feed.length - 1 && styles.feedRowBorder]}
-              >
-                <View style={styles.feedTypeTag}>
-                  <Text style={styles.feedTypeText}>{event.type || 'update'}</Text>
+        {feed.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent public activity</Text>
+            </View>
+            <View style={styles.card}>
+              {feed.map((event, index) => (
+                <View key={event.id} style={[styles.feedRow, index < feed.length - 1 && styles.rowBorder]}>
+                  <View style={styles.feedTag}>
+                    <Text style={styles.feedTagText}>{event.type || 'update'}</Text>
+                  </View>
+                  <Text style={styles.feedContent} numberOfLines={3}>{event.content || 'No details yet.'}</Text>
+                  <Text style={styles.feedTime}>{timeAgo(event.created_at)}</Text>
                 </View>
-                <Text style={styles.feedContent} numberOfLines={3}>{event.content || 'No details yet.'}</Text>
-                <Text style={styles.feedTime}>{timeAgo(event.created_at)}</Text>
-              </View>
-            ))}
+              ))}
+            </View>
           </View>
-        </View>
-      )}
-
+        ) : null}
+      </View>
     </ScrollView>
   )
 }
@@ -325,8 +335,21 @@ export default function PublicProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
   content: { paddingBottom: 120 },
+  pageFrame: { width: '100%' },
+  pageFrameDesktop: {
+    alignSelf: 'center',
+    width: '100%',
+    maxWidth: 1120,
+    paddingHorizontal: 28,
+  },
 
-  centered: { flex: 1, backgroundColor: Colors.bgPrimary, justifyContent: 'center', alignItems: 'center', gap: 16 },
+  centered: {
+    flex: 1,
+    backgroundColor: Colors.bgPrimary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
   notFoundText: { fontSize: 16, color: Colors.textMuted },
   backBtn: {
     paddingHorizontal: 20,
@@ -341,19 +364,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 60,
-    paddingBottom: 8,
+    paddingBottom: 10,
     gap: 4,
+  },
+  backRowDesktop: {
+    paddingHorizontal: 0,
+    paddingBottom: 18,
   },
   backArrow: { fontSize: 24, color: Colors.accentAmber, lineHeight: 28 },
   backLabel: { fontSize: 16, color: Colors.accentAmber },
+  headerBlock: { marginBottom: 14 },
+  headerTitle: { fontSize: 30, fontWeight: '800', color: Colors.textPrimary },
+  headerSubtitle: { fontSize: 14, color: Colors.textMuted, marginTop: 4 },
 
+  heroCard: {
+    marginHorizontal: 16,
+    marginBottom: 18,
+  },
+  heroCardDesktop: {
+    marginHorizontal: 0,
+    marginBottom: 24,
+    paddingVertical: 28,
+    paddingHorizontal: 32,
+    backgroundColor: '#11100f',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+  },
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
     paddingHorizontal: 24,
     paddingTop: 8,
-    paddingBottom: 24,
+    paddingBottom: 18,
+  },
+  profileHeaderDesktop: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 16,
   },
   avatarRing: {
     width: 72,
@@ -375,99 +424,128 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   avatarInitial: { fontSize: 28, fontWeight: '700', color: Colors.accentAmber },
-  profileInfo: { flex: 1, gap: 4 },
-  handle: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary },
-  displayName: { fontSize: 13, color: Colors.textMuted },
-  followCounts: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  followCount: { fontSize: 12, color: Colors.textMuted },
-  followCountBold: { fontWeight: '700', color: Colors.textSecondary },
-  followDot: { fontSize: 12, color: Colors.textMuted },
-
-  followBtnRow: { paddingHorizontal: 16, marginBottom: 16, flexDirection: 'row', gap: 10 },
-  followBtn: {
-    backgroundColor: Colors.accentAmber,
-    borderRadius: 12,
-    paddingVertical: 11,
+  profileInfo: { flex: 1, gap: 6 },
+  profileInfoDesktop: {
     flex: 1,
-    alignItems: 'center',
+    minWidth: 0,
+    gap: 8,
   },
-  followBtnActive: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: Colors.accentAmber,
+  handle: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary },
+  handleDesktop: { fontSize: 36, letterSpacing: -0.8 },
+  displayName: { fontSize: 13, color: Colors.textMuted },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  statusText: { fontSize: 12, fontWeight: '700', color: Colors.accentGreen },
+  followBtnRow: {
+    paddingHorizontal: 0,
+    marginBottom: 0,
+    flexDirection: 'row',
+    gap: 10,
   },
-  followBtnText: { fontSize: 15, fontWeight: '700', color: Colors.bgPrimary },
-  followBtnTextActive: { color: Colors.accentAmber },
-  messageBtn: {
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.bgBorder,
-    backgroundColor: Colors.bgElevated,
+  followBtnRowDesktop: {
+    marginBottom: 0,
+    justifyContent: 'stretch',
+  },
+  primaryBtn: {
+    backgroundColor: Colors.accentAmber,
+    borderRadius: 14,
+    paddingVertical: 12,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  messageBtnText: { fontSize: 14, fontWeight: '700', color: Colors.textPrimary },
-
-  statsRow: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    backgroundColor: '#0f0f0f',
-    borderRadius: 16,
-    paddingVertical: 16,
-    marginBottom: 24,
+  primaryBtnText: { color: Colors.bgPrimary, fontWeight: '700', fontSize: 14 },
+  secondaryBtn: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.accentAmber,
+    backgroundColor: 'rgba(217,119,87,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statCell: { flex: 1, alignItems: 'center', gap: 4 },
-  statValue: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary },
-  statLabel: { fontSize: 10, fontWeight: '600', color: Colors.textMuted, letterSpacing: 0.8, textTransform: 'uppercase' },
-  statDivider: { width: 1, backgroundColor: Colors.bgBorder },
+  secondaryBtnText: { color: Colors.accentAmber, fontWeight: '700', fontSize: 14 },
 
-  section: { marginBottom: 16, paddingHorizontal: 16 },
-  sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: Colors.textMuted,
-    letterSpacing: 1.2, marginBottom: 8, paddingHorizontal: 4,
+  statStrip: {
+    flexDirection: 'row',
+    backgroundColor: '#0f0f0f',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    paddingVertical: 14,
+    marginBottom: 18,
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  statDivider: { width: 1, backgroundColor: Colors.bgBorder },
+  statValue: { fontSize: 24, fontWeight: '800', color: Colors.textPrimary },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.textMuted,
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  card: { backgroundColor: '#0f0f0f', borderRadius: 16, overflow: 'hidden' },
+  section: { gap: 10, marginBottom: 14 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
+  card: {
+    backgroundColor: '#0f0f0f',
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+  },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.bgBorder },
 
   agentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 14,
+    padding: 16,
   },
   agentRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.bgBorder },
-  agentLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  agentLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  agentCopy: { gap: 2 },
   agentAvatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     borderWidth: 1.5,
     overflow: 'hidden',
   },
   agentAvatarInner: {
-    width: 38, height: 38, borderRadius: 19,
-    justifyContent: 'center', alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   agentAvatarInitial: { fontSize: 16, fontWeight: '700' },
-  agentName: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
-  agentSlug: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
-  agentRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  agentRightMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  lastSeen: { fontSize: 11, color: Colors.textMuted },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  agentName: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
+  agentHandle: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
+  agentRight: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 8 },
+  agentTime: { fontSize: 11, color: Colors.textMuted },
+  agentStatusDot: { width: 8, height: 8, borderRadius: 4 },
 
-  feedRow: { padding: 14, gap: 6 },
-  feedRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.bgBorder },
-  feedTypeTag: {
+  feedRow: { padding: 16, gap: 8 },
+  feedTag: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(168,85,247,0.12)',
+    backgroundColor: 'rgba(168,85,247,0.14)',
     borderRadius: 6,
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 4,
   },
-  feedTypeText: { fontSize: 10, fontWeight: '700', color: Colors.accentPurple, textTransform: 'uppercase', letterSpacing: 0.5 },
+  feedTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.accentPurple,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   feedContent: { fontSize: 13, color: Colors.textSecondary, lineHeight: 19 },
   feedTime: { fontSize: 11, color: Colors.textMuted },
 })

@@ -74,6 +74,11 @@ function tsToISO(ts: Timestamp | string | null | undefined): string | null {
   return ts.toDate().toISOString()
 }
 
+function tsToMillis(ts: Timestamp | string | null | undefined): number {
+  const iso = tsToISO(ts)
+  return iso ? new Date(iso).getTime() : 0
+}
+
 /** Exposed for screens that map raw Firestore timestamps */
 export const firestoreTsToIso = tsToISO
 
@@ -929,26 +934,25 @@ export function getDirectThreadId(uidA: string, uidB: string) {
 }
 
 export async function createOrGetDirectThread(uidA: string, uidB: string): Promise<string> {
-  const threadId = directThreadId(uidA, uidB)
-  const ref = doc(db, 'direct_threads', threadId)
-
-  try {
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref)
-      if (snap.exists()) return
-      tx.set(ref, {
-        members: [uidA, uidB].sort(),
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp(),
-        last_message_text: '',
-        last_message_at: null,
-      })
-    })
-  } catch (error) {
-    console.warn('[direct-thread] createOrGet failed, using deterministic id', error)
+  if (!uidA || !uidB || uidA === uidB) {
+    throw new Error('Cannot create a direct thread with yourself')
   }
-
+  const threadId = directThreadId(uidA, uidB)
+  await setDoc(doc(db, 'direct_threads', threadId), {
+    members: [uidA, uidB].sort(),
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+    last_message_text: '',
+    last_message_at: null,
+  }, { merge: true })
   return threadId
+}
+
+export async function markDirectThreadRead(threadId: string, uid: string) {
+  if (!threadId || !uid) return
+  await updateDoc(doc(db, 'direct_threads', threadId), {
+    [`last_read_at_by_uid.${uid}`]: serverTimestamp(),
+  })
 }
 
 export function subscribeToDirectThreads(uid: string, cb: (threads: any[]) => void) {
@@ -957,18 +961,29 @@ export function subscribeToDirectThreads(uid: string, cb: (threads: any[]) => vo
     const rows = await Promise.all(snap.docs.map(async (d) => {
       const data = d.data()
       const members = (data.members as string[] | undefined) ?? []
-      const otherUid = members.find((member) => member !== uid) ?? uid
+      const otherUid = members.find((member) => member && member !== uid) ?? null
+      if (!otherUid || members.length < 2) return null
       const otherProfile = await getPublicProfileByUid(otherUid)
+      if (!otherProfile?.id || otherProfile.id === uid) return null
+      const lastReadMap = (data.last_read_at_by_uid as Record<string, Timestamp | string | null> | undefined) ?? {}
+      const lastReadAt = tsToISO(lastReadMap[uid])
+      const lastMessageAt = tsToISO(data.last_message_at as Timestamp | null)
+      const lastMessageSenderUid = typeof data.last_message_sender_uid === 'string' ? data.last_message_sender_uid : null
       return {
         id: d.id,
         ...data,
         updated_at: tsToISO(data.updated_at as Timestamp | null),
-        last_message_at: tsToISO(data.last_message_at as Timestamp | null),
+        last_message_at: lastMessageAt,
+        last_read_at: lastReadAt,
+        unread: !!lastMessageAt &&
+          lastMessageSenderUid !== uid &&
+          tsToMillis(lastMessageAt) > tsToMillis(lastReadAt),
         other_user: otherProfile,
       }
     }))
-    rows.sort((a, b) => new Date(b.last_message_at ?? b.updated_at ?? 0).getTime() - new Date(a.last_message_at ?? a.updated_at ?? 0).getTime())
-    cb(rows)
+    const filteredRows = rows.filter(Boolean) as any[]
+    filteredRows.sort((a, b) => new Date(b.last_message_at ?? b.updated_at ?? 0).getTime() - new Date(a.last_message_at ?? a.updated_at ?? 0).getTime())
+    cb(filteredRows)
   }, _noop)
 }
 
@@ -991,6 +1006,16 @@ export function subscribeToDirectMessages(threadId: string, cb: (messages: any[]
 export async function sendDirectMessage(threadId: string, senderUid: string, content: string) {
   const trimmed = content.trim()
   if (!trimmed) return
+  const memberIds = threadId.split('__').filter(Boolean)
+  if (memberIds.length === 2 && memberIds[0] === memberIds[1]) {
+    throw new Error('Cannot send a direct message to yourself')
+  }
+  if (memberIds.length === 2) {
+    const otherUid = memberIds.find((uid) => uid !== senderUid)
+    if (otherUid) {
+      await createOrGetDirectThread(senderUid, otherUid)
+    }
+  }
   await addDoc(collection(db, 'direct_threads', threadId, 'messages'), {
     sender_uid: senderUid,
     content: trimmed,
@@ -1000,6 +1025,8 @@ export async function sendDirectMessage(threadId: string, senderUid: string, con
     updated_at: serverTimestamp(),
     last_message_text: trimmed,
     last_message_at: serverTimestamp(),
+    last_message_sender_uid: senderUid,
+    [`last_read_at_by_uid.${senderUid}`]: serverTimestamp(),
   }, { merge: true })
 }
 

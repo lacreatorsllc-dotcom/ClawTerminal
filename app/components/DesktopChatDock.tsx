@@ -1,20 +1,64 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Platform,
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   TextInput,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
 import {
+  createOrGetDirectThread,
+  markDirectThreadRead,
   sendDirectMessage,
   subscribeToDirectMessages,
   subscribeToDirectThreads,
 } from '../lib/firebase'
 import { useAuthStore } from '../stores/authStore'
+import { useChatDockStore } from '../stores/chatDockStore'
 import { Colors } from '../constants/colors'
+
+function DockIcon({ kind, color }: { kind: 'chat' | 'close' | 'send' | 'clock'; color: string }) {
+  if (kind === 'chat') {
+    return (
+      <View style={styles.iconChatWrap}>
+        <View style={[styles.iconBubble, { borderColor: color }]}>
+          <View style={[styles.iconDot, { backgroundColor: color }]} />
+          <View style={[styles.iconDot, { backgroundColor: color }]} />
+          <View style={[styles.iconDot, { backgroundColor: color }]} />
+        </View>
+      </View>
+    )
+  }
+
+  if (kind === 'close') {
+    return (
+      <View style={styles.iconCloseWrap}>
+        <View style={[styles.iconCloseLine, { backgroundColor: color, transform: [{ rotate: '45deg' }] }]} />
+        <View style={[styles.iconCloseLine, { backgroundColor: color, transform: [{ rotate: '-45deg' }] }]} />
+      </View>
+    )
+  }
+
+  if (kind === 'clock') {
+    return (
+      <View style={[styles.iconClockRing, { borderColor: color }]}>
+        <View style={[styles.iconClockHandShort, { backgroundColor: color }]} />
+        <View style={[styles.iconClockHandLong, { backgroundColor: color }]} />
+      </View>
+    )
+  }
+
+  return (
+    <View style={styles.iconSendWrap}>
+      <View style={[styles.iconSendStem, { backgroundColor: color }]} />
+      <View style={[styles.iconSendHeadOne, { borderLeftColor: color }]} />
+      <View style={[styles.iconSendHeadTwo, { borderLeftColor: color }]} />
+    </View>
+  )
+}
 
 function timeAgo(iso: string | null | undefined): string {
   if (!iso) return 'now'
@@ -32,75 +76,205 @@ function formatTime(iso: string | null | undefined) {
 
 export function DesktopChatDock() {
   const { user } = useAuthStore()
+  const { width } = useWindowDimensions()
   const [threads, setThreads] = useState<any[]>([])
-  const [open, setOpen] = useState(false)
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null)
   const [messages, setMessages] = useState<any[]>([])
+  const [pendingMessages, setPendingMessages] = useState<any[]>([])
   const [text, setText] = useState('')
+  const [isSending, setIsSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+  const {
+    isOpen,
+    activeThreadId,
+    activeOtherUid,
+    activeUsername,
+    openConversation,
+    closeDock,
+    toggleDock,
+    setActiveThread,
+  } = useChatDockStore()
 
   useEffect(() => {
     if (!user?.uid) return
     return subscribeToDirectThreads(user.uid, setThreads)
   }, [user?.uid])
 
+  const validThreads = useMemo(
+    () => threads.filter((thread) => thread.other_user?.id && thread.other_user.id !== user?.uid),
+    [threads, user?.uid]
+  )
+  const unreadCount = useMemo(
+    () => validThreads.filter((thread) => thread.unread).length,
+    [validThreads]
+  )
+
   useEffect(() => {
     if (!activeThreadId) {
       setMessages([])
+      setPendingMessages([])
       return
     }
     return subscribeToDirectMessages(activeThreadId, setMessages)
   }, [activeThreadId])
 
   useEffect(() => {
-    if (!activeThreadId && threads.length > 0) {
-      setActiveThreadId(threads[0].id)
+    if (!activeThreadId) return
+    setPendingMessages((current) => current.filter((message) => message.thread_id === activeThreadId))
+  }, [activeThreadId])
+
+  useEffect(() => {
+    if (!activeThreadId || !user?.uid) return
+    void markDirectThreadRead(activeThreadId, user.uid)
+  }, [activeThreadId, user?.uid])
+
+  useEffect(() => {
+    if (messages.length === 0) return
+    setPendingMessages((current) =>
+      current.filter((pending) => !messages.some((confirmed) =>
+        confirmed.sender_uid === pending.sender_uid &&
+        String(confirmed.content ?? '').trim() === String(pending.content ?? '').trim()
+      ))
+    )
+  }, [messages])
+
+  useEffect(() => {
+    if (activeOtherUid && user?.uid && activeOtherUid === user.uid) {
+      setActiveThread({ threadId: null, otherUid: null, username: null })
+      return
     }
-  }, [threads, activeThreadId])
+
+    if (!activeThreadId && validThreads.length > 0) {
+      const firstThread = validThreads[0]
+      setActiveThread({
+        threadId: firstThread.id,
+        otherUid: firstThread.other_user?.id,
+        username: firstThread.other_user?.username,
+      })
+    }
+  }, [validThreads, activeThreadId, activeOtherUid, setActiveThread, user?.uid])
+
+  useEffect(() => {
+    if (!activeThreadId) return
+    if (activeOtherUid && user?.uid && activeOtherUid === user.uid) {
+      setActiveThread({ threadId: null, otherUid: null, username: null })
+      return
+    }
+    if (validThreads.some((thread) => thread.id === activeThreadId)) return
+    if (activeOtherUid && activeOtherUid !== user?.uid) return
+    setActiveThread({
+      threadId: validThreads[0]?.id ?? null,
+      otherUid: validThreads[0]?.other_user?.id ?? null,
+      username: validThreads[0]?.other_user?.username ?? null,
+    })
+  }, [activeThreadId, activeOtherUid, setActiveThread, user?.uid, validThreads])
 
   const activeThread = useMemo(
-    () => threads.find((thread) => thread.id === activeThreadId) ?? null,
-    [threads, activeThreadId]
+    () => validThreads.find((thread) => thread.id === activeThreadId) ?? (
+      activeThreadId && activeOtherUid && activeOtherUid !== user?.uid
+        ? {
+            id: activeThreadId,
+            other_user: {
+              id: activeOtherUid,
+              username: activeUsername ?? 'user',
+            },
+            last_message_text: '',
+            last_message_at: null,
+            updated_at: null,
+          }
+        : null
+    ),
+    [validThreads, activeThreadId, activeOtherUid, activeUsername, user?.uid]
   )
+
+  const visibleMessages = useMemo(() => {
+    const confirmedKeys = new Set(
+      messages.map((message) => `${message.sender_uid}:${String(message.content ?? '').trim()}:${message.created_at ?? ''}`)
+    )
+
+    const optimistic = pendingMessages.filter((message) => {
+      const content = String(message.content ?? '').trim()
+      return !messages.some((confirmed) =>
+        confirmed.sender_uid === message.sender_uid &&
+        String(confirmed.content ?? '').trim() === content
+      ) && !confirmedKeys.has(`${message.sender_uid}:${content}:${message.created_at ?? ''}`)
+    })
+
+    return [...messages, ...optimistic].sort(
+      (a, b) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime()
+    )
+  }, [messages, pendingMessages])
 
   async function handleSend() {
     if (!user?.uid || !activeThreadId || !text.trim()) return
     const body = text
-    setText('')
-    await sendDirectMessage(activeThreadId, user.uid, body)
+    const optimisticMessage = {
+      id: `pending-${Date.now()}`,
+      thread_id: activeThreadId,
+      sender_uid: user.uid,
+      content: body,
+      created_at: new Date().toISOString(),
+      pending: true,
+    }
+    setSendError(null)
+    setIsSending(true)
+    try {
+      setText('')
+      setPendingMessages((current) => [...current, optimisticMessage])
+      if (activeOtherUid) {
+        await createOrGetDirectThread(user.uid, activeOtherUid)
+      }
+      await sendDirectMessage(activeThreadId, user.uid, body)
+    } catch (error) {
+      console.warn('[dm] send failed', error)
+      setText(body)
+      setPendingMessages((current) => current.filter((message) => message.id !== optimisticMessage.id))
+      const errorMessage = error instanceof Error ? error.message : 'Unknown send error'
+      setSendError(`Message failed to send: ${errorMessage}`)
+    } finally {
+      setIsSending(false)
+    }
   }
 
   if (!user) return null
+  if (Platform.OS !== 'web') return null
+
+  const panelWidth = Math.max(320, Math.min(760, width - 24))
+  const launcherOffset = width < 768 ? 14 : 24
 
   return (
-    <View pointerEvents="box-none" style={styles.root}>
-      {open && (
-        <View style={styles.panel}>
+    <View pointerEvents="box-none" style={[styles.root, { right: launcherOffset, bottom: launcherOffset }]}>
+      {isOpen && (
+        <View style={[styles.panel, { width: panelWidth, maxWidth: width - 12 }]}>
           <View style={styles.panelHeader}>
             <View>
               <Text style={styles.panelTitle}>Chats</Text>
               <Text style={styles.panelSubtitle}>Talk without leaving the page</Text>
             </View>
-            <TouchableOpacity style={styles.headerBtn} onPress={() => setOpen(false)} activeOpacity={0.8}>
-              <Ionicons name="remove" size={18} color={Colors.textSecondary} />
+            <TouchableOpacity style={styles.headerBtn} onPress={closeDock} activeOpacity={0.8}>
+              <DockIcon kind="close" color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.body}>
             <View style={styles.threadColumn}>
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.threadList}>
-                {threads.length === 0 ? (
+                {validThreads.length === 0 ? (
                   <View style={styles.emptyState}>
                     <Text style={styles.emptyTitle}>No conversations yet</Text>
                     <Text style={styles.emptyBody}>Start one from a public profile or slug profile.</Text>
                   </View>
                 ) : (
-                  threads.map((thread) => {
+                  validThreads.map((thread) => {
                     const active = thread.id === activeThreadId
                     return (
                       <TouchableOpacity
                         key={thread.id}
                         style={[styles.threadItem, active && styles.threadItemActive]}
-                        onPress={() => setActiveThreadId(thread.id)}
+                        onPress={() => openConversation({
+                          threadId: thread.id,
+                          otherUid: thread.other_user?.id,
+                          username: thread.other_user?.username,
+                        })}
                         activeOpacity={0.85}
                       >
                         <View style={styles.threadAvatar}>
@@ -111,7 +285,14 @@ export function DesktopChatDock() {
                         <View style={styles.threadMeta}>
                           <View style={styles.threadTopRow}>
                             <Text style={styles.threadHandle}>@{thread.other_user?.username ?? 'user'}</Text>
-                            <Text style={styles.threadTime}>{timeAgo(thread.last_message_at ?? thread.updated_at)}</Text>
+                            <View style={styles.threadMetaRight}>
+                              <Text style={styles.threadTime}>{timeAgo(thread.last_message_at ?? thread.updated_at)}</Text>
+                              <View style={[styles.readBadge, thread.unread ? styles.unreadBadge : styles.readBadgeMuted]}>
+                                <Text style={[styles.readBadgeText, thread.unread ? styles.unreadBadgeText : styles.readBadgeTextMuted]}>
+                                  {thread.unread ? 'Unread' : 'Read'}
+                                </Text>
+                              </View>
+                            </View>
                           </View>
                           <Text style={styles.threadPreview} numberOfLines={2}>
                             {thread.last_message_text || 'Say hello.'}
@@ -137,17 +318,17 @@ export function DesktopChatDock() {
                     contentContainerStyle={styles.messageList}
                     showsVerticalScrollIndicator={false}
                   >
-                    {messages.length === 0 ? (
+                    {visibleMessages.length === 0 ? (
                       <Text style={styles.emptyBody}>No messages yet. Start the conversation.</Text>
                     ) : (
-                      messages.map((message) => {
+                      visibleMessages.map((message) => {
                         const mine = message.sender_uid === user.uid
                         return (
                           <View key={message.id} style={[styles.messageRow, mine && styles.messageRowMine]}>
                             <View style={[styles.messageBubble, mine ? styles.messageBubbleMine : styles.messageBubbleOther]}>
                               <Text style={[styles.messageText, mine && styles.messageTextMine]}>{message.content}</Text>
                             </View>
-                            <Text style={[styles.messageTimeText, mine && styles.messageTimeTextMine]}>
+                            <Text style={[styles.messageTimeText, mine && styles.messageTimeTextMine, message.pending && styles.messagePendingTime]}>
                               {formatTime(message.created_at)}
                             </Text>
                           </View>
@@ -164,10 +345,11 @@ export function DesktopChatDock() {
                       placeholder={`Message @${activeThread.other_user?.username ?? 'chat'}...`}
                       placeholderTextColor={Colors.textMuted}
                     />
-                    <TouchableOpacity style={styles.sendBtn} onPress={handleSend} activeOpacity={0.85}>
-                      <Ionicons name="arrow-up" size={15} color={Colors.bgPrimary} />
+                    <TouchableOpacity style={styles.sendBtn} onPress={handleSend} activeOpacity={0.85} disabled={isSending}>
+                      <DockIcon kind={isSending ? 'clock' : 'send'} color={Colors.bgPrimary} />
                     </TouchableOpacity>
                   </View>
+                  {sendError ? <Text style={styles.sendError}>{sendError}</Text> : null}
                 </>
               ) : (
                 <View style={styles.noSelection}>
@@ -181,15 +363,15 @@ export function DesktopChatDock() {
       )}
 
       <TouchableOpacity
-        style={[styles.launcher, open && styles.launcherActive]}
-        onPress={() => setOpen((value) => !value)}
+        style={[styles.launcher, isOpen && styles.launcherActive]}
+        onPress={toggleDock}
         activeOpacity={0.9}
       >
-        <Ionicons name="chatbubbles" size={20} color={open ? Colors.bgPrimary : Colors.textPrimary} />
-        <Text style={[styles.launcherText, open && styles.launcherTextActive]}>Chat</Text>
-        {threads.length > 0 && !open ? (
+        <DockIcon kind="chat" color={isOpen ? Colors.bgPrimary : Colors.textPrimary} />
+        <Text style={[styles.launcherText, isOpen && styles.launcherTextActive]}>Chat</Text>
+        {unreadCount > 0 && !isOpen ? (
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{threads.length > 9 ? '9+' : String(threads.length)}</Text>
+            <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
           </View>
         ) : null}
       </TouchableOpacity>
@@ -238,6 +420,97 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  iconChatWrap: {
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconBubble: {
+    width: 18,
+    height: 14,
+    borderWidth: 1.6,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  iconDot: {
+    width: 2.5,
+    height: 2.5,
+    borderRadius: 2,
+  },
+  iconCloseWrap: {
+    width: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconCloseLine: {
+    position: 'absolute',
+    width: 12,
+    height: 1.8,
+    borderRadius: 2,
+  },
+  iconSendWrap: {
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconSendStem: {
+    width: 2,
+    height: 11,
+    borderRadius: 2,
+  },
+  iconSendHeadOne: {
+    position: 'absolute',
+    top: 1,
+    left: 7,
+    width: 0,
+    height: 0,
+    borderTopWidth: 4,
+    borderBottomWidth: 0,
+    borderLeftWidth: 4,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+  },
+  iconSendHeadTwo: {
+    position: 'absolute',
+    top: 1,
+    left: 5,
+    width: 0,
+    height: 0,
+    borderBottomWidth: 4,
+    borderTopWidth: 0,
+    borderLeftWidth: 4,
+    borderBottomColor: 'transparent',
+    borderTopColor: 'transparent',
+  },
+  iconClockRing: {
+    width: 16,
+    height: 16,
+    borderWidth: 1.6,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconClockHandShort: {
+    position: 'absolute',
+    width: 2,
+    height: 4,
+    borderRadius: 2,
+    top: 4,
+  },
+  iconClockHandLong: {
+    position: 'absolute',
+    width: 4,
+    height: 2,
+    borderRadius: 2,
+    right: 3,
+    top: 7,
+  },
   body: { flex: 1, flexDirection: 'row' },
   threadColumn: {
     width: 260,
@@ -272,8 +545,33 @@ const styles = StyleSheet.create({
   threadAvatarText: { color: Colors.accentAmber, fontSize: 15, fontWeight: '800' },
   threadMeta: { flex: 1, gap: 4 },
   threadTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  threadMetaRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   threadHandle: { color: Colors.textPrimary, fontSize: 13, fontWeight: '700' },
   threadTime: { color: Colors.textMuted, fontSize: 11 },
+  readBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+  },
+  readBadgeMuted: {
+    borderColor: Colors.bgBorder,
+    backgroundColor: Colors.bgElevated,
+  },
+  unreadBadge: {
+    borderColor: 'rgba(217,119,87,0.28)',
+    backgroundColor: 'rgba(217,119,87,0.12)',
+  },
+  readBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  readBadgeTextMuted: {
+    color: Colors.textMuted,
+  },
+  unreadBadgeText: {
+    color: Colors.accentAmber,
+  },
   threadPreview: { color: Colors.textSecondary, fontSize: 12, lineHeight: 18 },
   conversationColumn: { flex: 1, backgroundColor: '#12110f' },
   conversationHeader: {
@@ -304,6 +602,7 @@ const styles = StyleSheet.create({
   messageTextMine: { color: Colors.bgPrimary },
   messageTimeText: { color: Colors.textMuted, fontSize: 10, paddingHorizontal: 4 },
   messageTimeTextMine: { textAlign: 'right' },
+  messagePendingTime: { color: Colors.accentAmber },
   composer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -330,6 +629,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.accentAmber,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sendError: {
+    color: Colors.accentRed,
+    fontSize: 12,
+    lineHeight: 18,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
   },
   launcher: {
     minWidth: 122,
