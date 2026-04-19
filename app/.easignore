@@ -1,1 +1,4 @@
 node_modules
+bun.lock
+dist
+.firebase
