@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "d5b86065-8313-4c09-8e9e-47a6343a82a2"
+      }
+    },
+    "android": {
+      "package": "com.mememarketer.slugs"
+    }
+  }
+}

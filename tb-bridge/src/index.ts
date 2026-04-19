@@ -225,6 +225,7 @@ const server = http.createServer(async (req, res) => {
       // Create environment (persistent sandbox for sessions)
       const env = await anthropic.beta.environments.create({
         name: `${name} Environment`,
+        config: { type: 'cloud', networking: { type: 'unrestricted' } },
       })
 
       // Create the persistent agent with the standard toolset
@@ -261,13 +262,12 @@ const server = http.createServer(async (req, res) => {
         environment_id: claudeEnvId,
       })
 
-      // Send the user message
+      // Open stream FIRST, then send — per Anthropic docs the stream must be open before sending
+      const stream = await anthropic.beta.sessions.events.stream(session.id)
+
       await anthropic.beta.sessions.events.send(session.id, {
         events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
       })
-
-      // Stream until we get an agent.message or session goes idle/terminated
-      const stream = await anthropic.beta.sessions.events.stream(session.id)
       let reply = ''
       for await (const event of stream) {
         const e = event as any
