@@ -214,13 +214,13 @@ export default function AuthScreen() {
                 </TouchableOpacity>
               )}
 
-              <View style={styles.dividerRow}>
+              {Platform.OS !== 'web' && <View style={styles.dividerRow}>
                 <View style={styles.dividerLine} />
                 <Text style={styles.dividerText}>or</Text>
                 <View style={styles.dividerLine} />
-              </View>
+              </View>}
 
-              {([
+              {Platform.OS !== 'web' && ([
                 { id: 'phantom', label: 'Phantom', icon: '◎' },
                 { id: 'backpack', label: 'Backpack', icon: '⬡' },
               ] as { id: WalletProvider; label: string; icon: string }[]).map(({ id, label, icon }) => (

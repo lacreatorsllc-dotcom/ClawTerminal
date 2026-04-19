@@ -2505,6 +2505,115 @@ const s001 = StyleSheet.create({
   scrollDownText: { fontSize: 18, color: '#000', fontWeight: '700', lineHeight: 22 },
 })
 
+// ── Claude Managed Agent Screen ───────────────────────────────────────────────
+
+const TB_BRIDGE_URL = 'https://tb-bridge-1094657124615.us-central1.run.app'
+
+function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
+  const { user } = useAuthStore()
+  const agentSnap = useAgentsStore.getState().agents.find((a) => a.id === agentId) as any
+  const agentName = agentSnap?.name ?? 'Claude Agent'
+  const claudeAgentId: string = agentSnap?.claude_agent_id ?? ''
+  const claudeEnvId: string = agentSnap?.claude_env_id ?? ''
+
+  const [messages, setMessages] = useState<Array<{ id: string; direction: string; content: string; created_at: string }>>([])
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const flatListRef = useRef<FlatList>(null)
+
+  useEffect(() => {
+    return subscribeToMessages(agentId, (msgs) => setMessages(msgs.slice().reverse()))
+  }, [agentId])
+
+  async function send() {
+    const text = input.trim()
+    if (!text || sending || !user) return
+    setInput('')
+    setSending(true)
+
+    // Optimistically add outbound message to Firestore
+    await addMessage(agentId, { agent_id: agentId, user_id: user.uid, direction: 'outbound', content: text, created_at: new Date().toISOString() })
+
+    try {
+      await fetch(`${TB_BRIDGE_URL}/claude-agents/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ firestoreId: agentId, claudeAgentId, claudeEnvId, message: text, userId: user.uid }),
+      })
+    } catch (e) {
+      console.warn('[claude-chat] fetch error', e)
+    }
+    setSending(false)
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: Colors.bgPrimary }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 56, paddingHorizontal: 16, paddingBottom: 12, gap: 12 }}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Text style={{ color: Colors.accentAmber, fontSize: 16, fontWeight: '600' }}>Back</Text>
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: Colors.textPrimary, fontSize: 17, fontWeight: '700' }}>{agentName}</Text>
+          <Text style={{ color: Colors.accentGreen, fontSize: 11 }}>● claude managed</Text>
+        </View>
+      </View>
+
+      {/* Messages */}
+      <FlatList
+        ref={flatListRef}
+        data={messages}
+        keyExtractor={(m) => m.id}
+        inverted
+        contentContainerStyle={{ padding: 16, gap: 10 }}
+        renderItem={({ item }) => {
+          const isOut = item.direction === 'outbound'
+          return (
+            <View style={{ alignItems: isOut ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+              <View style={{
+                backgroundColor: isOut ? Colors.accentAmber : '#1a1a1a',
+                borderRadius: 16, padding: 12, maxWidth: '80%',
+                borderWidth: isOut ? 0 : 1, borderColor: Colors.bgBorder,
+              }}>
+                <Text style={{ color: isOut ? '#000' : Colors.textPrimary, fontSize: 14, lineHeight: 20 }}>{item.content}</Text>
+              </View>
+            </View>
+          )
+        }}
+      />
+
+      {/* Typing indicator */}
+      {sending && (
+        <View style={{ paddingHorizontal: 20, paddingBottom: 4 }}>
+          <Text style={{ color: Colors.textMuted, fontSize: 12 }}>Agent is thinking…</Text>
+        </View>
+      )}
+
+      {/* Input */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10, borderTopWidth: 1, borderTopColor: Colors.bgBorder }}>
+          <TextInput
+            style={{ flex: 1, color: Colors.textPrimary, backgroundColor: '#111', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, fontSize: 14 }}
+            placeholder="Message agent…"
+            placeholderTextColor={Colors.textMuted}
+            value={input}
+            onChangeText={setInput}
+            onSubmitEditing={send}
+            returnKeyType="send"
+          />
+          <TouchableOpacity
+            onPress={send}
+            disabled={sending || !input.trim()}
+            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: sending ? Colors.bgElevated : Colors.accentAmber, justifyContent: 'center', alignItems: 'center' }}
+          >
+            <Ionicons name="arrow-up" size={18} color={sending ? Colors.textMuted : '#000'} />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </View>
+  )
+}
+
 // ── Main Agent Detail Screen ───────────────────────────────────────────────────
 
 export default function AgentDetailScreen() {
@@ -2519,6 +2628,7 @@ export default function AgentDetailScreen() {
   // Legacy connector-based Blue Chip
   if (agentSnap?.agent_type === 'cabal_blue_chip' && id) return <BlueChipScreen agentId={id} />
   if (agentSnap?.agent_type === 'market_advisor' && id) return <MarketAdvisorScreen agentId={id} />
+  if (agentSnap?.agent_type === 'claude_managed' && id) return <ClaudeManagedAgentScreen agentId={id} />
 
   const [tab, setTab] = useState<Tab>('chat')
   const [showShareCard, setShowShareCard] = useState(false)

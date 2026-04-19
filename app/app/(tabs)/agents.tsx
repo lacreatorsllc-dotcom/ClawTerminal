@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import { router } from 'expo-router'
 import {
-  subscribeToSlug001, subscribeToUserAgents, createAgent, deleteAgent,
+  subscribeToUserAgents, createAgent, deleteAgent,
   type PaperAgentState,
 } from '../../lib/firebase'
 import { useAgentsStore } from '../../stores/agentsStore'
@@ -234,7 +234,7 @@ export default function SlugsScreen() {
   const isDesktopWeb = useDesktopWebLayout()
   const { agents, setAgents, upsertAgent, loading, setLoading } = useAgentsStore()
   const { user, username } = useAuthStore()
-  const [slug001, setSlug001] = useState<PaperAgentState | null>(null)
+
 
   // Deploy modal
   const [deployVisible, setDeployVisible] = useState(false)
@@ -242,12 +242,6 @@ export default function SlugsScreen() {
   const [deploying, setDeploying] = useState(false)
   const [deployedAgent, setDeployedAgent] = useState<{ id: string; name: string } | null>(null)
   const [copied, setCopied] = useState(false)
-
-  // Subscribe to Slug #001 live state
-  useEffect(() => {
-    if (!user) return
-    return subscribeToSlug001((state) => setSlug001(state))
-  }, [user?.uid])
 
   // Subscribe to user's own agents
   useEffect(() => {
@@ -386,16 +380,6 @@ export default function SlugsScreen() {
         </Modal>
 
         <ScrollView contentContainerStyle={[styles.scrollContent, isDesktopWeb && styles.scrollContentDesktop]} showsVerticalScrollIndicator={false}>
-        {/* Featured: Slug #001 */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionLabel}>FEATURED</Text>
-          <View style={styles.livePill}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>Live</Text>
-          </View>
-        </View>
-        <Slug001Card state={slug001} />
-
         {/* User's own agents */}
         {loading ? (
           <View style={{ gap: 10, marginTop: 24 }}>

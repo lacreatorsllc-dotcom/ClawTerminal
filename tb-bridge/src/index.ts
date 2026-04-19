@@ -243,6 +243,58 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // Chat with a Claude Managed Agent — creates a session, sends message, streams reply
+  if (method === 'POST' && url === '/claude-agents/chat') {
+    try {
+      const body = await parseBody(req)
+      const { firestoreId, claudeAgentId, claudeEnvId, message, userId } = body as {
+        firestoreId?: string; claudeAgentId?: string; claudeEnvId?: string
+        message?: string; userId?: string
+      }
+      if (!firestoreId || !claudeAgentId || !claudeEnvId || !message || !userId) {
+        return send(res, 400, { error: 'firestoreId, claudeAgentId, claudeEnvId, message, userId required' })
+      }
+
+      // Create a session for this interaction
+      const session = await anthropic.beta.sessions.create({
+        agent: claudeAgentId,
+        environment_id: claudeEnvId,
+      })
+
+      // Send the user message
+      await anthropic.beta.sessions.events.send(session.id, {
+        events: [{ type: 'user.message', content: [{ type: 'text', text: message }] }],
+      })
+
+      // Stream until we get an agent.message or session goes idle/terminated
+      const stream = await anthropic.beta.sessions.events.stream(session.id)
+      let reply = ''
+      for await (const event of stream) {
+        const e = event as any
+        if (e.type === 'agent.message') {
+          reply = e.content?.map((b: any) => b.text ?? '').join('') ?? ''
+          break
+        }
+        if (e.type === 'session.status.terminated' || e.type === 'session.status.idle') break
+      }
+
+      if (reply) {
+        await db.collection('agents').doc(firestoreId).collection('messages').add({
+          agent_id: firestoreId,
+          user_id: userId,
+          direction: 'inbound',
+          content: reply,
+          created_at: FieldValue.serverTimestamp(),
+        })
+      }
+
+      return send(res, 200, { reply })
+    } catch (err: any) {
+      console.error('[tb-bridge] /claude-agents/chat error:', err?.message ?? err)
+      return send(res, 500, { error: err?.message ?? 'Chat failed' })
+    }
+  }
+
   // 404
   res.writeHead(404, { 'Content-Type': 'text/plain', ...CORS_HEADERS })
   res.end('Not found')

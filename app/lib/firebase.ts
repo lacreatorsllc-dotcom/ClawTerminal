@@ -1068,6 +1068,7 @@ export async function createClaudeAgent(
   name: string,
   claudeAgentId: string,
   claudeEnvId: string,
+  strategy?: string,
 ): Promise<string> {
   const ref = await addDoc(collection(db, 'agents'), {
     user_id: uid,
@@ -1075,6 +1076,7 @@ export async function createClaudeAgent(
     status: 'connected',
     last_seen: serverTimestamp(),
     agent_type: 'claude_managed',
+    strategy: strategy ?? 'Grid Trader',
     // Pointers into Anthropic — all config/skills/sessions live there
     claude_agent_id: claudeAgentId,
     claude_env_id: claudeEnvId,

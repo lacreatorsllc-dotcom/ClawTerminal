@@ -141,7 +141,7 @@ export default function DeployScreen() {
       const data = await res.json() as any
       if (!res.ok) throw new Error(data.error ?? 'Deploy failed')
       // Store only the pointer in Firestore
-      const id = await createClaudeAgent(user.uid, agentName, data.claudeAgentId, data.claudeEnvId)
+      const id = await createClaudeAgent(user.uid, agentName, data.claudeAgentId, data.claudeEnvId, claudeStrategy)
       setDeployed({ id, name: agentName, type: 'claude_managed' })
       setStep('success')
     } catch (e: any) { setError(e.message ?? 'Deploy failed') }
