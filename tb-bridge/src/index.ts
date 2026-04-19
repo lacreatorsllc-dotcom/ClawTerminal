@@ -1,13 +1,19 @@
 import * as http from 'http'
 import type { DocumentReference } from 'firebase-admin/firestore'
 import OpenAI from 'openai'
+import Anthropic from '@anthropic-ai/sdk'
 import { db, FieldValue } from './firebase'
 import { AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID, getAgentDataWithSecrets } from './agentSecrets'
 import { listAgents } from './api'
 import { startPoller } from './poller'
 import { startChatListener, startMarketAdvisorChatListener, startRangeFarmerChatListener } from './chat'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+let _openai: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+  return _openai
+}
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
 
 process.on('uncaughtException', (err) => {
   console.error('[tb-bridge] uncaughtException:', err)
@@ -63,7 +69,7 @@ const server = http.createServer(async (req, res) => {
   // OpenAI connectivity test
   if (method === 'GET' && url === '/test-openai') {
     try {
-      const result = await openai.chat.completions.create({
+      const result = await getOpenAI().chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: 'Reply with just: OK' }],
         max_tokens: 5,
@@ -173,6 +179,54 @@ const server = http.createServer(async (req, res) => {
     } catch (err: any) {
       console.error('[tb-bridge] /connect error:', err?.message ?? err)
       return send(res, 400, { error: err?.message ?? 'Connect failed' })
+    }
+  }
+
+  // Create Claude Managed Agent
+  if (method === 'POST' && url === '/claude-agents/create') {
+    try {
+      const body = await parseBody(req)
+      const { userId, name, strategy, skills } = body as {
+        userId?: string
+        name?: string
+        strategy?: string
+        skills?: string[]
+      }
+
+      if (!userId || typeof userId !== 'string') {
+        return send(res, 400, { error: 'userId is required' })
+      }
+      if (!name || typeof name !== 'string') {
+        return send(res, 400, { error: 'name is required' })
+      }
+
+      const skillsList = Array.isArray(skills) ? skills : []
+      const systemPrompt = [
+        `You are ${name}, an AI trading agent built on Claude.`,
+        `Strategy: ${strategy ?? 'Grid Trader'}.`,
+        `Your active capabilities: ${skillsList.length > 0 ? skillsList.join(', ') : 'general market analysis'}.`,
+        `You monitor markets, analyze opportunities, and provide trading insights.`,
+        `Always be concise, data-driven, and risk-aware in your responses.`,
+      ].join(' ')
+
+      // Create environment (persistent sandbox for sessions)
+      const env = await anthropic.beta.environments.create({
+        name: `${name} Environment`,
+      })
+
+      // Create the persistent agent with the standard toolset
+      const agent = await anthropic.beta.agents.create({
+        name,
+        model: 'claude-opus-4-7',
+        system: systemPrompt,
+        tools: [{ type: 'agent_toolset_20260401' }],
+      })
+
+      console.log(`[tb-bridge] created claude agent ${agent.id} env ${env.id} for user ${userId}`)
+      return send(res, 200, { claudeAgentId: agent.id, claudeEnvId: env.id })
+    } catch (err: any) {
+      console.error('[tb-bridge] /claude-agents/create error:', err?.message ?? err)
+      return send(res, 500, { error: err?.message ?? 'Agent creation failed' })
     }
   }
 
