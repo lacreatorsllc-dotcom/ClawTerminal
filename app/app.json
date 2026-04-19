@@ -34,6 +34,13 @@
       "expo-sharing",
       "expo-router",
       "expo-splash-screen"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7bc9ad02-7c21-4865-889d-65d20bb690a4"
+      }
+    },
+    "owner": "mememarketer"
   }
 }
