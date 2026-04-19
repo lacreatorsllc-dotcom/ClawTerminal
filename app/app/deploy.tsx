@@ -127,7 +127,21 @@ export default function DeployScreen() {
     setDeploying(true); setError('')
     try {
       const agentName = name.trim() || `${claudeStrategy} Agent`
-      const id = await createClaudeAgent(user.uid, agentName, claudeStrategy, Array.from(claudeSkills))
+      // Backend creates the Anthropic agent + env, returns their IDs
+      const res = await fetch(`${TB_BRIDGE_URL}/claude-agents/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.uid,
+          name: agentName,
+          strategy: claudeStrategy,
+          skills: Array.from(claudeSkills),
+        }),
+      })
+      const data = await res.json() as any
+      if (!res.ok) throw new Error(data.error ?? 'Deploy failed')
+      // Store only the pointer in Firestore
+      const id = await createClaudeAgent(user.uid, agentName, data.claudeAgentId, data.claudeEnvId)
       setDeployed({ id, name: agentName, type: 'claude_managed' })
       setStep('success')
     } catch (e: any) { setError(e.message ?? 'Deploy failed') }

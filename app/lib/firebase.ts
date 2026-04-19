@@ -1066,25 +1066,18 @@ export async function sendDirectMessage(threadId: string, senderUid: string, con
 export async function createClaudeAgent(
   uid: string,
   name: string,
-  strategy: string,
-  skills: string[],
+  claudeAgentId: string,
+  claudeEnvId: string,
 ): Promise<string> {
   const ref = await addDoc(collection(db, 'agents'), {
     user_id: uid,
     name,
-    status: 'provisioning',
+    status: 'connected',
     last_seen: serverTimestamp(),
     agent_type: 'claude_managed',
-    hosted: true,
-    paper_mode: true,
-    strategy,
-    skills,
-    // Filled by the backend after calling Anthropic agents.create()
-    claude_agent_id: null,
-    claude_env_id: null,
-    claude_session_id: null,
-    deployment_status: 'pending',
-    metadata: { agent_type: 'claude_managed', hosted: true, paper_mode: true, strategy, skills },
+    // Pointers into Anthropic — all config/skills/sessions live there
+    claude_agent_id: claudeAgentId,
+    claude_env_id: claudeEnvId,
     created_at: serverTimestamp(),
   })
   return ref.id
