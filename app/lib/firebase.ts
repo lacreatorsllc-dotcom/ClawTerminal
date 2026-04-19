@@ -752,6 +752,7 @@ function getAgentTypeLabel(agent: Record<string, any>): string {
   if (type === 'market_advisor') return 'Market Advisor'
   if (type === 'cabal_trading_boy') return 'Trading Boy'
   if (type === 'cabal_blue_chip') return 'Blue Chip'
+  if (type === 'claude_managed') return 'Claude Agent'
   return 'Slug'
 }
 
@@ -772,6 +773,12 @@ function getAgentDescription(agent: Record<string, any>): string {
   if (type === 'cabal_blue_chip') {
     return 'Acts like a connected operator slug for commentary, signals, and shared agent updates inside the social feed.'
   }
+  if (type === 'claude_managed') {
+    const strategy = String(agent.strategy ?? metadata.strategy ?? 'Grid')
+    const skills = (agent.skills ?? metadata.skills ?? []) as string[]
+    const skillStr = skills.length > 0 ? ` Equipped with: ${skills.map((s: string) => s.replace('_', ' ')).join(', ')}.` : ''
+    return `A Claude-powered ${strategy} trading agent running 24/7 with persistent memory.${skillStr}`
+  }
   return 'A public slug profile with live status, recent updates, and trackable performance.'
 }
 
@@ -782,6 +789,7 @@ function getAgentStrategyLabel(agent: Record<string, any>): string {
   if (type === 'market_advisor') return 'Portfolio Copilot'
   if (type === 'cabal_trading_boy') return 'Autonomous Momentum'
   if (type === 'cabal_blue_chip') return 'Social Signal'
+  if (type === 'claude_managed') return String(agent.strategy ?? metadata.strategy ?? 'Claude Strategy')
   return 'General Slug'
 }
 
@@ -1053,6 +1061,33 @@ export async function sendDirectMessage(threadId: string, senderUid: string, con
     last_message_sender_uid: senderUid,
     [`last_read_at_by_uid.${senderUid}`]: serverTimestamp(),
   }, { merge: true })
+}
+
+export async function createClaudeAgent(
+  uid: string,
+  name: string,
+  strategy: string,
+  skills: string[],
+): Promise<string> {
+  const ref = await addDoc(collection(db, 'agents'), {
+    user_id: uid,
+    name,
+    status: 'provisioning',
+    last_seen: serverTimestamp(),
+    agent_type: 'claude_managed',
+    hosted: true,
+    paper_mode: true,
+    strategy,
+    skills,
+    // Filled by the backend after calling Anthropic agents.create()
+    claude_agent_id: null,
+    claude_env_id: null,
+    claude_session_id: null,
+    deployment_status: 'pending',
+    metadata: { agent_type: 'claude_managed', hosted: true, paper_mode: true, strategy, skills },
+    created_at: serverTimestamp(),
+  })
+  return ref.id
 }
 
 export async function createMarketAdvisorAgent(uid: string, name: string, geminiApiKey: string): Promise<string> {

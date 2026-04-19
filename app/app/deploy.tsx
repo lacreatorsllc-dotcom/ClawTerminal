@@ -7,17 +7,28 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../stores/authStore'
-import { createRangeFarmerAgent, createMarketAdvisorAgent } from '../lib/firebase'
+import { createRangeFarmerAgent, createMarketAdvisorAgent, createClaudeAgent } from '../lib/firebase'
 import { Colors } from '../constants/colors'
 
 const TB_BRIDGE_URL = 'https://tb-bridge-1094657124615.us-central1.run.app'
 
-type Step = 'pick' | 'trading-boy' | 'range-farmer' | 'market-advisor' | 'success'
+type Step = 'pick' | 'trading-boy' | 'range-farmer' | 'market-advisor' | 'claude-agent' | 'success'
+
+const CLAUDE_STRATEGIES = ['Grid Trader', 'Momentum', 'DCA', 'Breakout', 'Custom'] as const
+type ClaudeStrategy = typeof CLAUDE_STRATEGIES[number]
+
+const CLAUDE_SKILLS = [
+  { id: 'technical_analysis', label: 'Technical Analysis', emoji: '📊' },
+  { id: 'news_sentiment', label: 'News Sentiment', emoji: '📰' },
+  { id: 'risk_manager', label: 'Risk Manager', emoji: '🛡' },
+  { id: 'onchain_data', label: 'Onchain Data', emoji: '⛓' },
+  { id: 'macro_regime', label: 'Macro Regime', emoji: '🌍' },
+] as const
 
 interface DeployedAgent {
   id: string
   name: string
-  type: 'range_farmer' | 'cabal_trading_boy' | 'market_advisor'
+  type: 'range_farmer' | 'cabal_trading_boy' | 'market_advisor' | 'claude_managed'
 }
 
 function BackMark() {
@@ -57,6 +68,8 @@ export default function DeployScreen() {
   const [deploying, setDeploying] = useState(false)
   const [deployed, setDeployed] = useState<DeployedAgent | null>(null)
   const [error, setError] = useState('')
+  const [claudeStrategy, setClaudeStrategy] = useState<ClaudeStrategy>('Grid Trader')
+  const [claudeSkills, setClaudeSkills] = useState<Set<string>>(new Set(['technical_analysis', 'risk_manager']))
 
   function goBack() {
     if (step === 'pick') router.back()
@@ -109,11 +122,32 @@ export default function DeployScreen() {
     setDeploying(false)
   }
 
+  async function deployClaudeAgent() {
+    if (!user) return
+    setDeploying(true); setError('')
+    try {
+      const agentName = name.trim() || `${claudeStrategy} Agent`
+      const id = await createClaudeAgent(user.uid, agentName, claudeStrategy, Array.from(claudeSkills))
+      setDeployed({ id, name: agentName, type: 'claude_managed' })
+      setStep('success')
+    } catch (e: any) { setError(e.message ?? 'Deploy failed') }
+    setDeploying(false)
+  }
+
+  function toggleSkill(id: string) {
+    setClaudeSkills(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
   const headerTitle =
     step === 'pick' ? 'Deploy an Agent' :
     step === 'trading-boy' ? 'Trading Boy' :
     step === 'range-farmer' ? 'Range Farmer' :
     step === 'market-advisor' ? 'Market Advisor' :
+    step === 'claude-agent' ? 'Claude Agent' :
     'Agent Deployed'
 
   return (
@@ -198,6 +232,32 @@ export default function DeployScreen() {
                 <Text style={s.typeDesc}>A fresh AI agent that reads all your agents' trades and decisions. Ask it anything — it'll guide you on what to do next.</Text>
                 <View style={s.typeTags}>
                   {['advisory', 'gemini', 'portfolio', 'ai'].map(t => (
+                    <View key={t} style={s.tag}><Text style={s.tagText}>{t}</Text></View>
+                  ))}
+                </View>
+              </View>
+              {Platform.OS === 'web' ? <ChevronMark /> : <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />}
+            </TouchableOpacity>
+
+            {/* Claude Agent */}
+            <TouchableOpacity style={s.typeCard} onPress={() => setStep('claude-agent')} activeOpacity={0.8}>
+              <View style={[s.typeIcon, { backgroundColor: 'rgba(251,146,60,0.12)', borderColor: '#fb923c' }]}>
+                <Text style={{ fontSize: 22 }}>✦</Text>
+              </View>
+              <View style={s.typeInfo}>
+                <View style={s.typeNameRow}>
+                  <Text style={s.typeName}>Claude Agent</Text>
+                  <View style={[s.badge, { backgroundColor: 'rgba(251,146,60,0.12)', borderColor: '#fb923c' }]}>
+                    <Text style={[s.badgeText, { color: '#fb923c' }]}>CLAUDE</Text>
+                  </View>
+                  <View style={[s.badge, { backgroundColor: 'rgba(52,211,153,0.12)', borderColor: Colors.accentGreen }]}>
+                    <Text style={[s.badgeText, { color: Colors.accentGreen }]}>HOSTED</Text>
+                  </View>
+                </View>
+                <Text style={s.typeHandle}>@claude/trading-agent</Text>
+                <Text style={s.typeDesc}>Powered by Claude. Hosted 24/7, learns from every trade, and acquires skills over time. Paper trading to start.</Text>
+                <View style={s.typeTags}>
+                  {['claude', 'memory', 'skills', 'hosted'].map(t => (
                     <View key={t} style={s.tag}><Text style={s.tagText}>{t}</Text></View>
                   ))}
                 </View>
@@ -345,6 +405,74 @@ export default function DeployScreen() {
           </>
         )}
 
+        {/* ── Claude Agent ── */}
+        {step === 'claude-agent' && (
+          <>
+            <Text style={s.subtitle}>A Claude-powered agent hosted 24/7. It learns from every trade and can acquire new skills over time.</Text>
+
+            <View style={s.infoBox}>
+              <Text style={s.infoRow}>✦  Runs on Claude — no API key needed</Text>
+              <Text style={s.infoRow}>🧠  Persistent memory across sessions</Text>
+              <Text style={s.infoRow}>⚡  Acquires skills as it trades</Text>
+              <Text style={s.infoRow}>🔒  Paper trading — no real funds</Text>
+            </View>
+
+            <Text style={s.fieldLabel}>Agent Name</Text>
+            <TextInput
+              style={s.input}
+              value={name}
+              onChangeText={setName}
+              placeholder={`${claudeStrategy} Agent`}
+              placeholderTextColor={Colors.textMuted}
+              autoCapitalize="words"
+            />
+
+            <Text style={s.fieldLabel}>Strategy</Text>
+            <View style={s.coinGrid}>
+              {CLAUDE_STRATEGIES.map((strat) => (
+                <TouchableOpacity
+                  key={strat}
+                  style={[s.coinBtn, claudeStrategy === strat && s.claudeBtnActive]}
+                  onPress={() => setClaudeStrategy(strat)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.coinBtnText, claudeStrategy === strat && s.claudeBtnTextActive]}>{strat}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={s.fieldLabel}>Skills to Equip</Text>
+            <View style={s.skillsGrid}>
+              {CLAUDE_SKILLS.map(skill => {
+                const active = claudeSkills.has(skill.id)
+                return (
+                  <TouchableOpacity
+                    key={skill.id}
+                    style={[s.skillChip, active && s.skillChipActive]}
+                    onPress={() => toggleSkill(skill.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.skillEmoji}>{skill.emoji}</Text>
+                    <Text style={[s.skillLabel, active && s.skillLabelActive]}>{skill.label}</Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+
+            {error ? <Text style={s.errorText}>{error}</Text> : null}
+
+            <TouchableOpacity
+              style={[s.cta, { backgroundColor: '#fb923c' }, deploying && { opacity: 0.5 }]}
+              onPress={deployClaudeAgent}
+              disabled={deploying}
+            >
+              {deploying
+                ? <ActivityIndicator color="#000" />
+                : <Text style={s.ctaText}>Deploy Claude Agent</Text>}
+            </TouchableOpacity>
+          </>
+        )}
+
         {/* ── Success ── */}
         {step === 'success' && deployed && (
           <View style={s.successBlock}>
@@ -357,6 +485,8 @@ export default function DeployScreen() {
                 ? "Your Range Farmer is live and already trading BTC on a paper grid."
                 : deployed.type === 'cabal_trading_boy'
                 ? `${deployed.name} connected. Live state, decisions, and Gemini chat are syncing.`
+                : deployed.type === 'claude_managed'
+                ? `${deployed.name} is provisioning. Claude will be ready to trade in a moment — it's loading its skills now.`
                 : `${deployed.name} is ready. It's reading your portfolio now — just start chatting.`}
             </Text>
             <TouchableOpacity
@@ -366,6 +496,7 @@ export default function DeployScreen() {
                   ? router.replace('/(tabs)/agents' as any)
                   : router.replace(`/agent/${deployed.id}` as any)
               }}
+
             >
               <Text style={s.ctaText}>{deployed.type === 'cabal_trading_boy' ? 'View Agents' : 'Open Agent'}</Text>
             </TouchableOpacity>
@@ -503,6 +634,24 @@ const s = StyleSheet.create({
   ctaText: { fontSize: 16, fontWeight: '700', color: '#000' },
   secondaryBtn: { alignItems: 'center', paddingVertical: 12 },
   secondaryBtnText: { fontSize: 14, color: Colors.textMuted },
+
+  claudeBtnActive: {
+    backgroundColor: 'rgba(251,146,60,0.15)', borderColor: '#fb923c',
+  },
+  claudeBtnTextActive: { color: '#fb923c' },
+
+  skillsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  skillChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10,
+    backgroundColor: Colors.bgSubtle, borderWidth: 1, borderColor: Colors.borderSubtle,
+  },
+  skillChipActive: {
+    backgroundColor: 'rgba(251,146,60,0.12)', borderColor: '#fb923c',
+  },
+  skillEmoji: { fontSize: 14 },
+  skillLabel: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
+  skillLabelActive: { color: '#fb923c' },
 
   successBlock: { alignItems: 'center', gap: 16, paddingTop: 32 },
   successIcon: {
