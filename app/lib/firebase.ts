@@ -887,6 +887,31 @@ export function subscribeToTrackedAgents(uid: string, cb: (agentIds: string[]) =
   })
 }
 
+export function subscribeToTrackedAgentDocs(
+  agentIds: string[],
+  cb: (agents: Array<{ id: string; name: string; status: string; last_seen: string | null; owner_username: string | null; live_state: Record<string, any> | null }>) => void,
+) {
+  if (agentIds.length === 0) { cb([]); return () => {} }
+  const results = new Map<string, any>()
+  const unsubs = agentIds.slice(0, 20).map((agentId) =>
+    onSnapshot(doc(db, 'agents', agentId), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data()
+        results.set(agentId, {
+          id: snap.id,
+          name: String(d.name ?? 'Agent'),
+          status: String(d.status ?? 'disconnected'),
+          last_seen: tsToISO(d.last_seen as Timestamp | null),
+          owner_username: null, // resolved separately if needed
+          live_state: (d.live_state as Record<string, any>) ?? null,
+        })
+      }
+      cb(Array.from(results.values()))
+    })
+  )
+  return () => unsubs.forEach((u) => u())
+}
+
 export function subscribeToTrackedAgentFeed(agentIds: string[], cb: (events: any[]) => void) {
   if (agentIds.length === 0) { cb([]); return () => {} }
   const tracked = new Set(agentIds.slice(0, 50))

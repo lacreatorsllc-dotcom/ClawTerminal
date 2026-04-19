@@ -10,6 +10,7 @@ import {
   subscribeToPublicFeed,
   subscribeToTrackedAgents,
   subscribeToTrackedAgentFeed,
+  subscribeToTrackedAgentDocs,
   subscribeToUserAgentsPnl,
   publishAgentPnl,
   getPnlSharingPref,
@@ -328,6 +329,56 @@ function PostPnlModal({
   )
 }
 
+// ── Tracked Slug Card ──────────────────────────────────────────────────────────
+
+function TrackedSlugCard({ agent }: { agent: { id: string; name: string; status: string; last_seen: string | null; live_state: Record<string, any> | null } }) {
+  const pnl: number = agent.live_state?.unrealizedPnlUsd ?? 0
+  const isPos = pnl >= 0
+  const hasPnl = agent.live_state?.unrealizedPnlUsd != null
+  const isOnline = agent.status === 'connected'
+  const color = agentColor(agent.name)
+
+  return (
+    <TouchableOpacity
+      style={trackedStyles.card}
+      onPress={() => router.push(`/agent/${agent.id}` as any)}
+      activeOpacity={0.75}
+    >
+      <View style={[trackedStyles.avatar, { backgroundColor: color + '22', borderColor: isOnline ? Colors.accentGreen : color }]}>
+        <Text style={[trackedStyles.avatarText, { color }]}>{agent.name[0]?.toUpperCase() ?? '?'}</Text>
+        {isOnline && <View style={trackedStyles.onlineDot} />}
+      </View>
+      <Text style={trackedStyles.name} numberOfLines={1}>{agent.name}</Text>
+      {hasPnl ? (
+        <Text style={[trackedStyles.pnl, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
+          {isPos ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
+        </Text>
+      ) : (
+        <Text style={trackedStyles.pnlMuted}>No data</Text>
+      )}
+    </TouchableOpacity>
+  )
+}
+
+function TrackedSlugsSection({ agentIds }: { agentIds: string[] }) {
+  const [agents, setAgents] = useState<any[]>([])
+
+  useEffect(() => {
+    return subscribeToTrackedAgentDocs(agentIds, setAgents)
+  }, [agentIds.join(',')])
+
+  if (agents.length === 0) return null
+
+  return (
+    <View style={trackedStyles.section}>
+      <Text style={trackedStyles.sectionLabel}>TRACKING</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={trackedStyles.row}>
+        {agents.map((a) => <TrackedSlugCard key={a.id} agent={a} />)}
+      </ScrollView>
+    </View>
+  )
+}
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
@@ -472,6 +523,11 @@ export default function FeedScreen() {
             )}
           </View>
         </View>
+
+        {/* Tracked slugs row */}
+        {trackedAgentIds.length > 0 && (
+          <TrackedSlugsSection agentIds={trackedAgentIds} />
+        )}
 
         {/* Feed */}
         {loading ? null : followingUids.length === 0 && trackedAgentIds.length === 0 ? (
@@ -639,4 +695,38 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: Colors.textSecondary, fontSize: 15, fontWeight: '600' },
   noAgentsPnl: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   noAgentsPnlText: { fontSize: 14, color: Colors.textMuted },
+})
+
+const trackedStyles = StyleSheet.create({
+  section: { paddingBottom: 4 },
+  sectionLabel: {
+    fontSize: 11, fontWeight: '700', color: Colors.textMuted,
+    letterSpacing: 1.2, textTransform: 'uppercase',
+    paddingHorizontal: 20, paddingBottom: 10,
+  },
+  row: { paddingHorizontal: 16, gap: 10 },
+  card: {
+    width: 110,
+    backgroundColor: '#0f0f0f',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    padding: 12,
+    alignItems: 'center',
+    gap: 6,
+  },
+  avatar: {
+    width: 44, height: 44, borderRadius: 22,
+    borderWidth: 1.5, justifyContent: 'center', alignItems: 'center',
+  },
+  avatarText: { fontSize: 18, fontWeight: '700' },
+  onlineDot: {
+    position: 'absolute', bottom: 1, right: 1,
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: Colors.accentGreen,
+    borderWidth: 2, borderColor: '#0f0f0f',
+  },
+  name: { fontSize: 12, fontWeight: '600', color: Colors.textPrimary, textAlign: 'center' },
+  pnl: { fontSize: 13, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  pnlMuted: { fontSize: 11, color: Colors.textMuted },
 })

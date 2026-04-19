@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#141413"
+      "backgroundColor": "#000000"
     },
     "ios": {
       "supportsTablet": true,
@@ -31,7 +31,8 @@
     "plugins": [
       "expo-secure-store",
       "expo-sharing",
-      "expo-router"
+      "expo-router",
+      "expo-splash-screen"
     ]
   }
 }
