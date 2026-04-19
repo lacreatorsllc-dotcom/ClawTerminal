@@ -56,7 +56,7 @@ function formatTime(ts: string): string {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
-function toFeedItem(raw: any): FeedItem {
+function toFeedItem(raw: any, nameMap?: Map<string, string>): FeedItem {
   const cardType: CardType =
     raw.type === 'pnl' || raw.type === 'daily_pnl' ? 'pnl'
     : raw.type === 'system' ? 'system'
@@ -68,11 +68,13 @@ function toFeedItem(raw: any): FeedItem {
       ? { pnl: Number(pnlVal), pct: raw.payload?.pct ?? 0, symbol: raw.payload?.symbol, side: raw.payload?.side }
       : null
 
+  const agentName = raw.agent_name || nameMap?.get(String(raw.agent_id ?? '')) || 'Agent'
+
   return {
     id: raw.id,
     agent_id: raw.agent_id,
     user_id: raw.user_id,
-    agentName: raw.agent_name ?? 'Agent',
+    agentName,
     content: raw.content,
     created_at: raw.created_at,
     cardType,
@@ -386,6 +388,7 @@ export default function FeedScreen() {
   const { user } = useAuthStore()
   const [followingUids, setFollowingUids] = useState<string[]>([])
   const [trackedAgentIds, setTrackedAgentIds] = useState<string[]>([])
+  const [trackedAgentDocs, setTrackedAgentDocs] = useState<any[]>([])
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [followingFeed, setFollowingFeed] = useState<FeedItem[]>([])
   const [trackedFeed, setTrackedFeed] = useState<FeedItem[]>([])
@@ -423,6 +426,11 @@ export default function FeedScreen() {
     })
   }, [user?.uid])
 
+  useEffect(() => {
+    if (trackedAgentIds.length === 0) { setTrackedAgentDocs([]); return }
+    return subscribeToTrackedAgentDocs(trackedAgentIds, setTrackedAgentDocs)
+  }, [trackedAgentIds.join(',')])
+
   // Subscribe to followed users' public feed
   useEffect(() => {
     if (!user) return
@@ -442,11 +450,12 @@ export default function FeedScreen() {
       setTrackedFeed([])
       return
     }
+    const nameMap = new Map(trackedAgentDocs.map((a) => [a.id, a.name]))
     const unsub = subscribeToTrackedAgentFeed(trackedAgentIds, (events) => {
-      setTrackedFeed(events.map(toFeedItem))
+      setTrackedFeed(events.map((e) => toFeedItem(e, nameMap)))
     })
     return unsub
-  }, [user?.uid, trackedAgentIds.join(',')])
+  }, [user?.uid, trackedAgentIds.join(','), trackedAgentDocs])
 
   useEffect(() => {
     const merged = [...followingFeed, ...trackedFeed]

@@ -12,6 +12,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@babel/helper-create-regexp-features-plugin": "^7.28.5",
     "@expo/metro-runtime": "~55.0.9",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@supabase/supabase-js": "^2.99.3",

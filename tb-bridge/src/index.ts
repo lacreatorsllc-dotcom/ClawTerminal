@@ -49,9 +49,15 @@ function parseBody(req: http.IncomingMessage): Promise<any> {
   })
 }
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+}
+
 function send(res: http.ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body)
-  res.writeHead(status, { 'Content-Type': 'application/json' })
+  res.writeHead(status, { 'Content-Type': 'application/json', ...CORS_HEADERS })
   res.end(payload)
 }
 
@@ -59,9 +65,16 @@ const server = http.createServer(async (req, res) => {
   const url = req.url ?? '/'
   const method = req.method ?? 'GET'
 
+  // CORS preflight
+  if (method === 'OPTIONS') {
+    res.writeHead(204, CORS_HEADERS)
+    res.end()
+    return
+  }
+
   // Health check
   if (method === 'GET' && (url === '/' || url === '/health')) {
-    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.writeHead(200, { 'Content-Type': 'text/plain', ...CORS_HEADERS })
     res.end('tb-bridge running')
     return
   }
@@ -231,7 +244,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 404
-  res.writeHead(404, { 'Content-Type': 'text/plain' })
+  res.writeHead(404, { 'Content-Type': 'text/plain', ...CORS_HEADERS })
   res.end('Not found')
 })
 
