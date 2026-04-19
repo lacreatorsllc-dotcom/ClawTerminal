@@ -7,12 +7,12 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuthStore } from '../stores/authStore'
-import { createRangeFarmerAgent, createMarketAdvisorAgent, createClaudeAgent } from '../lib/firebase'
+import { createClaudeAgent } from '../lib/firebase'
 import { Colors } from '../constants/colors'
 
 const TB_BRIDGE_URL = 'https://tb-bridge-1094657124615.us-central1.run.app'
 
-type Step = 'pick' | 'trading-boy' | 'range-farmer' | 'market-advisor' | 'claude-agent' | 'success'
+type Step = 'pick' | 'trading-boy' | 'claude-agent' | 'success'
 
 const CLAUDE_STRATEGIES = ['Grid Trader', 'Momentum', 'DCA', 'Breakout', 'Custom'] as const
 type ClaudeStrategy = typeof CLAUDE_STRATEGIES[number]
@@ -28,7 +28,7 @@ const CLAUDE_SKILLS = [
 interface DeployedAgent {
   id: string
   name: string
-  type: 'range_farmer' | 'cabal_trading_boy' | 'market_advisor' | 'claude_managed'
+  type: 'cabal_trading_boy' | 'claude_managed'
 }
 
 function BackMark() {
@@ -63,7 +63,6 @@ export default function DeployScreen() {
   const [step, setStep] = useState<Step>('pick')
   const [name, setName] = useState('')
   const [tbApiKey, setTbApiKey] = useState('')
-  const [selectedCoin, setSelectedCoin] = useState('BTC')
   const [showTbKey, setShowTbKey] = useState(false)
   const [deploying, setDeploying] = useState(false)
   const [deployed, setDeployed] = useState<DeployedAgent | null>(null)
@@ -76,18 +75,6 @@ export default function DeployScreen() {
     else { setStep('pick'); setError('') }
   }
 
-  async function deployRangeFarmer() {
-    if (!user) return
-    setDeploying(true); setError('')
-    try {
-      const agentName = name.trim() || `${selectedCoin} Range Farmer`
-      const id = await createRangeFarmerAgent(user.uid, agentName, selectedCoin)
-      setDeployed({ id, name: agentName, type: 'range_farmer' })
-      setStep('success')
-    } catch (e: any) { setError(e.message ?? 'Deploy failed') }
-    setDeploying(false)
-  }
-
   async function connectTradingBoy() {
     if (!user || !tbApiKey.trim()) return
     setDeploying(true); setError('')
@@ -95,10 +82,7 @@ export default function DeployScreen() {
       const res = await fetch(`${TB_BRIDGE_URL}/connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          apiKey: tbApiKey.trim(),
-        }),
+        body: JSON.stringify({ userId: user.uid, apiKey: tbApiKey.trim() }),
       })
       const data = await res.json() as any
       if (!res.ok) throw new Error(data.error ?? 'Connect failed')
@@ -110,24 +94,11 @@ export default function DeployScreen() {
     setDeploying(false)
   }
 
-  async function deployMarketAdvisor() {
-    if (!user) return
-    setDeploying(true); setError('')
-    try {
-      const agentName = name.trim() || 'Market Advisor'
-      const id = await createMarketAdvisorAgent(user.uid, agentName, '')
-      setDeployed({ id, name: agentName, type: 'market_advisor' })
-      setStep('success')
-    } catch (e: any) { setError(e.message ?? 'Deploy failed') }
-    setDeploying(false)
-  }
-
   async function deployClaudeAgent() {
     if (!user) return
     setDeploying(true); setError('')
     try {
       const agentName = name.trim() || `${claudeStrategy} Agent`
-      // Backend creates the Anthropic agent + env, returns their IDs
       const res = await fetch(`${TB_BRIDGE_URL}/claude-agents/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -140,7 +111,6 @@ export default function DeployScreen() {
       })
       const data = await res.json() as any
       if (!res.ok) throw new Error(data.error ?? 'Deploy failed')
-      // Store only the pointer in Firestore
       const id = await createClaudeAgent(user.uid, agentName, data.claudeAgentId, data.claudeEnvId, claudeStrategy)
       setDeployed({ id, name: agentName, type: 'claude_managed' })
       setStep('success')
@@ -159,8 +129,6 @@ export default function DeployScreen() {
   const headerTitle =
     step === 'pick' ? 'Deploy an Agent' :
     step === 'trading-boy' ? 'Trading Boy' :
-    step === 'range-farmer' ? 'Range Farmer' :
-    step === 'market-advisor' ? 'Market Advisor' :
     step === 'claude-agent' ? 'Claude Agent' :
     'Agent Deployed'
 
@@ -179,82 +147,10 @@ export default function DeployScreen() {
         {/* ── Pick ── */}
         {step === 'pick' && (
           <>
-            <Text style={s.subtitle}>Choose an agent type to deploy to your account.</Text>
+            <Text style={s.subtitle}>Choose an agent to deploy.</Text>
 
-            {/* Trading Boy — top */}
-            <TouchableOpacity style={s.typeCard} onPress={() => setStep('trading-boy')} activeOpacity={0.8}>
-              <View style={[s.typeIcon, { backgroundColor: 'rgba(168,85,247,0.12)', borderColor: Colors.accentPurple }]}>
-                <Text style={{ fontSize: 22 }}>◎</Text>
-              </View>
-              <View style={s.typeInfo}>
-                <View style={s.typeNameRow}>
-                  <Text style={s.typeName}>Trading Boy</Text>
-                  <View style={[s.badge, { backgroundColor: 'rgba(168,85,247,0.12)', borderColor: Colors.accentPurple }]}>
-                    <Text style={[s.badgeText, { color: Colors.accentPurple }]}>CABAL</Text>
-                  </View>
-                </View>
-                <Text style={s.typeHandle}>@cabal/trading-boy</Text>
-                <Text style={s.typeDesc}>Connect your Trading Boy agent from cabal.ventures. Live state, decisions feed, and AI chat powered by Gemini.</Text>
-                <View style={s.typeTags}>
-                  {['trading', 'cabal', 'autonomous', 'gemini'].map(t => (
-                    <View key={t} style={s.tag}><Text style={s.tagText}>{t}</Text></View>
-                  ))}
-                </View>
-              </View>
-              {Platform.OS === 'web' ? <ChevronMark /> : <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />}
-            </TouchableOpacity>
-
-            {/* Range Farmer */}
-            <TouchableOpacity style={s.typeCard} onPress={() => setStep('range-farmer')} activeOpacity={0.8}>
-              <View style={[s.typeIcon, { backgroundColor: 'rgba(217,119,87,0.12)', borderColor: Colors.accentAmber }]}>
-                <Text style={{ fontSize: 22 }}>⬡</Text>
-              </View>
-              <View style={s.typeInfo}>
-                <View style={s.typeNameRow}>
-                  <Text style={s.typeName}>Range Farmer</Text>
-                  <View style={[s.badge, { backgroundColor: 'rgba(217,119,87,0.15)', borderColor: Colors.accentAmber }]}>
-                    <Text style={[s.badgeText, { color: Colors.accentAmber }]}>PAPER</Text>
-                  </View>
-                  <View style={[s.badge, { backgroundColor: 'rgba(52,211,153,0.12)', borderColor: Colors.accentGreen }]}>
-                    <Text style={[s.badgeText, { color: Colors.accentGreen }]}>HOSTED</Text>
-                  </View>
-                </View>
-                <Text style={s.typeHandle}>@slugs/range-farmer</Text>
-                <Text style={s.typeDesc}>BTC grid trading. We host and run it 24/7. Paper trading only — no real funds.</Text>
-                <View style={s.typeTags}>
-                  {['grid', 'btc', 'paper'].map(t => (
-                    <View key={t} style={s.tag}><Text style={s.tagText}>{t}</Text></View>
-                  ))}
-                </View>
-              </View>
-              {Platform.OS === 'web' ? <ChevronMark /> : <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />}
-            </TouchableOpacity>
-
-            {/* Market Advisor */}
-            <TouchableOpacity style={s.typeCard} onPress={() => setStep('market-advisor')} activeOpacity={0.8}>
-              <View style={[s.typeIcon, { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: '#818cf8' }]}>
-                <Text style={{ fontSize: 22 }}>✦</Text>
-              </View>
-              <View style={s.typeInfo}>
-                <View style={s.typeNameRow}>
-                  <Text style={s.typeName}>Market Advisor</Text>
-                  <View style={[s.badge, { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: '#818cf8' }]}>
-                    <Text style={[s.badgeText, { color: '#818cf8' }]}>GEMINI</Text>
-                  </View>
-                </View>
-                <Text style={s.typeHandle}>@slugs/market-advisor</Text>
-                <Text style={s.typeDesc}>A fresh AI agent that reads all your agents' trades and decisions. Ask it anything — it'll guide you on what to do next.</Text>
-                <View style={s.typeTags}>
-                  {['advisory', 'gemini', 'portfolio', 'ai'].map(t => (
-                    <View key={t} style={s.tag}><Text style={s.tagText}>{t}</Text></View>
-                  ))}
-                </View>
-              </View>
-              {Platform.OS === 'web' ? <ChevronMark /> : <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />}
-            </TouchableOpacity>
-
-            {/* Claude Agent */}
-            <TouchableOpacity style={s.typeCard} onPress={() => setStep('claude-agent')} activeOpacity={0.8}>
+            {/* Claude Agent — primary */}
+            <TouchableOpacity style={[s.typeCard, s.typeCardFeatured]} onPress={() => setStep('claude-agent')} activeOpacity={0.8}>
               <View style={[s.typeIcon, { backgroundColor: 'rgba(251,146,60,0.12)', borderColor: '#fb923c' }]}>
                 <Text style={{ fontSize: 22 }}>✦</Text>
               </View>
@@ -269,9 +165,32 @@ export default function DeployScreen() {
                   </View>
                 </View>
                 <Text style={s.typeHandle}>@claude/trading-agent</Text>
-                <Text style={s.typeDesc}>Powered by Claude. Hosted 24/7, learns from every trade, and acquires skills over time. Paper trading to start.</Text>
+                <Text style={s.typeDesc}>Powered by Claude. Hosted 24/7 with persistent memory, skill acquisition, and full tool access. Pick your strategy and go.</Text>
                 <View style={s.typeTags}>
-                  {['claude', 'memory', 'skills', 'hosted'].map(t => (
+                  {['claude', 'memory', 'skills', 'hosted', 'paper'].map(t => (
+                    <View key={t} style={s.tag}><Text style={s.tagText}>{t}</Text></View>
+                  ))}
+                </View>
+              </View>
+              {Platform.OS === 'web' ? <ChevronMark /> : <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />}
+            </TouchableOpacity>
+
+            {/* Trading Boy */}
+            <TouchableOpacity style={s.typeCard} onPress={() => setStep('trading-boy')} activeOpacity={0.8}>
+              <View style={[s.typeIcon, { backgroundColor: 'rgba(168,85,247,0.12)', borderColor: Colors.accentPurple }]}>
+                <Text style={{ fontSize: 22 }}>◎</Text>
+              </View>
+              <View style={s.typeInfo}>
+                <View style={s.typeNameRow}>
+                  <Text style={s.typeName}>Trading Boy</Text>
+                  <View style={[s.badge, { backgroundColor: 'rgba(168,85,247,0.12)', borderColor: Colors.accentPurple }]}>
+                    <Text style={[s.badgeText, { color: Colors.accentPurple }]}>CABAL</Text>
+                  </View>
+                </View>
+                <Text style={s.typeHandle}>@cabal/trading-boy</Text>
+                <Text style={s.typeDesc}>Connect your existing Trading Boy from cabal.ventures. Live state, decisions feed, and AI chat.</Text>
+                <View style={s.typeTags}>
+                  {['trading', 'cabal', 'autonomous', 'live'].map(t => (
                     <View key={t} style={s.tag}><Text style={s.tagText}>{t}</Text></View>
                   ))}
                 </View>
@@ -289,7 +208,7 @@ export default function DeployScreen() {
         {/* ── Trading Boy ── */}
         {step === 'trading-boy' && (
           <>
-            <Text style={s.subtitle}>Connect your Trading Boy agent from cabal.ventures using your API key.</Text>
+            <Text style={s.subtitle}>Connect your Trading Boy from cabal.ventures using your API key.</Text>
 
             <View style={s.infoBox}>
               <Text style={s.infoRow}>◎  Fully autonomous trading agent</Text>
@@ -327,94 +246,6 @@ export default function DeployScreen() {
               disabled={!tbApiKey.trim() || deploying}
             >
               {deploying ? <ActivityIndicator color="#000" /> : <Text style={s.ctaText}>Connect Agent</Text>}
-            </TouchableOpacity>
-          </>
-        )}
-
-        {/* ── Range Farmer ── */}
-        {step === 'range-farmer' && (
-          <>
-            <Text style={s.subtitle}>We'll spin up a dedicated instance for you. Paper trading only.</Text>
-
-            <View style={s.infoBox}>
-              <Text style={s.infoRow}>⬡  Dynamic grid range strategy</Text>
-              <Text style={s.infoRow}>📡  Live price updates every 30s</Text>
-              <Text style={s.infoRow}>💬  Chat powered by your AI key</Text>
-              <Text style={s.infoRow}>🔒  Paper trading — no real funds</Text>
-            </View>
-
-            {/* Coin selector */}
-            <Text style={s.fieldLabel}>Coin to Farm</Text>
-            <View style={s.coinGrid}>
-              {['BTC', 'SOL', 'ETH', 'XRP', 'DOGE', 'AVAX', 'SUI', 'INJ'].map((coin) => (
-                <TouchableOpacity
-                  key={coin}
-                  style={[s.coinBtn, selectedCoin === coin && s.coinBtnActive]}
-                  onPress={() => setSelectedCoin(coin)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[s.coinBtnText, selectedCoin === coin && s.coinBtnTextActive]}>{coin}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={s.fieldLabel}>Agent Name</Text>
-            <TextInput
-              style={s.input}
-              value={name}
-              onChangeText={setName}
-              placeholder={`${selectedCoin} Range Farmer`}
-              placeholderTextColor={Colors.textMuted}
-              autoCapitalize="words"
-            />
-
-            {error ? <Text style={s.errorText}>{error}</Text> : null}
-
-            <TouchableOpacity
-              style={[s.cta, deploying && { opacity: 0.5 }]}
-              onPress={deployRangeFarmer}
-              disabled={deploying}
-            >
-              {deploying ? <ActivityIndicator color="#000" /> : <Text style={s.ctaText}>Deploy {selectedCoin} Farmer</Text>}
-            </TouchableOpacity>
-          </>
-        )}
-
-        {/* ── Market Advisor ── */}
-        {step === 'market-advisor' && (
-          <>
-            <Text style={s.subtitle}>A dedicated AI agent that reads your full portfolio and guides you on what to do next.</Text>
-
-            <View style={s.infoBox}>
-              <Text style={s.infoRow}>✦  Reads all your agents' trades &amp; decisions</Text>
-              <Text style={s.infoRow}>📈  Knows current BTC price &amp; market regime</Text>
-              <Text style={s.infoRow}>💬  Ask it anything — it guides, you act</Text>
-              <Text style={s.infoRow}>🧠  Gemini 2.0 Flash — fast &amp; free</Text>
-            </View>
-
-            <Text style={s.fieldLabel}>Agent Name</Text>
-            <TextInput
-              style={s.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="Market Advisor"
-              placeholderTextColor={Colors.textMuted}
-              autoCapitalize="words"
-            />
-
-            <View style={s.infoBox}>
-              <Text style={s.infoRow}>🔑  Uses your AI key from Settings</Text>
-              <Text style={s.infoRow}>    No key? Add one under Settings → AI Provider</Text>
-            </View>
-
-            {error ? <Text style={s.errorText}>{error}</Text> : null}
-
-            <TouchableOpacity
-              style={[s.cta, deploying && { opacity: 0.5 }]}
-              onPress={deployMarketAdvisor}
-              disabled={deploying}
-            >
-              {deploying ? <ActivityIndicator color="#000" /> : <Text style={s.ctaText}>Deploy Advisor</Text>}
             </TouchableOpacity>
           </>
         )}
@@ -495,13 +326,9 @@ export default function DeployScreen() {
             </View>
             <Text style={s.successTitle}>{deployed.name}</Text>
             <Text style={s.successDesc}>
-              {deployed.type === 'range_farmer'
-                ? "Your Range Farmer is live and already trading BTC on a paper grid."
-                : deployed.type === 'cabal_trading_boy'
-                ? `${deployed.name} connected. Live state, decisions, and Gemini chat are syncing.`
-                : deployed.type === 'claude_managed'
-                ? `${deployed.name} is provisioning. Claude will be ready to trade in a moment — it's loading its skills now.`
-                : `${deployed.name} is ready. It's reading your portfolio now — just start chatting.`}
+              {deployed.type === 'cabal_trading_boy'
+                ? `${deployed.name} connected. Live state, decisions, and chat are syncing.`
+                : `${deployed.name} is live. Claude is loading its skills — start chatting to put it to work.`}
             </Text>
             <TouchableOpacity
               style={s.cta}
@@ -510,7 +337,6 @@ export default function DeployScreen() {
                   ? router.replace('/(tabs)/agents' as any)
                   : router.replace(`/agent/${deployed.id}` as any)
               }}
-
             >
               <Text style={s.ctaText}>{deployed.type === 'cabal_trading_boy' ? 'View Agents' : 'Open Agent'}</Text>
             </TouchableOpacity>
@@ -534,45 +360,23 @@ const s = StyleSheet.create({
   backBtn: { width: 36, height: 36, justifyContent: 'center' },
   backMark: { width: 10, height: 14, alignItems: 'center', justifyContent: 'center' },
   backStroke: {
-    position: 'absolute',
-    width: 8,
-    height: 1.8,
-    borderRadius: 2,
-    backgroundColor: Colors.textPrimary,
-    left: 1,
+    position: 'absolute', width: 8, height: 1.8,
+    borderRadius: 2, backgroundColor: Colors.textPrimary, left: 1,
   },
   backStrokeTop: { top: 4, transform: [{ rotate: '-45deg' }] },
   backStrokeBottom: { bottom: 4, transform: [{ rotate: '45deg' }] },
   chevronMark: { width: 10, height: 14, alignItems: 'center', justifyContent: 'center' },
   chevronStroke: {
-    position: 'absolute',
-    width: 7,
-    height: 1.8,
-    borderRadius: 2,
-    backgroundColor: Colors.textMuted,
-    right: 0,
+    position: 'absolute', width: 7, height: 1.8,
+    borderRadius: 2, backgroundColor: Colors.textMuted, right: 0,
   },
   chevronStrokeTop: { top: 4, transform: [{ rotate: '45deg' }] },
   chevronStrokeBottom: { bottom: 4, transform: [{ rotate: '-45deg' }] },
   checkMark: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center' },
-  checkStroke: {
-    position: 'absolute',
-    height: 2.4,
-    borderRadius: 2,
-    backgroundColor: Colors.accentGreen,
-  },
-  checkStrokeShort: {
-    width: 9,
-    left: 3,
-    top: 14,
-    transform: [{ rotate: '45deg' }],
-  },
-  checkStrokeLong: {
-    width: 16,
-    right: 1,
-    top: 11,
-    transform: [{ rotate: '-45deg' }],
-  },
+  checkStroke: { position: 'absolute', height: 2.4, borderRadius: 2, backgroundColor: Colors.accentGreen },
+  checkStrokeShort: { width: 9, left: 3, top: 14, transform: [{ rotate: '45deg' }] },
+  checkStrokeLong: { width: 16, right: 1, top: 11, transform: [{ rotate: '-45deg' }] },
+
   headerTitle: { fontSize: 17, fontWeight: '600', color: Colors.textPrimary },
   body: { padding: 20, gap: 16 },
   subtitle: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
@@ -581,6 +385,10 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-start', gap: 14,
     backgroundColor: Colors.bgCard, borderRadius: 16,
     padding: 16, borderWidth: 1, borderColor: Colors.borderSubtle,
+  },
+  typeCardFeatured: {
+    borderColor: 'rgba(251,146,60,0.3)',
+    backgroundColor: 'rgba(251,146,60,0.04)',
   },
   typeIcon: {
     width: 48, height: 48, borderRadius: 14, borderWidth: 1.5,
@@ -594,7 +402,6 @@ const s = StyleSheet.create({
   typeTags: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' },
   tag: { backgroundColor: Colors.bgSubtle, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   tagText: { fontSize: 11, color: Colors.textMuted },
-
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
   badgeText: { fontSize: 10, fontWeight: '700' },
 
@@ -603,11 +410,23 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10,
     backgroundColor: Colors.bgSubtle, borderWidth: 1, borderColor: Colors.borderSubtle,
   },
-  coinBtnActive: {
-    backgroundColor: 'rgba(217,119,87,0.15)', borderColor: Colors.accentAmber,
-  },
+  coinBtnActive: { backgroundColor: 'rgba(217,119,87,0.15)', borderColor: Colors.accentAmber },
   coinBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   coinBtnTextActive: { color: Colors.accentAmber },
+
+  claudeBtnActive: { backgroundColor: 'rgba(251,146,60,0.15)', borderColor: '#fb923c' },
+  claudeBtnTextActive: { color: '#fb923c' },
+
+  skillsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  skillChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10,
+    backgroundColor: Colors.bgSubtle, borderWidth: 1, borderColor: Colors.borderSubtle,
+  },
+  skillChipActive: { backgroundColor: 'rgba(251,146,60,0.12)', borderColor: '#fb923c' },
+  skillEmoji: { fontSize: 14 },
+  skillLabel: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
+  skillLabelActive: { color: '#fb923c' },
 
   byoRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
@@ -632,12 +451,9 @@ const s = StyleSheet.create({
     backgroundColor: Colors.bgCard, borderRadius: 12,
     borderWidth: 1, borderColor: Colors.borderSubtle,
   },
-  keyInput: {
-    flex: 1, padding: 14, fontSize: 15, color: Colors.textPrimary,
-  },
+  keyInput: { flex: 1, padding: 14, fontSize: 15, color: Colors.textPrimary },
   eyeBtn: { paddingHorizontal: 14, paddingVertical: 14 },
   eyeFallback: { color: Colors.textMuted, fontSize: 12, fontWeight: '700' },
-
   hintText: { fontSize: 12, color: Colors.textMuted, lineHeight: 17 },
   errorText: { fontSize: 13, color: Colors.accentRed },
 
@@ -648,24 +464,6 @@ const s = StyleSheet.create({
   ctaText: { fontSize: 16, fontWeight: '700', color: '#000' },
   secondaryBtn: { alignItems: 'center', paddingVertical: 12 },
   secondaryBtnText: { fontSize: 14, color: Colors.textMuted },
-
-  claudeBtnActive: {
-    backgroundColor: 'rgba(251,146,60,0.15)', borderColor: '#fb923c',
-  },
-  claudeBtnTextActive: { color: '#fb923c' },
-
-  skillsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  skillChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10,
-    backgroundColor: Colors.bgSubtle, borderWidth: 1, borderColor: Colors.borderSubtle,
-  },
-  skillChipActive: {
-    backgroundColor: 'rgba(251,146,60,0.12)', borderColor: '#fb923c',
-  },
-  skillEmoji: { fontSize: 14 },
-  skillLabel: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
-  skillLabelActive: { color: '#fb923c' },
 
   successBlock: { alignItems: 'center', gap: 16, paddingTop: 32 },
   successIcon: {
