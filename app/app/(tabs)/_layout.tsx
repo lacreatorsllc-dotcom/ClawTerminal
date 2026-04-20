@@ -105,7 +105,7 @@ export default function TabsLayout() {
           sceneStyle: {
             backgroundColor: Colors.bgPrimary,
           },
-          tabBarShowLabel: isDesktopWeb ? false : true,
+          tabBarShowLabel: false,
           tabBarLabelPosition: isDesktopWeb ? undefined : undefined,
           tabBarLabelStyle: {
             fontSize: isDesktopWeb ? 16 : 14,
