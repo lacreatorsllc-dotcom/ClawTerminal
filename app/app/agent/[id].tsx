@@ -2624,11 +2624,13 @@ function pubAgentColor(name: string): string {
 }
 
 function pubFmtTime(ts: string): string {
-  const diff = (Date.now() - new Date(ts).getTime()) / 1000
+  const d = new Date(ts)
+  const diff = (Date.now() - d.getTime()) / 1000
   if (diff < 60) return 'just now'
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' })
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  if (diff < 86400) return time
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${time}`
 }
 
 function PublicAgentView({ agentId }: { agentId: string }) {
