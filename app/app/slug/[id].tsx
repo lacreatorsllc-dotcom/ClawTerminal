@@ -223,7 +223,7 @@ export default function PublicSlugScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardEyebrow}>WHAT THIS SLUG DOES</Text>
+        <Text style={styles.cardEyebrow}>ABOUT</Text>
         <Text style={styles.description}>{slug.description}</Text>
         {strategyHighlights.length > 0 ? (
           <View style={styles.tagRow}>
@@ -294,7 +294,7 @@ export default function PublicSlugScreen() {
       )}
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>How it&apos;s doing</Text>
+        <Text style={styles.sectionTitle}>Activity</Text>
       </View>
       <View style={styles.card}>
         {recentTrades.length === 0 ? (
@@ -330,7 +330,7 @@ export default function PublicSlugScreen() {
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Recent updates</Text>
+        <Text style={styles.sectionTitle}>Activity</Text>
       </View>
       <View style={styles.card}>
         {feed.length === 0 ? (
