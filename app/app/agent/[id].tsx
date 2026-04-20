@@ -931,13 +931,15 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
           <Text style={s001.avatarText}>◎</Text>
         </View>
         <View style={{ flex: 1, gap: 3 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={s001.name}>{agentName}</Text>
-            <View style={[s001.paperBadge, { borderColor: Colors.accentPurple }]}>
-              <Text style={[s001.paperBadgeText, { color: Colors.accentPurple }]}>CABAL</Text>
+          <TouchableOpacity onPress={() => router.push(`/slug/${agentId}` as any)} activeOpacity={0.7}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Text style={s001.name}>{agentName}</Text>
+              <View style={[s001.paperBadge, { borderColor: Colors.accentPurple }]}>
+                <Text style={[s001.paperBadgeText, { color: Colors.accentPurple }]}>CABAL</Text>
+              </View>
             </View>
-          </View>
-          <Text style={s001.handle}>@cabal/trading-boy</Text>
+            <Text style={s001.handle}>@cabal/trading-boy</Text>
+          </TouchableOpacity>
           <View style={s001.statusRow}>
             <View style={[s001.statusDot, { backgroundColor: isConnected ? Colors.accentGreen : Colors.accentRed }]} />
             <Text style={[s001.statusLabel, { color: isConnected ? Colors.accentGreen : Colors.accentRed }]}>
@@ -2621,10 +2623,10 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
         <TouchableOpacity onPress={() => router.back()}>
           <Text style={{ color: Colors.accentAmber, fontSize: 16, fontWeight: '600' }}>Back</Text>
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
+        <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/slug/${agentId}` as any)} activeOpacity={0.7}>
           <Text style={{ color: Colors.textPrimary, fontSize: 17, fontWeight: '700' }}>{agentName}</Text>
           <Text style={{ color: Colors.accentGreen, fontSize: 11 }}>● claude managed</Text>
-        </View>
+        </TouchableOpacity>
         <AgentMenuButton agentId={agentId} agentName={agentName} />
       </View>
 
