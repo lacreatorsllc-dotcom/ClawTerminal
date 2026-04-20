@@ -68,7 +68,7 @@ function toFeedItem(raw: any, nameMap?: Map<string, string>): FeedItem {
       ? { pnl: Number(pnlVal), pct: raw.payload?.pct ?? 0, symbol: raw.payload?.symbol, side: raw.payload?.side }
       : null
 
-  const agentName = raw.agent_name || nameMap?.get(String(raw.agent_id ?? '')) || 'Agent'
+  const agentName = raw.agent_name || (nameMap instanceof Map ? nameMap.get(String(raw.agent_id ?? '')) : undefined) || 'Agent'
 
   return {
     id: raw.id,
