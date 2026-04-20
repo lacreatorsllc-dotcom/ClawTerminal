@@ -3,7 +3,7 @@ import { Stack, router } from 'expo-router'
 import { StatusBar, Platform, View, ActivityIndicator } from 'react-native'
 import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
-import { Ionicons } from '@expo/vector-icons'
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
 import { auth, onAuthStateChanged, ensureUserProfile } from '../lib/firebase'
 import { useAuthStore } from '../stores/authStore'
 import { Colors } from '../constants/colors'
@@ -25,7 +25,7 @@ export default function RootLayout() {
   const { setUser, setUsername, setLoading, isLoading } = useAuthStore()
   const authChangeIdRef = useRef(0)
 
-  const [fontsLoaded] = useFonts({ ...Ionicons.font })
+  const [fontsLoaded] = useFonts({ ...Ionicons.font, ...MaterialCommunityIcons.font })
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
