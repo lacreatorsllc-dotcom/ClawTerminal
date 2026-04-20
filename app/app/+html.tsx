@@ -9,6 +9,18 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
         <ScrollViewStyleReset />
+        <style dangerouslySetInnerHTML={{ __html: `
+          @font-face {
+            font-family: 'Ionicons';
+            src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.b4eb097d35f44ed943676fd56f6bdc51.ttf') format('truetype');
+            font-display: block;
+          }
+          @font-face {
+            font-family: 'MaterialCommunityIcons';
+            src: url('/assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/MaterialCommunityIcons.6e435534bd35da5fef04168860a9b8fa.ttf') format('truetype');
+            font-display: block;
+          }
+        ` }} />
         <script dangerouslySetInnerHTML={{
           __html: `
             window.onerror = function(msg, src, line, col, err) {

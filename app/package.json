@@ -9,7 +9,9 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "web:build": "expo export --platform web && node scripts/patch-web-fonts.js",
+    "web:deploy": "npm run web:build && firebase deploy --only hosting --project slugs-run"
   },
   "dependencies": {
     "@babel/helper-create-regexp-features-plugin": "^7.28.5",
