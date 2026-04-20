@@ -17,6 +17,14 @@ type Step = 'pick' | 'trading-boy' | 'claude-agent' | 'success'
 const CLAUDE_STRATEGIES = ['Grid Trader', 'Momentum', 'DCA', 'Breakout', 'Custom'] as const
 type ClaudeStrategy = typeof CLAUDE_STRATEGIES[number]
 
+const STRATEGY_DESCRIPTIONS: Record<ClaudeStrategy, string> = {
+  'Grid Trader': 'Places buy and sell orders at regular price intervals, profiting from range-bound volatility without predicting direction.',
+  'Momentum':    'Follows trending price action — enters when strength is confirmed and exits when reversal signals appear.',
+  'DCA':         'Dollar-cost averages into positions at set intervals, reducing exposure to short-term volatility over time.',
+  'Breakout':    'Enters on confirmed breaks above resistance or below support, targeting the continuation move.',
+  'Custom':      'Describe your own strategy in plain language — Claude will interpret and execute it.',
+}
+
 const CLAUDE_SKILLS = [
   { id: 'technical_analysis', label: 'Technical Analysis', emoji: '📊' },
   { id: 'news_sentiment', label: 'News Sentiment', emoji: '📰' },
@@ -69,6 +77,9 @@ export default function DeployScreen() {
   const [error, setError] = useState('')
   const [claudeStrategy, setClaudeStrategy] = useState<ClaudeStrategy>('Grid Trader')
   const [claudeSkills, setClaudeSkills] = useState<Set<string>>(new Set(['technical_analysis', 'risk_manager']))
+  const [customDesc, setCustomDesc] = useState('')
+  const [customHint, setCustomHint] = useState<string | null>(null)
+  const [validating, setValidating] = useState(false)
 
   function goBack() {
     if (step === 'pick') router.back()
@@ -106,6 +117,7 @@ export default function DeployScreen() {
           userId: user.uid,
           name: agentName,
           strategy: claudeStrategy,
+          customDescription: claudeStrategy === 'Custom' ? customDesc.trim() : undefined,
           skills: Array.from(claudeSkills),
         }),
       })
@@ -124,6 +136,25 @@ export default function DeployScreen() {
       next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
+  }
+
+  async function validateCustomStrategy(desc: string) {
+    if (!desc.trim() || desc.trim().length < 10) return
+    setValidating(true)
+    setCustomHint(null)
+    try {
+      const res = await fetch(`${TB_BRIDGE_URL}/validate-strategy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ description: desc.trim() }),
+      })
+      const data = await res.json() as any
+      if (data.hint) setCustomHint(data.hint)
+      else if (data.valid === false) setCustomHint(`This might not work as described. ${data.reason ?? ''}`)
+    } catch {
+      // network error — silently skip validation
+    }
+    setValidating(false)
   }
 
   const headerTitle =
@@ -278,13 +309,44 @@ export default function DeployScreen() {
                 <TouchableOpacity
                   key={strat}
                   style={[s.coinBtn, claudeStrategy === strat && s.claudeBtnActive]}
-                  onPress={() => setClaudeStrategy(strat)}
+                  onPress={() => { setClaudeStrategy(strat); setCustomHint(null) }}
                   activeOpacity={0.7}
                 >
                   <Text style={[s.coinBtnText, claudeStrategy === strat && s.claudeBtnTextActive]}>{strat}</Text>
                 </TouchableOpacity>
               ))}
             </View>
+
+            <View style={s.stratDescCard}>
+              <Text style={s.stratDescText}>{STRATEGY_DESCRIPTIONS[claudeStrategy]}</Text>
+            </View>
+
+            {claudeStrategy === 'Custom' && (
+              <>
+                <TextInput
+                  style={[s.input, { minHeight: 96, textAlignVertical: 'top' }]}
+                  value={customDesc}
+                  onChangeText={(t) => { setCustomDesc(t); setCustomHint(null) }}
+                  onBlur={() => validateCustomStrategy(customDesc)}
+                  placeholder="e.g. Buy BTC when RSI drops below 30, sell when it hits 65. Hold max 3 positions."
+                  placeholderTextColor="#555"
+                  multiline
+                  numberOfLines={4}
+                  autoCapitalize="sentences"
+                />
+                {validating && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <ActivityIndicator size="small" color={Colors.accentAmber} />
+                    <Text style={{ fontSize: 12, color: Colors.textMuted }}>Checking strategy…</Text>
+                  </View>
+                )}
+                {customHint && !validating && (
+                  <View style={s.hintBox}>
+                    <Text style={s.hintBoxText}>{customHint}</Text>
+                  </View>
+                )}
+              </>
+            )}
 
             <Text style={s.fieldLabel}>Skills to Equip</Text>
             <View style={s.skillsGrid}>
@@ -416,6 +478,20 @@ const s = StyleSheet.create({
 
   claudeBtnActive: { backgroundColor: 'rgba(251,146,60,0.15)', borderColor: '#fb923c' },
   claudeBtnTextActive: { color: '#fb923c' },
+
+  stratDescCard: {
+    backgroundColor: 'rgba(251,146,60,0.06)',
+    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(251,146,60,0.18)',
+    padding: 12,
+  },
+  stratDescText: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
+
+  hintBox: {
+    backgroundColor: 'rgba(96,165,250,0.08)',
+    borderRadius: 10, borderWidth: 1, borderColor: 'rgba(96,165,250,0.25)',
+    padding: 12,
+  },
+  hintBoxText: { fontSize: 13, color: '#93c5fd', lineHeight: 18 },
 
   skillsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   skillChip: {

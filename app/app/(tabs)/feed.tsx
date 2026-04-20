@@ -22,7 +22,7 @@ import { useDesktopWebLayout } from '../../lib/responsive'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CardType = 'pnl' | 'trade' | 'update' | 'system'
+type CardType = 'pnl' | 'trade' | 'news' | 'update' | 'system'
 type SharingPref = 'auto' | 'manual' | 'private' | null
 
 interface PnLData {
@@ -62,6 +62,7 @@ function toFeedItem(raw: any, nameMap?: Map<string, string>): FeedItem {
   const cardType: CardType =
     raw.type === 'pnl' || raw.type === 'daily_pnl' ? 'pnl'
     : raw.type === 'trade' ? 'trade'
+    : raw.type === 'news_sentiment' ? 'news'
     : raw.type === 'system' ? 'system'
     : 'update'
 
@@ -237,9 +238,68 @@ function TradeCard({ item }: { item: FeedItem }) {
   )
 }
 
+function NewsSentimentCard({ item }: { item: FeedItem }) {
+  const p = item.payload ?? {}
+  const headline: string = p.headline ?? item.content
+  const summary: string | null = p.summary ?? null
+  const sentiment: 'bullish' | 'bearish' | 'neutral' = p.sentiment ?? 'neutral'
+  const markets: string[] = p.markets ?? []
+  const source: string | null = p.source ?? null
+  const sentimentColor = sentiment === 'bullish' ? Colors.accentGreen : sentiment === 'bearish' ? Colors.accentRed : Colors.textMuted
+  const sentimentBg = sentiment === 'bullish' ? 'rgba(52,211,153,0.1)' : sentiment === 'bearish' ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.06)'
+  const sentimentLabel = sentiment === 'bullish' ? '▲ Bullish' : sentiment === 'bearish' ? '▼ Bearish' : '● Neutral'
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={() => router.push(`/agent/${item.agent_id}` as any)}
+      style={[styles.card, { borderLeftWidth: 3, borderLeftColor: sentimentColor }]}
+    >
+      <View style={styles.cardTopRow}>
+        <View style={styles.agentRow}>
+          <View style={[styles.avatar, { backgroundColor: 'rgba(96,165,250,0.15)', borderColor: '#60a5fa' }]}>
+            <Text style={{ fontSize: 13, color: '#60a5fa' }}>📰</Text>
+          </View>
+          <View style={{ gap: 1 }}>
+            <Text style={styles.agentName}>{item.agentName}</Text>
+            {source && <Text style={{ fontSize: 11, color: Colors.textMuted }}>{source}</Text>}
+          </View>
+        </View>
+        <Text style={styles.timestamp}>{formatTime(item.created_at)}</Text>
+      </View>
+
+      <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textPrimary, lineHeight: 19, marginBottom: 4 }}>
+        {headline}
+      </Text>
+      {summary && (
+        <Text style={{ fontSize: 13, color: Colors.textSecondary, lineHeight: 18, marginBottom: 8 }} numberOfLines={3}>
+          {summary}
+        </Text>
+      )}
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <View style={[styles.tradeBadge, { backgroundColor: sentimentBg }]}>
+          <Text style={[styles.tradeBadgeText, { color: sentimentColor }]}>{sentimentLabel}</Text>
+        </View>
+        {markets.map((m) => (
+          <View key={m} style={[styles.tradeBadge, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+            <Text style={[styles.tradeBadgeText, { color: Colors.textSecondary }]}>{m}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={[styles.cardTypeRow, { marginTop: 8 }]}>
+        <Text style={[styles.cardTypeText, { color: '#60a5fa' }]}>◆ News Sentiment</Text>
+        <Text style={styles.cardChevron}>›</Text>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
 function renderCard(item: FeedItem) {
   if (item.cardType === 'pnl' && item.pnl != null) return <PnLCard item={item} />
   if (item.cardType === 'trade') return <TradeCard item={item} />
+  if (item.cardType === 'news') return <NewsSentimentCard item={item} />
   return <UpdateCard item={item} />
 }
 
