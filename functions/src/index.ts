@@ -1,9 +1,11 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onMessagePublished } from 'firebase-functions/v2/pubsub'
+import { onDocumentCreated } from 'firebase-functions/v2/firestore'
 import { defineSecret } from 'firebase-functions/params'
 import { PubSub } from '@google-cloud/pubsub'
 import { AGENTS_COL } from './firebase'
 import { runAgentTick } from './agentLoop'
+import { runChatReply } from './chatLoop'
 
 const anthropicKey = defineSecret('ANTHROPIC_API_KEY')
 
@@ -42,5 +44,24 @@ export const tickAgent = onMessagePublished(
     const { agentId } = event.data.message.json as { agentId: string }
     if (!agentId) return
     await runAgentTick(agentId)
+  }
+)
+
+// ── Instant chat reply: fires the moment a user sends a message ───────────────
+export const onChatMessage = onDocumentCreated(
+  {
+    document: 'agents/{agentId}/messages/{messageId}',
+    region: 'us-central1',
+    timeoutSeconds: 60,
+    memory: '512MiB',
+    secrets: [anthropicKey],
+  },
+  async (event) => {
+    const data = event.data?.data()
+    if (!data) return
+    if (data.direction !== 'inbound') return  // only reply to user messages
+
+    const { agentId, messageId } = event.params
+    await runChatReply(agentId, messageId, data.content)
   }
 )

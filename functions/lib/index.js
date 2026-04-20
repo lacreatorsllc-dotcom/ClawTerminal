@@ -1,12 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.tickAgent = exports.clockAgents = void 0;
+exports.onChatMessage = exports.tickAgent = exports.clockAgents = void 0;
 const scheduler_1 = require("firebase-functions/v2/scheduler");
 const pubsub_1 = require("firebase-functions/v2/pubsub");
+const firestore_1 = require("firebase-functions/v2/firestore");
 const params_1 = require("firebase-functions/params");
 const pubsub_2 = require("@google-cloud/pubsub");
 const firebase_1 = require("./firebase");
 const agentLoop_1 = require("./agentLoop");
+const chatLoop_1 = require("./chatLoop");
 const anthropicKey = (0, params_1.defineSecret)('ANTHROPIC_API_KEY');
 const pubsub = new pubsub_2.PubSub();
 const TOPIC = 'agent-tick';
@@ -30,5 +32,21 @@ exports.tickAgent = (0, pubsub_1.onMessagePublished)({ topic: TOPIC, region: 'us
     if (!agentId)
         return;
     await (0, agentLoop_1.runAgentTick)(agentId);
+});
+// ── Instant chat reply: fires the moment a user sends a message ───────────────
+exports.onChatMessage = (0, firestore_1.onDocumentCreated)({
+    document: 'agents/{agentId}/messages/{messageId}',
+    region: 'us-central1',
+    timeoutSeconds: 60,
+    memory: '512MiB',
+    secrets: [anthropicKey],
+}, async (event) => {
+    const data = event.data?.data();
+    if (!data)
+        return;
+    if (data.direction !== 'inbound')
+        return; // only reply to user messages
+    const { agentId, messageId } = event.params;
+    await (0, chatLoop_1.runChatReply)(agentId, messageId, data.content);
 });
 //# sourceMappingURL=index.js.map
