@@ -335,6 +335,7 @@ function PostPnlModal({
 
 function TrackedSlugCard({ agent }: { agent: { id: string; name: string; status: string; last_seen: string | null; live_state: Record<string, any> | null } }) {
   const pnl: number = agent.live_state?.unrealizedPnlUsd ?? 0
+  const dailyPnl: number = agent.live_state?.dailyPnlUsd ?? 0
   const isPos = pnl >= 0
   const hasPnl = agent.live_state?.unrealizedPnlUsd != null
   const isOnline = agent.status === 'connected'
@@ -346,18 +347,28 @@ function TrackedSlugCard({ agent }: { agent: { id: string; name: string; status:
       onPress={() => router.push(`/agent/${agent.id}` as any)}
       activeOpacity={0.75}
     >
-      <View style={[trackedStyles.avatar, { backgroundColor: color + '22', borderColor: isOnline ? Colors.accentGreen : color }]}>
-        <Text style={[trackedStyles.avatarText, { color }]}>{agent.name[0]?.toUpperCase() ?? '?'}</Text>
-        {isOnline && <View style={trackedStyles.onlineDot} />}
+      <View style={trackedStyles.left}>
+        <View style={[trackedStyles.avatar, { backgroundColor: color + '22', borderColor: isOnline ? Colors.accentGreen : color }]}>
+          <Text style={[trackedStyles.avatarText, { color }]}>{agent.name[0]?.toUpperCase() ?? '?'}</Text>
+          {isOnline && <View style={trackedStyles.onlineDot} />}
+        </View>
+        <View style={trackedStyles.info}>
+          <Text style={trackedStyles.name} numberOfLines={1}>{agent.name}</Text>
+          <Text style={trackedStyles.statusText}>{isOnline ? 'Live' : 'Offline'}</Text>
+        </View>
       </View>
-      <Text style={trackedStyles.name} numberOfLines={1}>{agent.name}</Text>
-      {hasPnl ? (
-        <Text style={[trackedStyles.pnl, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
-          {isPos ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
-        </Text>
-      ) : (
-        <Text style={trackedStyles.pnlMuted}>No data</Text>
-      )}
+      <View style={trackedStyles.right}>
+        {hasPnl ? (
+          <>
+            <Text style={[trackedStyles.pnl, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
+              {isPos ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
+            </Text>
+            <Text style={trackedStyles.pnlLabel}>unrealized</Text>
+          </>
+        ) : (
+          <Text style={trackedStyles.pnlMuted}>No data</Text>
+        )}
+      </View>
     </TouchableOpacity>
   )
 }
@@ -371,12 +382,22 @@ function TrackedSlugsSection({ agentIds }: { agentIds: string[] }) {
 
   if (agents.length === 0) return null
 
+  const totalPnl = agents.reduce((sum, a) => sum + (a.live_state?.unrealizedPnlUsd ?? 0), 0)
+  const hasAnyPnl = agents.some((a) => a.live_state?.unrealizedPnlUsd != null)
+
   return (
     <View style={trackedStyles.section}>
-      <Text style={trackedStyles.sectionLabel}>TRACKING</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={trackedStyles.row}>
+      <View style={trackedStyles.sectionHeader}>
+        <Text style={trackedStyles.sectionLabel}>TRACKING</Text>
+        {hasAnyPnl && (
+          <Text style={[trackedStyles.totalPnl, { color: totalPnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+            {totalPnl >= 0 ? '+$' : '-$'}{Math.abs(totalPnl).toFixed(2)} total
+          </Text>
+        )}
+      </View>
+      <View style={trackedStyles.list}>
         {agents.map((a) => <TrackedSlugCard key={a.id} agent={a} />)}
-      </ScrollView>
+      </View>
     </View>
   )
 }
@@ -708,23 +729,33 @@ const styles = StyleSheet.create({
 })
 
 const trackedStyles = StyleSheet.create({
-  section: { paddingBottom: 4 },
+  section: { paddingBottom: 8 },
+  sectionHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingBottom: 10,
+  },
   sectionLabel: {
     fontSize: 11, fontWeight: '700', color: Colors.textMuted,
     letterSpacing: 1.2, textTransform: 'uppercase',
-    paddingHorizontal: 20, paddingBottom: 10,
   },
-  row: { paddingHorizontal: 16, gap: 10 },
+  totalPnl: {
+    fontSize: 12, fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  list: { paddingHorizontal: 16, gap: 8 },
   card: {
-    width: 140,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#0f0f0f',
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: Colors.bgBorder,
-    padding: 14,
-    alignItems: 'center',
-    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
+  left: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  right: { alignItems: 'flex-end', gap: 2 },
   avatar: {
     width: 44, height: 44, borderRadius: 22,
     borderWidth: 1.5, justifyContent: 'center', alignItems: 'center',
@@ -736,7 +767,10 @@ const trackedStyles = StyleSheet.create({
     backgroundColor: Colors.accentGreen,
     borderWidth: 2, borderColor: '#0f0f0f',
   },
-  name: { fontSize: 12, fontWeight: '600', color: Colors.textPrimary, textAlign: 'center' },
-  pnl: { fontSize: 13, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  pnlMuted: { fontSize: 11, color: Colors.textMuted },
+  info: { gap: 2, flex: 1 },
+  name: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
+  statusText: { fontSize: 12, color: Colors.textMuted },
+  pnl: { fontSize: 17, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  pnlLabel: { fontSize: 10, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  pnlMuted: { fontSize: 12, color: Colors.textMuted },
 })
