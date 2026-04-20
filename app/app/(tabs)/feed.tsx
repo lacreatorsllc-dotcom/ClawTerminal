@@ -176,7 +176,7 @@ function UpdateCard({ item }: { item: FeedItem }) {
 }
 
 function renderCard(item: FeedItem) {
-  if (item.cardType === 'pnl') return <PnLCard item={item} />
+  if (item.cardType === 'pnl' && item.pnl != null) return <PnLCard item={item} />
   return <UpdateCard item={item} />
 }
 
