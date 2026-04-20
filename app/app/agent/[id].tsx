@@ -15,7 +15,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
-import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, type PaperAgentState } from '../../lib/firebase'
+import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, type PaperAgentState, trackAgent, untrackAgent, getPublicAgentProfile, listPublicFeedEventsForAgent, isTrackingAgent } from '../../lib/firebase'
 import { processMarketAdvisorInbound } from '../../lib/marketAdvisorClient'
 import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
@@ -2616,71 +2616,239 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
 
 // ── Public Agent View (for tracked/followed agents not owned by user) ─────────
 
+function pubAgentColor(name: string): string {
+  const palette = ['#f59e0b', '#2dd4bf', '#a78bfa', '#60a5fa', '#34d399']
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h)
+  return palette[Math.abs(h) % palette.length]
+}
+
+function pubFmtTime(ts: string): string {
+  const diff = (Date.now() - new Date(ts).getTime()) / 1000
+  if (diff < 60) return 'just now'
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
+  return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
 function PublicAgentView({ agentId }: { agentId: string }) {
-  const [agent, setAgent] = useState<any>(null)
+  const { user } = useAuthStore()
+  const [profile, setProfile] = useState<any>(null)
+  const [liveData, setLiveData] = useState<{ status: string; live_state: any } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isTracked, setIsTracked] = useState(false)
+  const [trackLoading, setTrackLoading] = useState(false)
+  const [recentUpdates, setRecentUpdates] = useState<any[]>([])
 
   useEffect(() => {
-    const unsub = fsOnSnapshot(doc(db, 'agents', agentId), (snap) => {
-      setAgent(snap.exists() ? { id: snap.id, ...snap.data() } : null)
-      setLoading(false)
-    })
-    return unsub
+    getPublicAgentProfile(agentId).then((p) => { setProfile(p); setLoading(false) })
   }, [agentId])
 
-  const isOnline = agent?.status === 'connected'
-  const pnl: number = agent?.live_state?.unrealizedPnlUsd ?? 0
-  const hasPnl = agent?.live_state?.unrealizedPnlUsd != null
+  useEffect(() => {
+    return fsOnSnapshot(doc(db, 'agents', agentId), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data()
+        setLiveData({ status: String(d.status ?? 'disconnected'), live_state: d.live_state ?? null })
+      }
+    })
+  }, [agentId])
+
+  useEffect(() => {
+    if (!user) return
+    isTrackingAgent(user.uid, agentId).then(setIsTracked)
+  }, [user?.uid, agentId])
+
+  useEffect(() => {
+    listPublicFeedEventsForAgent(agentId, 15).then(setRecentUpdates)
+  }, [agentId])
+
+  async function handleTrack() {
+    if (!user || trackLoading) return
+    setTrackLoading(true)
+    try {
+      if (isTracked) {
+        await untrackAgent(user.uid, agentId)
+        setIsTracked(false)
+      } else {
+        await trackAgent(user.uid, agentId, profile?.user_id)
+        setIsTracked(true)
+      }
+    } finally {
+      setTrackLoading(false)
+    }
+  }
+
+  const status = liveData?.status ?? profile?.status ?? 'disconnected'
+  const liveState = liveData?.live_state ?? profile?.live_state ?? null
+  const isOnline = status === 'connected'
+  const unrealizedPnl: number = liveState?.unrealizedPnlUsd ?? 0
+  const dailyPnl: number = liveState?.dailyPnlUsd ?? 0
+  const positions: any[] = liveState?.positions ?? []
+  const openCount: number = liveState?.openPositionCount ?? positions.length
+  const color = profile ? pubAgentColor(profile.name) : Colors.accentAmber
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bgPrimary }}>
+        <TouchableOpacity onPress={() => router.back()} style={pubStyles.backBtn}>
+          <Ionicons name="chevron-back" size={20} color={Colors.accentAmber} />
+          <Text style={pubStyles.backLabel}>Back</Text>
+        </TouchableOpacity>
+        <ActivityIndicator size="large" color={Colors.accentAmber} style={{ marginTop: 80 }} />
+      </View>
+    )
+  }
+
+  if (!profile) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bgPrimary }}>
+        <TouchableOpacity onPress={() => router.back()} style={pubStyles.backBtn}>
+          <Ionicons name="chevron-back" size={20} color={Colors.accentAmber} />
+          <Text style={pubStyles.backLabel}>Back</Text>
+        </TouchableOpacity>
+        <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 60 }}>Slug not found</Text>
+      </View>
+    )
+  }
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.bgPrimary }}>
-      <TouchableOpacity
-        onPress={() => router.back()}
-        style={{ paddingTop: 60, paddingHorizontal: 20, paddingBottom: 16 }}
-      >
-        <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
+    <ScrollView style={{ flex: 1, backgroundColor: Colors.bgPrimary }} contentContainerStyle={{ paddingBottom: 80 }}>
+      <TouchableOpacity onPress={() => router.back()} style={pubStyles.backBtn}>
+        <Ionicons name="chevron-back" size={20} color={Colors.accentAmber} />
+        <Text style={pubStyles.backLabel}>Back</Text>
       </TouchableOpacity>
 
-      {loading ? (
-        <ActivityIndicator size="large" color={Colors.accentAmber} style={{ marginTop: 60 }} />
-      ) : !agent ? (
-        <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 60 }}>Agent not found</Text>
-      ) : (
-        <View style={{ paddingHorizontal: 24, gap: 20 }}>
-          <View style={{ alignItems: 'center', gap: 12 }}>
-            <View style={{
-              width: 72, height: 72, borderRadius: 36,
-              backgroundColor: Colors.bgElevated, borderWidth: 2,
-              borderColor: isOnline ? Colors.accentGreen : Colors.bgBorder,
-              justifyContent: 'center', alignItems: 'center',
-            }}>
-              <Text style={{ fontSize: 28, fontWeight: '700', color: Colors.textPrimary }}>
-                {agent.name?.[0]?.toUpperCase() ?? '?'}
-              </Text>
-            </View>
-            <Text style={{ fontSize: 22, fontWeight: '700', color: Colors.textPrimary }}>{agent.name}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isOnline ? Colors.accentGreen : Colors.textMuted }} />
-              <Text style={{ fontSize: 13, color: isOnline ? Colors.accentGreen : Colors.textMuted }}>
-                {isOnline ? 'Online' : 'Offline'}
-              </Text>
-            </View>
-          </View>
-
-          {hasPnl && (
-            <View style={{
-              backgroundColor: Colors.bgElevated, borderRadius: 16, padding: 20,
-              alignItems: 'center', borderWidth: 1, borderColor: Colors.bgBorder,
-            }}>
-              <Text style={{ fontSize: 12, color: Colors.textMuted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Unrealized PnL</Text>
-              <Text style={{ fontSize: 32, fontWeight: '700', color: pnl >= 0 ? Colors.accentGreen : Colors.accentRed, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
-                {pnl >= 0 ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
-              </Text>
-            </View>
-          )}
+      {/* Header */}
+      <View style={pubStyles.header}>
+        <View style={[pubStyles.avatar, { backgroundColor: color + '22', borderColor: isOnline ? Colors.accentGreen : color }]}>
+          <Text style={[pubStyles.avatarInitial, { color }]}>{profile.name[0]?.toUpperCase() ?? '?'}</Text>
+          {isOnline && <View style={pubStyles.onlineDot} />}
         </View>
-      )}
-    </View>
+        <View style={pubStyles.headerInfo}>
+          <Text style={pubStyles.agentName}>{profile.name}</Text>
+          <Text style={pubStyles.handle}>@{profile.owner_username}/{profile.name.toLowerCase().replace(/\s+/g, '-')}</Text>
+          <View style={pubStyles.metaRow}>
+            <View style={[pubStyles.statusDot, { backgroundColor: isOnline ? Colors.accentGreen : Colors.textMuted }]} />
+            <Text style={[pubStyles.statusText, { color: isOnline ? Colors.accentGreen : Colors.textMuted }]}>
+              {isOnline ? 'Connected' : 'Offline'}
+            </Text>
+            <Text style={pubStyles.metaSep}>·</Text>
+            <Text style={pubStyles.strategyText}>{profile.strategy_label}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={pubStyles.content}>
+        {/* Stats */}
+        <View style={pubStyles.statsRow}>
+          <View style={pubStyles.statBox}>
+            <Text style={[pubStyles.statValue, { color: unrealizedPnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+              {unrealizedPnl >= 0 ? '+$' : '-$'}{Math.abs(unrealizedPnl).toFixed(2)}
+            </Text>
+            <Text style={pubStyles.statLabel}>{'UNREALIZED\nPNL'}</Text>
+          </View>
+          <View style={pubStyles.statDivider} />
+          <View style={pubStyles.statBox}>
+            <Text style={[pubStyles.statValue, { color: dailyPnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+              {dailyPnl >= 0 ? '+$' : '-$'}{Math.abs(dailyPnl).toFixed(2)}
+            </Text>
+            <Text style={pubStyles.statLabel}>DAILY PNL</Text>
+          </View>
+          <View style={pubStyles.statDivider} />
+          <View style={pubStyles.statBox}>
+            <Text style={pubStyles.statValue}>{openCount}</Text>
+            <Text style={pubStyles.statLabel}>{'OPEN\nPOSITIONS'}</Text>
+          </View>
+        </View>
+
+        {/* Description */}
+        {!!profile.description && (
+          <View style={pubStyles.descCard}>
+            <Text style={pubStyles.descLabel}>WHAT THIS SLUG DOES</Text>
+            <Text style={pubStyles.descText}>{profile.description}</Text>
+          </View>
+        )}
+
+        {/* Actions */}
+        <View style={pubStyles.actions}>
+          <TouchableOpacity
+            style={[pubStyles.actionBtn, isTracked && pubStyles.actionBtnActive]}
+            onPress={handleTrack}
+            disabled={trackLoading}
+          >
+            <Text style={[pubStyles.actionBtnText, isTracked && pubStyles.actionBtnTextActive]}>
+              {isTracked ? 'Tracked' : 'Track'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={pubStyles.actionBtn}
+            onPress={() => router.push(`/profile/${profile.owner_username}` as any)}
+          >
+            <Text style={pubStyles.actionBtnText}>View operator</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Open positions */}
+        {positions.length > 0 && (
+          <>
+            <Text style={pubStyles.sectionTitle}>How it's doing</Text>
+            <View style={pubStyles.positionsList}>
+              {positions.map((pos: any, i: number) => {
+                const posPnl = pos.pnl ?? pos.unrealized_pnl ?? pos.unrealizedPnl ?? 0
+                const isPos = posPnl >= 0
+                const side = (pos.side ?? 'LONG').toUpperCase()
+                return (
+                  <View key={i} style={pubStyles.positionRow}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Text style={pubStyles.posSymbol}>{pos.symbol ?? pos.pair ?? 'BTC'}</Text>
+                        <View style={[pubStyles.sideBadge, { backgroundColor: side === 'LONG' ? 'rgba(45,212,191,0.15)' : 'rgba(239,68,68,0.15)' }]}>
+                          <Text style={[pubStyles.sideText, { color: side === 'LONG' ? Colors.accentGreen : Colors.accentRed }]}>{side}</Text>
+                        </View>
+                      </View>
+                      {(pos.entry_price ?? pos.entryPrice) != null && (
+                        <Text style={pubStyles.posEntry}>Entry {pos.entry_price ?? pos.entryPrice}</Text>
+                      )}
+                    </View>
+                    <Text style={[pubStyles.posPnl, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
+                      {isPos ? '+$' : '-$'}{Math.abs(posPnl).toFixed(2)}
+                    </Text>
+                  </View>
+                )
+              })}
+            </View>
+          </>
+        )}
+
+        {/* Recent updates */}
+        <Text style={pubStyles.sectionTitle}>Recent updates</Text>
+        {recentUpdates.length === 0 ? (
+          <View style={pubStyles.noUpdates}>
+            <Text style={pubStyles.noUpdatesText}>No public updates yet.</Text>
+          </View>
+        ) : (
+          <View style={pubStyles.updatesList}>
+            {recentUpdates.map((ev) => {
+              const raw = String(ev.content ?? '')
+              const namePrefix = profile.name + ' · '
+              const content = raw.startsWith(namePrefix) ? raw.slice(namePrefix.length) : raw
+              const isPnl = ev.type === 'pnl' || ev.type === 'daily_pnl'
+              return (
+                <View key={ev.id} style={pubStyles.updateRow}>
+                  <View style={pubStyles.updateMeta}>
+                    <Text style={[pubStyles.updateType, isPnl && { color: Colors.accentGreen }]}>
+                      {isPnl ? '◆ PnL Update' : '◎ Update'}
+                    </Text>
+                    <Text style={pubStyles.updateTime}>{pubFmtTime(ev.created_at)}</Text>
+                  </View>
+                  <Text style={pubStyles.updateContent}>{content}</Text>
+                </View>
+              )
+            })}
+          </View>
+        )}
+      </View>
+    </ScrollView>
   )
 }
 
@@ -4334,4 +4502,95 @@ const modelStyles = StyleSheet.create({
     paddingVertical: 14, alignItems: 'center', marginTop: 16,
   },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
+})
+
+const pubStyles = StyleSheet.create({
+  backBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingTop: 56, paddingHorizontal: 20, paddingBottom: 12,
+  },
+  backLabel: { fontSize: 16, color: Colors.accentAmber, fontWeight: '600' },
+
+  header: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 16,
+    paddingHorizontal: 20, paddingBottom: 20,
+  },
+  avatar: {
+    width: 72, height: 72, borderRadius: 36,
+    borderWidth: 2, justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+  },
+  avatarInitial: { fontSize: 28, fontWeight: '800' },
+  onlineDot: {
+    position: 'absolute', bottom: 2, right: 2,
+    width: 12, height: 12, borderRadius: 6,
+    backgroundColor: Colors.accentGreen, borderWidth: 2, borderColor: Colors.bgPrimary,
+  },
+  headerInfo: { flex: 1, paddingTop: 4, gap: 4 },
+  agentName: { fontSize: 24, fontWeight: '800', color: Colors.textPrimary },
+  handle: { fontSize: 12, color: Colors.textMuted },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 },
+  statusDot: { width: 7, height: 7, borderRadius: 4 },
+  statusText: { fontSize: 12, fontWeight: '600' },
+  metaSep: { color: Colors.textMuted, fontSize: 12 },
+  strategyText: { fontSize: 12, color: Colors.textMuted },
+
+  content: { paddingHorizontal: 16, gap: 16 },
+
+  statsRow: {
+    flexDirection: 'row', backgroundColor: Colors.bgElevated,
+    borderRadius: 16, borderWidth: 1, borderColor: Colors.bgBorder, overflow: 'hidden',
+  },
+  statBox: { flex: 1, padding: 14, gap: 6, alignItems: 'flex-start' },
+  statValue: {
+    fontSize: 17, fontWeight: '700', color: Colors.textPrimary,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  statLabel: { fontSize: 9, color: Colors.textMuted, letterSpacing: 0.5, fontWeight: '600' },
+  statDivider: { width: 1, backgroundColor: Colors.bgBorder, marginVertical: 12 },
+
+  descCard: {
+    backgroundColor: Colors.bgElevated, borderRadius: 16,
+    borderWidth: 1, borderColor: Colors.bgBorder, padding: 16, gap: 8,
+  },
+  descLabel: { fontSize: 10, fontWeight: '700', color: Colors.textMuted, letterSpacing: 1.2 },
+  descText: { fontSize: 14, color: Colors.textSecondary, lineHeight: 21 },
+
+  actions: { gap: 10 },
+  actionBtn: {
+    paddingVertical: 14, borderRadius: 16, borderWidth: 1,
+    borderColor: Colors.bgBorder, backgroundColor: Colors.bgElevated, alignItems: 'center',
+  },
+  actionBtnActive: { borderColor: Colors.accentAmber + '66', backgroundColor: 'rgba(217,119,87,0.1)' },
+  actionBtnText: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary },
+  actionBtnTextActive: { color: Colors.accentAmber },
+
+  sectionTitle: { fontSize: 20, fontWeight: '800', color: Colors.textPrimary, marginTop: 4 },
+
+  positionsList: { gap: 8, marginTop: 8 },
+  positionRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.bgElevated, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.bgBorder, padding: 14,
+  },
+  posSymbol: { fontSize: 15, fontWeight: '800', color: Colors.textPrimary },
+  sideBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
+  sideText: { fontSize: 11, fontWeight: '700' },
+  posEntry: { fontSize: 12, color: Colors.textMuted },
+  posPnl: { fontSize: 16, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+
+  noUpdates: {
+    backgroundColor: Colors.bgElevated, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.bgBorder, padding: 20, alignItems: 'center', marginTop: 8,
+  },
+  noUpdatesText: { color: Colors.textMuted, fontSize: 14 },
+
+  updatesList: { gap: 8, marginTop: 8 },
+  updateRow: {
+    backgroundColor: Colors.bgElevated, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.bgBorder, padding: 14, gap: 6,
+  },
+  updateMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  updateType: { fontSize: 10, fontWeight: '700', color: Colors.accentAmber, letterSpacing: 0.8 },
+  updateTime: { fontSize: 11, color: Colors.textMuted },
+  updateContent: { fontSize: 13, color: Colors.textSecondary, lineHeight: 19 },
 })
