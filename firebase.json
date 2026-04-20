@@ -2,7 +2,7 @@
   "hosting": {
     "site": "app-slugs-run",
     "public": "app/dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": ["firebase.json", "**/.*"],
     "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "headers": [
       {
