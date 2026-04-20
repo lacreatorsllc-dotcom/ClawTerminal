@@ -2859,46 +2859,36 @@ function PublicAgentView({ agentId }: { agentId: string }) {
           </TouchableOpacity>
         </View>
 
-        {/* Open positions */}
-        {positions.length > 0 && (
-          <>
-            <Text style={pubStyles.sectionTitle}>Open Positions</Text>
-            <View style={pubStyles.positionsList}>
-              {positions.map((pos: any, i: number) => {
-                const posPnl = pos.pnl ?? pos.unrealized_pnl ?? pos.unrealizedPnl ?? 0
-                const isPos = posPnl >= 0
-                const side = (pos.side ?? 'LONG').toUpperCase()
-                return (
-                  <View key={i} style={pubStyles.positionRow}>
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text style={pubStyles.posSymbol}>{pos.symbol ?? pos.pair ?? 'BTC'}</Text>
-                        <View style={[pubStyles.sideBadge, { backgroundColor: side === 'LONG' ? 'rgba(45,212,191,0.15)' : 'rgba(239,68,68,0.15)' }]}>
-                          <Text style={[pubStyles.sideText, { color: side === 'LONG' ? Colors.accentGreen : Colors.accentRed }]}>{side}</Text>
-                        </View>
-                      </View>
-                      {(pos.entry_price ?? pos.entryPrice) != null && (
-                        <Text style={pubStyles.posEntry}>Entry {pos.entry_price ?? pos.entryPrice}</Text>
-                      )}
-                    </View>
-                    <Text style={[pubStyles.posPnl, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
-                      {isPos ? '+$' : '-$'}{Math.abs(posPnl).toFixed(2)}
-                    </Text>
-                  </View>
-                )
-              })}
-            </View>
-          </>
-        )}
-
-        {/* Activity */}
+        {/* Activity — positions + feed events merged */}
         <Text style={pubStyles.sectionTitle}>Activity</Text>
-        {recentUpdates.length === 0 ? (
+        {positions.length === 0 && recentUpdates.length === 0 ? (
           <View style={pubStyles.noUpdates}>
-            <Text style={pubStyles.noUpdatesText}>No public updates yet.</Text>
+            <Text style={pubStyles.noUpdatesText}>No activity yet.</Text>
           </View>
         ) : (
           <View style={pubStyles.updatesList}>
+            {positions.map((pos: any, i: number) => {
+              const posPnl = pos.pnl ?? pos.unrealized_pnl ?? pos.unrealizedPnl ?? 0
+              const isPos = posPnl >= 0
+              const side = (pos.side ?? 'LONG').toUpperCase()
+              return (
+                <View key={`pos-${i}`} style={pubStyles.updateRow}>
+                  <View style={pubStyles.updateMeta}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={[pubStyles.updateType, { color: side === 'LONG' ? Colors.accentGreen : Colors.accentRed }]}>
+                        ◆ {pos.symbol ?? pos.pair ?? 'BTC'} {side}
+                      </Text>
+                      {(pos.entry_price ?? pos.entryPrice) != null && (
+                        <Text style={pubStyles.updateTime}>@ {pos.entry_price ?? pos.entryPrice}</Text>
+                      )}
+                    </View>
+                    <Text style={[pubStyles.updateTime, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
+                      {isPos ? '+$' : '-$'}{Math.abs(posPnl).toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              )
+            })}
             {recentUpdates.map((ev) => {
               const raw = String(ev.content ?? '')
               const namePrefix = profile.name + ' · '

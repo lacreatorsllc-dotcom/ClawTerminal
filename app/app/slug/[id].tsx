@@ -293,60 +293,71 @@ export default function PublicSlugScreen() {
         </View>
       )}
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Activity</Text>
-      </View>
-      <View style={styles.card}>
-        {recentTrades.length === 0 ? (
-          <Text style={styles.emptyText}>No recent trade activity yet.</Text>
-        ) : (
-          recentTrades.slice(0, 5).map((trade: any, index: number) => {
-            const symbol = String(trade.symbol ?? trade.pair ?? trade.ticker ?? 'Market')
-            const side = String(trade.side ?? trade.direction ?? 'Trade').toUpperCase()
-            const pnl = Number(trade.pnlUsd ?? trade.pnl ?? trade.unrealizedPnlUsd ?? 0)
-            const entry = trade.entryPrice ?? trade.fillPrice ?? trade.avgEntry
-            const size = trade.size ?? trade.qty ?? trade.positionSize
-            return (
-              <View key={`${symbol}-${index}`} style={[styles.tradeRow, index < recentTrades.slice(0, 5).length - 1 && styles.rowBorder]}>
-                <View style={styles.tradeTopRow}>
-                  <View style={styles.tradeIdentity}>
-                    <Text style={styles.tradeSymbol}>{symbol}</Text>
-                    <View style={[styles.sideBadge, { backgroundColor: side.includes('SHORT') || side.includes('SELL') ? 'rgba(239,68,68,0.14)' : 'rgba(0,200,150,0.14)' }]}>
-                      <Text style={[styles.sideBadgeText, { color: side.includes('SHORT') || side.includes('SELL') ? Colors.accentRed : Colors.accentGreen }]}>{side}</Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.tradePnl, { color: pnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-                    {formatCurrency(pnl)}
-                  </Text>
-                </View>
-                <View style={styles.tradeMetaRow}>
-                  {entry != null ? <Text style={styles.tradeMeta}>Entry {String(entry)}</Text> : null}
-                  {size != null ? <Text style={styles.tradeMeta}>Size {String(size)}</Text> : null}
-                </View>
-              </View>
-            )
-          })
-        )}
-      </View>
+      {(() => {
+        const tradeItems = recentTrades.slice(0, 5).map((t: any, i: number) => ({
+          _key: `trade-${i}`, _type: 'trade' as const, _ts: t.created_at ?? t.closedAt ?? null, data: t,
+        }))
+        const feedItems = feed.map((f: any) => ({
+          _key: f.id, _type: 'feed' as const, _ts: f.created_at ?? null, data: f,
+        }))
+        const merged = [...tradeItems, ...feedItems].sort((a, b) => {
+          if (!a._ts && !b._ts) return 0
+          if (!a._ts) return 1
+          if (!b._ts) return -1
+          return new Date(b._ts).getTime() - new Date(a._ts).getTime()
+        }).slice(0, 10)
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Activity</Text>
-      </View>
-      <View style={styles.card}>
-        {feed.length === 0 ? (
-          <Text style={styles.emptyText}>No public updates yet.</Text>
-        ) : (
-          feed.map((item, index) => (
-            <View key={item.id} style={[styles.feedRow, index < feed.length - 1 && styles.rowBorder]}>
-              <View style={styles.feedTag}>
-                <Text style={styles.feedTagText}>{item.type}</Text>
-              </View>
-              <Text style={styles.feedContent}>{item.content}</Text>
-              <Text style={styles.feedTime}>{timeAgo(item.created_at)}</Text>
+        return (
+          <>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Activity</Text>
             </View>
-          ))
-        )}
-      </View>
+            <View style={styles.card}>
+              {merged.length === 0 ? (
+                <Text style={styles.emptyText}>No activity yet.</Text>
+              ) : merged.map((item, index) => {
+                const isLast = index === merged.length - 1
+                if (item._type === 'trade') {
+                  const trade = item.data
+                  const symbol = String(trade.symbol ?? trade.pair ?? trade.ticker ?? 'Market')
+                  const side = String(trade.side ?? trade.direction ?? 'Trade').toUpperCase()
+                  const pnl = Number(trade.pnlUsd ?? trade.pnl ?? trade.unrealizedPnlUsd ?? 0)
+                  const entry = trade.entryPrice ?? trade.fillPrice ?? trade.avgEntry
+                  const size = trade.size ?? trade.qty ?? trade.positionSize
+                  return (
+                    <View key={item._key} style={[styles.tradeRow, !isLast && styles.rowBorder]}>
+                      <View style={styles.tradeTopRow}>
+                        <View style={styles.tradeIdentity}>
+                          <Text style={styles.tradeSymbol}>{symbol}</Text>
+                          <View style={[styles.sideBadge, { backgroundColor: side.includes('SHORT') || side.includes('SELL') ? 'rgba(239,68,68,0.14)' : 'rgba(0,200,150,0.14)' }]}>
+                            <Text style={[styles.sideBadgeText, { color: side.includes('SHORT') || side.includes('SELL') ? Colors.accentRed : Colors.accentGreen }]}>{side}</Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.tradePnl, { color: pnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>{formatCurrency(pnl)}</Text>
+                      </View>
+                      <View style={styles.tradeMetaRow}>
+                        {entry != null && <Text style={styles.tradeMeta}>Entry {String(entry)}</Text>}
+                        {size != null && <Text style={styles.tradeMeta}>Size {String(size)}</Text>}
+                        {item._ts && <Text style={styles.tradeMeta}>{timeAgo(item._ts)}</Text>}
+                      </View>
+                    </View>
+                  )
+                }
+                const ev = item.data
+                return (
+                  <View key={item._key} style={[styles.feedRow, !isLast && styles.rowBorder]}>
+                    <View style={styles.feedTag}>
+                      <Text style={styles.feedTagText}>{ev.type}</Text>
+                    </View>
+                    <Text style={styles.feedContent}>{ev.content}</Text>
+                    <Text style={styles.feedTime}>{timeAgo(ev.created_at)}</Text>
+                  </View>
+                )
+              })}
+            </View>
+          </>
+        )
+      })()}
     </ScrollView>
   )
 }
