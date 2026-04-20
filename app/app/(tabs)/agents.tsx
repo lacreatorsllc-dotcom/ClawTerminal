@@ -390,9 +390,6 @@ export default function SlugsScreen() {
           <View style={{ gap: 10, marginTop: 24 }}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionLabel}>YOUR SLUGS</Text>
-              <TouchableOpacity onPress={() => router.push('/deploy' as any)}>
-                <Text style={styles.deployLink}>+ Deploy</Text>
-              </TouchableOpacity>
             </View>
             {agents.map((a) => <AgentCard key={a.id} agent={a} username={username} />)}
           </View>

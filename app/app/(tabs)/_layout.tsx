@@ -99,7 +99,7 @@ export default function TabsLayout() {
   return (
     <View style={styles.container}>
       <Tabs
-        tabBar={(props) => isDesktopWeb ? <DesktopSidebar {...props} /> : undefined}
+        {...(isDesktopWeb ? { tabBar: (props) => <DesktopSidebar {...props} /> } : {})}
         screenOptions={{
           headerShown: false,
           sceneStyle: {
