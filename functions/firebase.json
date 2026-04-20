@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "source": ".",
+    "codebase": "slugs-agents",
+    "ignore": ["node_modules", "lib"]
+  }
+}
