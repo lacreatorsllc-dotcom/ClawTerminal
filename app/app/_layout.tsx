@@ -25,7 +25,7 @@ export default function RootLayout() {
   const { setUser, setUsername, setLoading, isLoading } = useAuthStore()
   const authChangeIdRef = useRef(0)
 
-  useFonts({ ...Ionicons.font })
+  const [fontsLoaded] = useFonts({ ...Ionicons.font })
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -64,7 +64,7 @@ export default function RootLayout() {
     return unsub
   }, [])
 
-  if (isLoading) {
+  if (isLoading || !fontsLoaded) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.bgPrimary, justifyContent: 'center', alignItems: 'center' }}>
         <StatusBar barStyle="light-content" backgroundColor={Colors.bgPrimary} />
