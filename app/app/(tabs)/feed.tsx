@@ -531,6 +531,7 @@ export default function FeedScreen() {
   const [trackedFeed, setTrackedFeed] = useState<FeedItem[]>([])
   const [userAgents, setUserAgents] = useState<any[]>([])
   const [newsFeed, setNewsFeed] = useState<FeedItem[]>([])
+  const [myAgentsFeed, setMyAgentsFeed] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [sharingPref, setSharingPref] = useState<SharingPref>(undefined as any)
   const [showSharingPrompt, setShowSharingPrompt] = useState(false)
@@ -599,14 +600,26 @@ export default function FeedScreen() {
     return unsub
   }, [user?.uid, trackedAgentIds.join(','), trackedAgentDocs])
 
+  // Subscribe to user's own claude_managed agents' feed_events
+  useEffect(() => {
+    const myAgentIds = userAgents
+      .filter((a) => a.agent_type === 'claude_managed' || a.metadata?.agent_type === 'claude_managed')
+      .map((a) => a.id)
+    if (myAgentIds.length === 0) { setMyAgentsFeed([]); return }
+    const nameMap = new Map(userAgents.map((a) => [a.id, a.name]))
+    return subscribeToTrackedAgentFeed(myAgentIds, (events) => {
+      setMyAgentsFeed(events.map((e) => toFeedItem(e, nameMap)))
+    })
+  }, [userAgents.map((a) => a.id).join(',')])
+
   useEffect(() => {
     const seen = new Set<string>()
-    const merged = [...followingFeed, ...newsFeed]
+    const merged = [...followingFeed, ...myAgentsFeed, ...newsFeed]
       .filter((item) => { if (seen.has(item.id)) return false; seen.add(item.id); return true })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     setFeedItems(merged)
     setLoading(false)
-  }, [followingFeed, trackedFeed, newsFeed])
+  }, [followingFeed, trackedFeed, myAgentsFeed, newsFeed])
 
   // Subscribe to user's own agents with live PnL (for posting + prompt trigger)
   useEffect(() => {
@@ -627,7 +640,9 @@ export default function FeedScreen() {
   useEffect(() => {
     if (!user) return
     const hasNewsSentiment = userAgents.some((a) =>
-      (a.skills ?? a.metadata?.skills ?? []).includes('news_sentiment')
+      (a.skills ?? a.metadata?.skills ?? []).includes('news_sentiment') ||
+      (a.strategy ?? a.metadata?.strategy ?? '') === 'News Sentiment' ||
+      (a.agent_type ?? a.metadata?.agent_type ?? '') === 'news_sentiment'
     )
     if (!hasNewsSentiment) { setNewsFeed([]); return }
 
