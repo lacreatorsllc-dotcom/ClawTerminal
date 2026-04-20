@@ -17,7 +17,7 @@ export const clockAgents = onSchedule(
   { schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 60 },
   async () => {
     const snap = await AGENTS_COL
-      .where('type', '==', 'claude_managed')
+      .where('agent_type', '==', 'claude_managed')
       .where('status', 'in', ['active', 'connected'])
       .get()
 
@@ -58,8 +58,9 @@ export const onChatMessage = onDocumentCreated(
   },
   async (event) => {
     const data = event.data?.data()
+    console.log(`[onChatMessage] doc=${event.params.agentId}/${event.params.messageId} direction=${data?.direction} hasData=${!!data}`)
     if (!data) return
-    if (data.direction !== 'inbound') return  // only reply to user messages
+    if (data.direction !== 'inbound') return
 
     const { agentId, messageId } = event.params
     await runChatReply(agentId, messageId, data.content)

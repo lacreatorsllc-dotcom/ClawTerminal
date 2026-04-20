@@ -15,7 +15,7 @@ const TOPIC = 'agent-tick';
 // ── Every 5 minutes: fan out one Pub/Sub message per active agent ─────────────
 exports.clockAgents = (0, scheduler_1.onSchedule)({ schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 60 }, async () => {
     const snap = await firebase_1.AGENTS_COL
-        .where('type', '==', 'claude_managed')
+        .where('agent_type', '==', 'claude_managed')
         .where('status', 'in', ['active', 'connected'])
         .get();
     if (snap.empty) {
@@ -42,10 +42,11 @@ exports.onChatMessage = (0, firestore_1.onDocumentCreated)({
     secrets: [anthropicKey],
 }, async (event) => {
     const data = event.data?.data();
+    console.log(`[onChatMessage] doc=${event.params.agentId}/${event.params.messageId} direction=${data?.direction} hasData=${!!data}`);
     if (!data)
         return;
     if (data.direction !== 'inbound')
-        return; // only reply to user messages
+        return;
     const { agentId, messageId } = event.params;
     await (0, chatLoop_1.runChatReply)(agentId, messageId, data.content);
 });
