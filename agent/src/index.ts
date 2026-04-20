@@ -1,6 +1,7 @@
 import * as http from 'http'
 import { runTradingLoop } from './trading'
 import { startChatListener } from './chat'
+import { runNewsPoller } from './news'
 
 // Prevent any unhandled error from crashing the process
 process.on('uncaughtException', (err) => console.error('[uncaughtException]', err))
@@ -51,6 +52,15 @@ startTradingLoop();
   
   // Start chat listener
   startChatListener()
+
+  // News poller — runs immediately then every 15 minutes
+  async function startNewsLoop() {
+    while (true) {
+      await runNewsPoller()
+      await new Promise(resolve => setTimeout(resolve, 15 * 60 * 1000))
+    }
+  }
+  startNewsLoop()
 
   console.log('[slug-001] agent started')
 })

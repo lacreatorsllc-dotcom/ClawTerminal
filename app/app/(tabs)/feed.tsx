@@ -12,6 +12,7 @@ import {
   subscribeToTrackedAgentFeed,
   subscribeToTrackedAgentDocs,
   subscribeToUserAgentsPnl,
+  subscribeToMarketNews,
   publishAgentPnl,
   getPnlSharingPref,
   setPnlSharingPref,
@@ -537,6 +538,7 @@ export default function FeedScreen() {
   const [followingFeed, setFollowingFeed] = useState<FeedItem[]>([])
   const [trackedFeed, setTrackedFeed] = useState<FeedItem[]>([])
   const [userAgents, setUserAgents] = useState<any[]>([])
+  const [newsFeed, setNewsFeed] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [sharingPref, setSharingPref] = useState<SharingPref>(undefined as any)
   const [showSharingPrompt, setShowSharingPrompt] = useState(false)
@@ -606,15 +608,13 @@ export default function FeedScreen() {
   }, [user?.uid, trackedAgentIds.join(','), trackedAgentDocs])
 
   useEffect(() => {
-    const merged = [...followingFeed]
-      .reduce((rows, item) => {
-        if (!rows.some((row) => row.id === item.id)) rows.push(item)
-        return rows
-      }, [] as FeedItem[])
+    const seen = new Set<string>()
+    const merged = [...followingFeed, ...newsFeed]
+      .filter((item) => { if (seen.has(item.id)) return false; seen.add(item.id); return true })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     setFeedItems(merged)
     setLoading(false)
-  }, [followingFeed, trackedFeed])
+  }, [followingFeed, trackedFeed, newsFeed])
 
   // Subscribe to user's own agents with live PnL (for posting + prompt trigger)
   useEffect(() => {
@@ -630,6 +630,36 @@ export default function FeedScreen() {
       })
     })
   }, [user?.uid])
+
+  // Subscribe to market news if user has any agent with news_sentiment skill
+  useEffect(() => {
+    if (!user) return
+    const hasNewsSentiment = userAgents.some((a) =>
+      (a.skills ?? a.metadata?.skills ?? []).includes('news_sentiment')
+    )
+    if (!hasNewsSentiment) { setNewsFeed([]); return }
+
+    // Collect all coins the user's agents trade
+    const coins = Array.from(new Set(
+      userAgents.flatMap((a) => {
+        const sym: string = a.coin ?? a.metadata?.coin ?? a.live_state?.coin ?? ''
+        return sym ? [sym.toUpperCase()] : ['BTC']
+      })
+    ))
+
+    return subscribeToMarketNews(coins, (events) => {
+      setNewsFeed(events.map((e) => ({
+        id: e.id,
+        agent_id: 'market_news',
+        user_id: 'system',
+        agentName: e.source ?? 'Market News',
+        content: e.headline,
+        created_at: e.created_at,
+        cardType: 'news' as CardType,
+        payload: e,
+      })))
+    })
+  }, [user?.uid, userAgents.map(a => a.id).join(',')])
 
   async function handleSharingPrefSelect(pref: 'auto' | 'manual' | 'private') {
     if (!user) return

@@ -1179,3 +1179,23 @@ export function subscribeToSlug001(cb: (state: PaperAgentState | null) => void) 
     cb(snap.exists() ? (snap.data() as PaperAgentState) : null)
   }, _noop)
 }
+
+// ── Market News ───────────────────────────────────────────────────────────────
+// Written by the news poller in agent/src/news.ts, deduplicated by story ID.
+// coins: list of symbols to filter by (e.g. ['BTC', 'ETH'])
+export function subscribeToMarketNews(coins: string[], cb: (events: any[]) => void) {
+  if (coins.length === 0) return () => {}
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  // Firestore array-contains-any supports max 10 values
+  const coinSlice = coins.slice(0, 10)
+  const q = query(
+    collection(db, 'market_news'),
+    where('markets', 'array-contains-any', coinSlice),
+    where('created_at', '>=', since),
+    orderBy('created_at', 'desc'),
+    limit(30),
+  )
+  return onSnapshot(q, (snap) => {
+    cb(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  }, _noop)
+}
