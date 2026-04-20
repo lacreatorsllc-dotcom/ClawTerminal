@@ -506,18 +506,10 @@ function TrackedSlugsSection({ agentIds }: { agentIds: string[] }) {
 
   if (agents.length === 0) return null
 
-  const totalPnl = agents.reduce((sum, a) => sum + (a.live_state?.unrealizedPnlUsd ?? 0), 0)
-  const hasAnyPnl = agents.some((a) => a.live_state?.unrealizedPnlUsd != null)
-
   return (
     <View style={trackedStyles.section}>
       <View style={trackedStyles.sectionHeader}>
         <Text style={trackedStyles.sectionLabel}>TRACKING</Text>
-        {hasAnyPnl && (
-          <Text style={[trackedStyles.totalPnl, { color: totalPnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-            {totalPnl >= 0 ? '+$' : '-$'}{Math.abs(totalPnl).toFixed(2)} total
-          </Text>
-        )}
       </View>
       <View style={trackedStyles.list}>
         {agents.map((a) => <TrackedSlugCard key={a.id} agent={a} />)}
