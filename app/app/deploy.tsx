@@ -27,11 +27,19 @@ const STRATEGY_DESCRIPTIONS: Record<ClaudeStrategy, string> = {
 
 const CLAUDE_SKILLS = [
   { id: 'technical_analysis', label: 'Technical Analysis', emoji: '📊' },
-  { id: 'news_sentiment', label: 'News Sentiment', emoji: '📰' },
-  { id: 'risk_manager', label: 'Risk Manager', emoji: '🛡' },
-  { id: 'onchain_data', label: 'Onchain Data', emoji: '⛓' },
-  { id: 'macro_regime', label: 'Macro Regime', emoji: '🌍' },
+  { id: 'news_sentiment',     label: 'News Sentiment',     emoji: '📰' },
+  { id: 'risk_manager',       label: 'Risk Manager',       emoji: '🛡'  },
+  { id: 'onchain_data',       label: 'Onchain Data',       emoji: '⛓'  },
+  { id: 'macro_regime',       label: 'Macro Regime',       emoji: '🌍' },
 ] as const
+
+const SKILL_DESCRIPTIONS: Record<string, string> = {
+  technical_analysis: 'Reads price action, RSI, MACD, and volume patterns to time entries and exits more precisely.',
+  news_sentiment:     'Monitors crypto news in real time and posts updates to your feed whenever a story breaks that affects your markets. This agent posts news — not trades.',
+  risk_manager:       'Watches position sizes, drawdown limits, and exposure across your portfolio. Pauses the agent if risk thresholds are hit.',
+  onchain_data:       'Tracks wallet flows, exchange inflows/outflows, and on-chain activity to spot accumulation or distribution pressure.',
+  macro_regime:       'Detects broader market conditions — risk-on vs. risk-off — and adjusts strategy aggression based on macro signals.',
+}
 
 interface DeployedAgent {
   id: string
@@ -80,6 +88,7 @@ export default function DeployScreen() {
   const [customDesc, setCustomDesc] = useState('')
   const [customHint, setCustomHint] = useState<string | null>(null)
   const [validating, setValidating] = useState(false)
+  const [focusedSkill, setFocusedSkill] = useState<string | null>(null)
 
   function goBack() {
     if (step === 'pick') router.back()
@@ -352,11 +361,15 @@ export default function DeployScreen() {
             <View style={s.skillsGrid}>
               {CLAUDE_SKILLS.map(skill => {
                 const active = claudeSkills.has(skill.id)
+                const focused = focusedSkill === skill.id
                 return (
                   <TouchableOpacity
                     key={skill.id}
-                    style={[s.skillChip, active && s.skillChipActive]}
-                    onPress={() => toggleSkill(skill.id)}
+                    style={[s.skillChip, active && s.skillChipActive, focused && s.skillChipFocused]}
+                    onPress={() => {
+                      toggleSkill(skill.id)
+                      setFocusedSkill(focused ? null : skill.id)
+                    }}
                     activeOpacity={0.7}
                   >
                     <Text style={s.skillEmoji}>{skill.emoji}</Text>
@@ -365,6 +378,32 @@ export default function DeployScreen() {
                 )
               })}
             </View>
+
+            {focusedSkill && SKILL_DESCRIPTIONS[focusedSkill] && (
+              focusedSkill === 'news_sentiment' ? (
+                <View style={s.newsSkillCard}>
+                  <View style={s.newsSkillHeader}>
+                    <Text style={s.newsSkillIcon}>📰</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.newsSkillTitle}>News Sentiment Agent</Text>
+                      <View style={s.newsSkillBadge}>
+                        <Text style={s.newsSkillBadgeText}>POSTS TO FEED</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <Text style={s.newsSkillDesc}>
+                    This agent monitors crypto news in real time and posts updates directly to your feed whenever a breaking story affects your markets — including sentiment analysis and which coins are impacted.
+                  </Text>
+                  <Text style={s.newsSkillNote}>
+                    It doesn't place trades. Add a trading strategy alongside it if you want both.
+                  </Text>
+                </View>
+              ) : (
+                <View style={s.stratDescCard}>
+                  <Text style={s.stratDescText}>{SKILL_DESCRIPTIONS[focusedSkill]}</Text>
+                </View>
+              )
+            )}
 
             {error ? <Text style={s.errorText}>{error}</Text> : null}
 
@@ -500,9 +539,27 @@ const s = StyleSheet.create({
     backgroundColor: Colors.bgSubtle, borderWidth: 1, borderColor: Colors.borderSubtle,
   },
   skillChipActive: { backgroundColor: 'rgba(251,146,60,0.12)', borderColor: '#fb923c' },
+  skillChipFocused: { borderColor: '#60a5fa', borderWidth: 1.5 },
   skillEmoji: { fontSize: 14 },
   skillLabel: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
   skillLabelActive: { color: '#fb923c' },
+
+  newsSkillCard: {
+    backgroundColor: 'rgba(96,165,250,0.07)',
+    borderRadius: 14, borderWidth: 1, borderColor: 'rgba(96,165,250,0.3)',
+    padding: 16, gap: 10,
+  },
+  newsSkillHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  newsSkillIcon: { fontSize: 24, lineHeight: 28 },
+  newsSkillTitle: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary, marginBottom: 4 },
+  newsSkillBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(96,165,250,0.15)', borderRadius: 5, borderWidth: 1,
+    borderColor: 'rgba(96,165,250,0.4)', paddingHorizontal: 6, paddingVertical: 2,
+  },
+  newsSkillBadgeText: { fontSize: 10, fontWeight: '700', color: '#93c5fd' },
+  newsSkillDesc: { fontSize: 13, color: Colors.textSecondary, lineHeight: 19 },
+  newsSkillNote: { fontSize: 12, color: Colors.textMuted, lineHeight: 17, fontStyle: 'italic' },
 
   byoRow: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
