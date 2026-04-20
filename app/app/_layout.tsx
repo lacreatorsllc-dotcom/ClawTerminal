@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Stack, router } from 'expo-router'
 import { StatusBar, Platform } from 'react-native'
 import * as SplashScreen from 'expo-splash-screen'
@@ -8,10 +8,9 @@ import { auth, onAuthStateChanged, ensureUserProfile } from '../lib/firebase'
 import { useAuthStore } from '../stores/authStore'
 import { Colors } from '../constants/colors'
 import { DesktopChatDock } from '../components/DesktopChatDock'
-import { LoadingScreen } from '../components/LoadingScreen'
 
-// Keep the native splash visible until the video loading screen takes over
 SplashScreen.preventAutoHideAsync()
+SplashScreen.hideAsync().catch(() => {})
 
 let lastRouterAction: string | null = null
 
@@ -23,13 +22,10 @@ function safeReplace(path: string) {
 }
 
 export default function RootLayout() {
-  const { setUser, setUsername, setLoading, isLoading, user } = useAuthStore()
+  const { setUser, setUsername, setLoading } = useAuthStore()
   const authChangeIdRef = useRef(0)
-  // Keep the loader mounted until its fade-out animation finishes
-  const [showLoader, setShowLoader] = useState(true)
 
-  // Load icon fonts — on web these must be loaded explicitly before icons render
-  const [fontsLoaded] = useFonts({ ...Ionicons.font })
+  useFonts({ ...Ionicons.font })
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -70,11 +66,8 @@ export default function RootLayout() {
 
   return (
     <>
-      {/* Black status bar matches the video background */}
       <StatusBar barStyle="light-content" backgroundColor="#000000" />
 
-      {/* Main app renders underneath the loading overlay at all times —
-          prevents any white flash when the loader fades out */}
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: Colors.bgPrimary } }}>
         <Stack.Screen name="auth" />
         <Stack.Screen name="set-username" />
@@ -90,16 +83,7 @@ export default function RootLayout() {
         <Stack.Screen name="profile/[username]" options={{ presentation: 'card' }} />
       </Stack>
 
-      {Platform.OS === 'web' && user ? <DesktopChatDock /> : null}
-
-      {/* Loading overlay — stays until auth resolves AND icon fonts are loaded,
-          so icons never flash as squares on first render */}
-      {showLoader && (
-        <LoadingScreen
-          visible={isLoading || (Platform.OS === 'web' && !fontsLoaded)}
-          onFadeComplete={() => setShowLoader(false)}
-        />
-      )}
+      {Platform.OS === 'web' && <DesktopChatDock />}
     </>
   )
 }
