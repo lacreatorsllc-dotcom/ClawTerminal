@@ -45,6 +45,8 @@ interface DeployedAgent {
   id: string
   name: string
   type: 'cabal_trading_boy' | 'claude_managed'
+  strategy?: string
+  skills?: string[]
 }
 
 function BackMark() {
@@ -133,7 +135,7 @@ export default function DeployScreen() {
       const data = await res.json() as any
       if (!res.ok) throw new Error(data.error ?? 'Deploy failed')
       const id = await createClaudeAgent(user.uid, agentName, data.claudeAgentId, data.claudeEnvId, claudeStrategy)
-      setDeployed({ id, name: agentName, type: 'claude_managed' })
+      setDeployed({ id, name: agentName, type: 'claude_managed', strategy: claudeStrategy, skills: Array.from(claudeSkills) })
       setStep('success')
     } catch (e: any) { setError(e.message ?? 'Deploy failed') }
     setDeploying(false)
@@ -422,17 +424,57 @@ export default function DeployScreen() {
         {/* ── Success ── */}
         {step === 'success' && deployed && (
           <View style={s.successBlock}>
-            <View style={s.successIcon}>
-              {Platform.OS === 'web' ? <CheckMark /> : <Ionicons name="checkmark" size={32} color={Colors.accentGreen} />}
+
+            {/* Status pill */}
+            <View style={s.successPill}>
+              <View style={s.successPillDot} />
+              <Text style={s.successPillText}>LIVE</Text>
             </View>
-            <Text style={s.successTitle}>{deployed.name}</Text>
-            <Text style={s.successDesc}>
-              {deployed.type === 'cabal_trading_boy'
-                ? `${deployed.name} connected. Live state, decisions, and chat are syncing.`
-                : `${deployed.name} is live. Claude is loading its skills — start chatting to put it to work.`}
-            </Text>
+
+            {/* Agent card */}
+            <View style={s.successCard}>
+              <View style={s.successCardTop}>
+                <View style={s.successAvatar}>
+                  <Text style={s.successAvatarText}>{deployed.name[0]?.toUpperCase() ?? 'A'}</Text>
+                </View>
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text style={s.successAgentName}>{deployed.name}</Text>
+                  {deployed.type === 'cabal_trading_boy' ? (
+                    <View style={s.successTypeBadge}>
+                      <Text style={s.successTypeBadgeText}>TRADING BOY</Text>
+                    </View>
+                  ) : deployed.strategy ? (
+                    <View style={s.successTypeBadge}>
+                      <Text style={s.successTypeBadgeText}>{deployed.strategy.toUpperCase()}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+
+              {deployed.skills && deployed.skills.length > 0 && (
+                <View style={s.successSkills}>
+                  {deployed.skills.map((id) => {
+                    const skill = CLAUDE_SKILLS.find((sk) => sk.id === id)
+                    if (!skill) return null
+                    return (
+                      <View key={id} style={s.successSkillChip}>
+                        <Text style={s.successSkillEmoji}>{skill.emoji}</Text>
+                        <Text style={s.successSkillLabel}>{skill.label}</Text>
+                      </View>
+                    )
+                  })}
+                </View>
+              )}
+
+              <Text style={s.successDesc}>
+                {deployed.type === 'cabal_trading_boy'
+                  ? 'Connected. Live state, decisions, and chat are syncing.'
+                  : 'Running 24/7. Chat with it to configure strategy, set limits, or check status.'}
+              </Text>
+            </View>
+
             <TouchableOpacity
-              style={s.cta}
+              style={[s.cta, { width: '100%' }]}
               onPress={() => {
                 deployed.type === 'cabal_trading_boy'
                   ? router.replace('/(tabs)/agents' as any)
@@ -441,7 +483,7 @@ export default function DeployScreen() {
             >
               <Text style={s.ctaText}>{deployed.type === 'cabal_trading_boy' ? 'View Agents' : 'Open Agent'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.secondaryBtn} onPress={() => router.back()}>
+            <TouchableOpacity style={s.secondaryBtn} onPress={() => router.replace('/(tabs)/agents' as any)}>
               <Text style={s.secondaryBtnText}>Back to Agents</Text>
             </TouchableOpacity>
           </View>
@@ -598,12 +640,48 @@ const s = StyleSheet.create({
   secondaryBtn: { alignItems: 'center', paddingVertical: 12 },
   secondaryBtnText: { fontSize: 14, color: Colors.textMuted },
 
-  successBlock: { alignItems: 'center', gap: 16, paddingTop: 32 },
-  successIcon: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: 'rgba(52,211,153,0.12)', borderWidth: 1.5, borderColor: Colors.accentGreen,
+  successBlock: { gap: 16, paddingTop: 16 },
+
+  successPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(52,211,153,0.1)', borderRadius: 20,
+    borderWidth: 1, borderColor: 'rgba(52,211,153,0.3)',
+    paddingHorizontal: 12, paddingVertical: 5,
+  },
+  successPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.accentGreen },
+  successPillText: { fontSize: 11, fontWeight: '700', color: Colors.accentGreen, letterSpacing: 1 },
+
+  successCard: {
+    backgroundColor: Colors.bgCard, borderRadius: 18,
+    borderWidth: 1, borderColor: Colors.borderSubtle,
+    padding: 18, gap: 14,
+  },
+  successCardTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  successAvatar: {
+    width: 52, height: 52, borderRadius: 16,
+    backgroundColor: 'rgba(251,146,60,0.15)', borderWidth: 1.5, borderColor: '#fb923c',
     justifyContent: 'center', alignItems: 'center',
   },
-  successTitle: { fontSize: 22, fontWeight: '700', color: Colors.textPrimary },
-  successDesc: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, paddingHorizontal: 8 },
+  successAvatarText: { fontSize: 22, fontWeight: '800', color: '#fb923c' },
+  successAgentName: { fontSize: 18, fontWeight: '800', color: Colors.textPrimary },
+  successTypeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(251,146,60,0.1)', borderRadius: 5,
+    borderWidth: 1, borderColor: 'rgba(251,146,60,0.3)',
+    paddingHorizontal: 7, paddingVertical: 2,
+  },
+  successTypeBadgeText: { fontSize: 10, fontWeight: '700', color: '#fb923c' },
+
+  successSkills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  successSkillChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    backgroundColor: Colors.bgSubtle, borderRadius: 8,
+    borderWidth: 1, borderColor: Colors.borderSubtle,
+    paddingHorizontal: 9, paddingVertical: 5,
+  },
+  successSkillEmoji: { fontSize: 12 },
+  successSkillLabel: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
+
+  successDesc: { fontSize: 13, color: Colors.textSecondary, lineHeight: 19 },
 })
