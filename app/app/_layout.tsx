@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { Stack, router } from 'expo-router'
-import { StatusBar, Platform } from 'react-native'
+import { StatusBar, Platform, View, ActivityIndicator } from 'react-native'
 import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
 import { Ionicons } from '@expo/vector-icons'
@@ -22,7 +22,7 @@ function safeReplace(path: string) {
 }
 
 export default function RootLayout() {
-  const { setUser, setUsername, setLoading } = useAuthStore()
+  const { setUser, setUsername, setLoading, isLoading } = useAuthStore()
   const authChangeIdRef = useRef(0)
 
   useFonts({ ...Ionicons.font })
@@ -63,6 +63,15 @@ export default function RootLayout() {
 
     return unsub
   }, [])
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.bgPrimary, justifyContent: 'center', alignItems: 'center' }}>
+        <StatusBar barStyle="light-content" backgroundColor={Colors.bgPrimary} />
+        <ActivityIndicator color={Colors.accentAmber} />
+      </View>
+    )
+  }
 
   return (
     <>
