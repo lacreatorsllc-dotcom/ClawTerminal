@@ -460,11 +460,14 @@ export default function FeedScreen() {
       return
     }
     const nameMap = new Map(trackedAgentDocs.map((a) => [a.id, a.name]))
+    const trackedSet = new Set(trackedAgentIds)
     const unsub = subscribeToPublicFeed(followingUids, (events) => {
-      setFollowingFeed(events.map((e) => toFeedItem(e, nameMap)))
+      // Skip events from agents already shown in the TRACKING section
+      const filtered = events.filter((e) => !trackedSet.has(String(e.agent_id ?? '')))
+      setFollowingFeed(filtered.map((e) => toFeedItem(e, nameMap)))
     })
     return unsub
-  }, [user?.uid, followingUids.join(',')])
+  }, [user?.uid, followingUids.join(','), trackedAgentIds.join(',')])
 
   useEffect(() => {
     if (!user) return
