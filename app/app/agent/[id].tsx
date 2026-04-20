@@ -2766,7 +2766,7 @@ function PublicAgentView({ agentId }: { agentId: string }) {
         {/* Description */}
         {!!profile.description && (
           <View style={pubStyles.descCard}>
-            <Text style={pubStyles.descLabel}>WHAT THIS SLUG DOES</Text>
+            <Text style={pubStyles.descLabel}>ABOUT</Text>
             <Text style={pubStyles.descText}>{profile.description}</Text>
           </View>
         )}
@@ -2793,7 +2793,7 @@ function PublicAgentView({ agentId }: { agentId: string }) {
         {/* Open positions */}
         {positions.length > 0 && (
           <>
-            <Text style={pubStyles.sectionTitle}>How it's doing</Text>
+            <Text style={pubStyles.sectionTitle}>Open Positions</Text>
             <View style={pubStyles.positionsList}>
               {positions.map((pos: any, i: number) => {
                 const posPnl = pos.pnl ?? pos.unrealized_pnl ?? pos.unrealizedPnl ?? 0
@@ -2822,8 +2822,8 @@ function PublicAgentView({ agentId }: { agentId: string }) {
           </>
         )}
 
-        {/* Recent updates */}
-        <Text style={pubStyles.sectionTitle}>Recent updates</Text>
+        {/* Activity */}
+        <Text style={pubStyles.sectionTitle}>Activity</Text>
         {recentUpdates.length === 0 ? (
           <View style={pubStyles.noUpdates}>
             <Text style={pubStyles.noUpdatesText}>No public updates yet.</Text>
