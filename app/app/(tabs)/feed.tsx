@@ -480,7 +480,7 @@ export default function FeedScreen() {
   }, [user?.uid, trackedAgentIds.join(','), trackedAgentDocs])
 
   useEffect(() => {
-    const merged = [...followingFeed, ...trackedFeed]
+    const merged = [...followingFeed]
       .reduce((rows, item) => {
         if (!rows.some((row) => row.id === item.id)) rows.push(item)
         return rows
