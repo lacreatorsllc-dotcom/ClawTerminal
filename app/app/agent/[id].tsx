@@ -2614,6 +2614,76 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
   )
 }
 
+// ── Public Agent View (for tracked/followed agents not owned by user) ─────────
+
+function PublicAgentView({ agentId }: { agentId: string }) {
+  const [agent, setAgent] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const unsub = fsOnSnapshot(doc(db, 'agents', agentId), (snap) => {
+      setAgent(snap.exists() ? { id: snap.id, ...snap.data() } : null)
+      setLoading(false)
+    })
+    return unsub
+  }, [agentId])
+
+  const isOnline = agent?.status === 'connected'
+  const pnl: number = agent?.live_state?.unrealizedPnlUsd ?? 0
+  const hasPnl = agent?.live_state?.unrealizedPnlUsd != null
+
+  return (
+    <View style={{ flex: 1, backgroundColor: Colors.bgPrimary }}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={{ paddingTop: 60, paddingHorizontal: 20, paddingBottom: 16 }}
+      >
+        <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
+      </TouchableOpacity>
+
+      {loading ? (
+        <ActivityIndicator size="large" color={Colors.accentAmber} style={{ marginTop: 60 }} />
+      ) : !agent ? (
+        <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 60 }}>Agent not found</Text>
+      ) : (
+        <View style={{ paddingHorizontal: 24, gap: 20 }}>
+          <View style={{ alignItems: 'center', gap: 12 }}>
+            <View style={{
+              width: 72, height: 72, borderRadius: 36,
+              backgroundColor: Colors.bgElevated, borderWidth: 2,
+              borderColor: isOnline ? Colors.accentGreen : Colors.bgBorder,
+              justifyContent: 'center', alignItems: 'center',
+            }}>
+              <Text style={{ fontSize: 28, fontWeight: '700', color: Colors.textPrimary }}>
+                {agent.name?.[0]?.toUpperCase() ?? '?'}
+              </Text>
+            </View>
+            <Text style={{ fontSize: 22, fontWeight: '700', color: Colors.textPrimary }}>{agent.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isOnline ? Colors.accentGreen : Colors.textMuted }} />
+              <Text style={{ fontSize: 13, color: isOnline ? Colors.accentGreen : Colors.textMuted }}>
+                {isOnline ? 'Online' : 'Offline'}
+              </Text>
+            </View>
+          </View>
+
+          {hasPnl && (
+            <View style={{
+              backgroundColor: Colors.bgElevated, borderRadius: 16, padding: 20,
+              alignItems: 'center', borderWidth: 1, borderColor: Colors.bgBorder,
+            }}>
+              <Text style={{ fontSize: 12, color: Colors.textMuted, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>Unrealized PnL</Text>
+              <Text style={{ fontSize: 32, fontWeight: '700', color: pnl >= 0 ? Colors.accentGreen : Colors.accentRed, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' }}>
+                {pnl >= 0 ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  )
+}
+
 // ── Main Agent Detail Screen ───────────────────────────────────────────────────
 
 export default function AgentDetailScreen() {
@@ -2629,6 +2699,8 @@ export default function AgentDetailScreen() {
   if (agentSnap?.agent_type === 'cabal_blue_chip' && id) return <BlueChipScreen agentId={id} />
   if (agentSnap?.agent_type === 'market_advisor' && id) return <MarketAdvisorScreen agentId={id} />
   if (agentSnap?.agent_type === 'claude_managed' && id) return <ClaudeManagedAgentScreen agentId={id} />
+  // Agent not owned by current user — show public profile
+  if (!agentSnap && id) return <PublicAgentView agentId={id} />
 
   const [tab, setTab] = useState<Tab>('chat')
   const [showShareCard, setShowShareCard] = useState(false)
