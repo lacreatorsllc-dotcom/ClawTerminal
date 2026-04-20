@@ -15,7 +15,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
-import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, deleteAgent, type PaperAgentState, trackAgent, untrackAgent, getPublicAgentProfile, listPublicFeedEventsForAgent, isTrackingAgent } from '../../lib/firebase'
+import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, deleteAgent, type PaperAgentState, trackAgent, untrackAgent, getPublicAgentProfile, listPublicFeedEventsForAgent, subscribeToAgentActivity, isTrackingAgent } from '../../lib/firebase'
 import { processMarketAdvisorInbound } from '../../lib/marketAdvisorClient'
 import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
@@ -2720,6 +2720,12 @@ function PublicAgentView({ agentId }: { agentId: string }) {
       if (snap.exists()) {
         const d = snap.data()
         setLiveData({ status: String(d.status ?? 'disconnected'), live_state: d.live_state ?? null })
+
+        // Subscribe to unified activity once we know the agent's skills + coins
+        const skills: string[] = d.skills ?? d.metadata?.skills ?? []
+        const coin: string = d.coin ?? d.metadata?.coin ?? d.live_state?.coin ?? ''
+        const coins = coin ? [coin.toUpperCase()] : ['BTC']
+        return subscribeToAgentActivity(agentId, skills, coins, setRecentUpdates)
       }
     })
   }, [agentId])
@@ -2728,10 +2734,6 @@ function PublicAgentView({ agentId }: { agentId: string }) {
     if (!user) return
     isTrackingAgent(user.uid, agentId).then(setIsTracked)
   }, [user?.uid, agentId])
-
-  useEffect(() => {
-    listPublicFeedEventsForAgent(agentId, 15).then(setRecentUpdates)
-  }, [agentId])
 
   async function handleTrack() {
     if (!user || trackLoading) return
@@ -2890,15 +2892,63 @@ function PublicAgentView({ agentId }: { agentId: string }) {
               )
             })}
             {recentUpdates.map((ev) => {
+              const isPnl = ev.type === 'pnl' || ev.type === 'daily_pnl'
+              const isTrade = ev.type === 'trade'
+              const isNews = ev.type === 'news_sentiment'
+              const p = ev.payload ?? {}
+
+              if (isNews) {
+                const sentiment: string = p.sentiment ?? 'neutral'
+                const sentimentColor = sentiment === 'bullish' ? Colors.accentGreen : sentiment === 'bearish' ? Colors.accentRed : Colors.textMuted
+                const sentimentLabel = sentiment === 'bullish' ? '▲ Bullish' : sentiment === 'bearish' ? '▼ Bearish' : '● Neutral'
+                const markets: string[] = p.markets ?? []
+                return (
+                  <View key={ev.id} style={[pubStyles.updateRow, { borderLeftWidth: 2, borderLeftColor: sentimentColor, paddingLeft: 10 }]}>
+                    <View style={pubStyles.updateMeta}>
+                      <Text style={[pubStyles.updateType, { color: sentimentColor }]}>{sentimentLabel}</Text>
+                      <Text style={pubStyles.updateTime}>{pubFmtTime(ev.created_at)}</Text>
+                    </View>
+                    <Text style={[pubStyles.updateContent, { fontWeight: '600' }]}>{ev.content}</Text>
+                    {markets.length > 0 && (
+                      <Text style={pubStyles.updateTime}>{markets.join(' · ')}</Text>
+                    )}
+                  </View>
+                )
+              }
+
+              if (isTrade) {
+                const action = String(p.action ?? 'TRADE')
+                const symbol = p.symbol ?? ''
+                const direction = p.direction ?? ''
+                const price = p.entry_price ?? p.exit_price ?? null
+                const pnl: number | null = p.pnl != null ? Number(p.pnl) : null
+                const tradeColor = action === 'ENTRY' ? Colors.accentGreen : action === 'EXIT' ? Colors.accentAmber : Colors.textMuted
+                return (
+                  <View key={ev.id} style={pubStyles.updateRow}>
+                    <View style={pubStyles.updateMeta}>
+                      <Text style={[pubStyles.updateType, { color: tradeColor }]}>
+                        ◆ {action}{symbol ? ` · ${symbol}` : ''}{direction ? ` ${direction}` : ''}
+                        {price != null ? ` @ $${Number(price).toLocaleString()}` : ''}
+                      </Text>
+                      <Text style={pubStyles.updateTime}>{pubFmtTime(ev.created_at)}</Text>
+                    </View>
+                    {pnl != null && (
+                      <Text style={[pubStyles.updateContent, { color: pnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+                        {pnl >= 0 ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
+                      </Text>
+                    )}
+                  </View>
+                )
+              }
+
               const raw = String(ev.content ?? '')
               const namePrefix = profile.name + ' · '
               const content = raw.startsWith(namePrefix) ? raw.slice(namePrefix.length) : raw
-              const isPnl = ev.type === 'pnl' || ev.type === 'daily_pnl'
               return (
                 <View key={ev.id} style={pubStyles.updateRow}>
                   <View style={pubStyles.updateMeta}>
                     <Text style={[pubStyles.updateType, isPnl && { color: Colors.accentGreen }]}>
-                      {isPnl ? '◆ PnL Update' : '◎ Update'}
+                      {isPnl ? '◆ PnL' : '◎ Update'}
                     </Text>
                     <Text style={pubStyles.updateTime}>{pubFmtTime(ev.created_at)}</Text>
                   </View>

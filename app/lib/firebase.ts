@@ -1180,6 +1180,79 @@ export function subscribeToSlug001(cb: (state: PaperAgentState | null) => void) 
   }, _noop)
 }
 
+// ── Agent activity (unified feed_events + market_news) ───────────────────────
+// Single subscription that covers all agent types: trading, news, paper, etc.
+export function subscribeToAgentActivity(
+  agentId: string,
+  skills: string[],
+  coins: string[],
+  cb: (items: any[]) => void,
+) {
+  let feedItems: any[] = []
+  let newsItems: any[] = []
+
+  function merge() {
+    const seen = new Set<string>()
+    const all = [...feedItems, ...newsItems]
+      .filter((x) => { if (seen.has(x.id)) return false; seen.add(x.id); return true })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 30)
+    cb(all)
+  }
+
+  // Always subscribe to feed_events for this agent
+  const feedQ = query(
+    collection(db, 'feed_events'),
+    where('agent_id', '==', agentId),
+    orderBy('created_at', 'desc'),
+    limit(30),
+  )
+  const unsubFeed = onSnapshot(feedQ, (snap) => {
+    feedItems = snap.docs.map((d) => {
+      const data = d.data()
+      return {
+        id: d.id,
+        _source: 'feed',
+        type: String(data.type ?? 'update'),
+        content: String(data.content ?? ''),
+        created_at: tsToISO(data.created_at as Timestamp | null) ?? new Date().toISOString(),
+        payload: data.payload ?? null,
+      }
+    })
+    merge()
+  }, _noop)
+
+  // If news_sentiment skill, also subscribe to market_news filtered by coins
+  let unsubNews = () => {}
+  if (skills.includes('news_sentiment') || coins.length > 0) {
+    const coinSlice = (coins.length > 0 ? coins : ['BTC']).slice(0, 10)
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const newsQ = query(
+      collection(db, 'market_news'),
+      where('markets', 'array-contains-any', coinSlice),
+      where('created_at', '>=', since),
+      orderBy('created_at', 'desc'),
+      limit(20),
+    )
+    unsubNews = onSnapshot(newsQ, (snap) => {
+      newsItems = snap.docs.map((d) => {
+        const data = d.data()
+        return {
+          id: `news-${d.id}`,
+          _source: 'news',
+          type: 'news_sentiment',
+          content: String(data.headline ?? ''),
+          created_at: String(data.created_at ?? new Date().toISOString()),
+          payload: data,
+        }
+      })
+      merge()
+    }, _noop)
+  }
+
+  return () => { unsubFeed(); unsubNews() }
+}
+
 // ── Market News ───────────────────────────────────────────────────────────────
 // Written by the news poller in agent/src/news.ts, deduplicated by story ID.
 // coins: list of symbols to filter by (e.g. ['BTC', 'ETH'])
