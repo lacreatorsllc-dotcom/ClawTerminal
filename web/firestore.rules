@@ -124,5 +124,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Market news — written by backend news poller, readable by any authed user
+    match /market_news/{storyId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
   }
 }
