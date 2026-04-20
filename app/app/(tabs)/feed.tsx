@@ -438,8 +438,9 @@ export default function FeedScreen() {
       setFollowingFeed([])
       return
     }
+    const nameMap = new Map(trackedAgentDocs.map((a) => [a.id, a.name]))
     const unsub = subscribeToPublicFeed(followingUids, (events) => {
-      setFollowingFeed(events.map(toFeedItem))
+      setFollowingFeed(events.map((e) => toFeedItem(e, nameMap)))
     })
     return unsub
   }, [user?.uid, followingUids.join(',')])
