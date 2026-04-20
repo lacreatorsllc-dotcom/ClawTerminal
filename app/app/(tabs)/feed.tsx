@@ -742,7 +742,7 @@ const trackedStyles = StyleSheet.create({
     fontSize: 12, fontWeight: '700',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
-  list: { paddingHorizontal: 16, gap: 8 },
+  list: { paddingHorizontal: 16, gap: 8, alignItems: 'stretch' },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -753,6 +753,7 @@ const trackedStyles = StyleSheet.create({
     borderColor: Colors.bgBorder,
     paddingHorizontal: 16,
     paddingVertical: 14,
+    width: '100%',
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   right: { alignItems: 'flex-end', gap: 2 },
