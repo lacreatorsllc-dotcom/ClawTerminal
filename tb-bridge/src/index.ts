@@ -25,10 +25,10 @@ process.on('unhandledRejection', (reason) => {
 // Track running agents to avoid duplicate listeners
 const runningAgents = new Set<string>()
 
-function activateAgent(firestoreId: string, apiKey: string, tbAgentId: string, tbTraderId: string, agentName: string, openaiKey?: string): void {
+function activateAgent(firestoreId: string, apiKey: string, tbAgentId: string, tbTraderId: string, agentName: string, userId: string, openaiKey?: string): void {
   if (runningAgents.has(firestoreId)) return
   runningAgents.add(firestoreId)
-  startPoller(firestoreId, apiKey, tbAgentId, tbTraderId, openaiKey)
+  startPoller(firestoreId, apiKey, tbAgentId, tbTraderId, userId, agentName, openaiKey)
   startChatListener(firestoreId, apiKey, tbAgentId, agentName, openaiKey)
   console.log(`[tb-bridge] activated agent ${firestoreId} (${agentName}) openai=${openaiKey ? 'yes' : 'no'}`)
 }
@@ -184,7 +184,7 @@ const server = http.createServer(async (req, res) => {
         const currentOpenaiKey =
           openaiKey ?? (secSnap.data()?.openai_api_key as string | undefined) ?? undefined
 
-        activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name, currentOpenaiKey)
+        activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name, userId, currentOpenaiKey)
         connectedAgents.push({ id: firestoreId, name: agent.name, tbAgentId: agent.id })
       }
 
@@ -316,6 +316,7 @@ async function startup(): Promise<void> {
         data.tb_agent_id as string,
         data.tb_trader_id as string,
         (data.name as string) ?? 'Agent',
+        (data.user_id as string) ?? '',
         (data.openai_api_key as string | undefined) ?? undefined,
       )
       count++
@@ -378,6 +379,7 @@ async function startup(): Promise<void> {
               data.tb_agent_id as string,
               data.tb_trader_id as string,
               (data.name as string) ?? 'Agent',
+              (data.user_id as string) ?? '',
               (data.openai_api_key as string | undefined) ?? undefined,
             )
           }

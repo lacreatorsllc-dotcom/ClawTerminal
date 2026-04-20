@@ -22,7 +22,7 @@ import { useDesktopWebLayout } from '../../lib/responsive'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type CardType = 'pnl' | 'update' | 'system'
+type CardType = 'pnl' | 'trade' | 'update' | 'system'
 type SharingPref = 'auto' | 'manual' | 'private' | null
 
 interface PnLData {
@@ -61,6 +61,7 @@ function formatTime(ts: string): string {
 function toFeedItem(raw: any, nameMap?: Map<string, string>): FeedItem {
   const cardType: CardType =
     raw.type === 'pnl' || raw.type === 'daily_pnl' ? 'pnl'
+    : raw.type === 'trade' ? 'trade'
     : raw.type === 'system' ? 'system'
     : 'update'
 
@@ -177,8 +178,68 @@ function UpdateCard({ item }: { item: FeedItem }) {
   )
 }
 
+const TRADE_ACTION_STYLES: Record<string, { label: string; color: string; bg: string }> = {
+  ENTRY:       { label: 'ENTRY',       color: Colors.accentGreen, bg: 'rgba(45,212,191,0.12)' },
+  EXIT:        { label: 'EXIT',        color: Colors.accentAmber, bg: 'rgba(217,119,87,0.12)' },
+  STOP_HIT:    { label: 'STOP HIT',   color: Colors.accentRed,   bg: 'rgba(239,68,68,0.12)'  },
+  TAKE_PROFIT: { label: 'TAKE PROFIT',color: Colors.accentGreen, bg: 'rgba(45,212,191,0.12)' },
+}
+
+function TradeCard({ item }: { item: FeedItem }) {
+  const p = item.payload ?? {}
+  const action = String(p.action ?? 'TRADE').toUpperCase()
+  const style = TRADE_ACTION_STYLES[action] ?? { label: action, color: Colors.textMuted, bg: 'rgba(255,255,255,0.06)' }
+  const symbol = p.symbol ?? null
+  const direction = p.direction ?? null
+  const price = p.entry_price ?? p.exit_price ?? null
+  const pnl: number | null = p.pnl != null ? Number(p.pnl) : null
+  const details = p.details ?? null
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={() => router.push(`/agent/${item.agent_id}` as any)}
+      style={styles.card}
+    >
+      <View style={styles.cardTopRow}>
+        <View style={styles.agentRow}>
+          <AgentAvatar name={item.agentName} />
+          <Text style={styles.agentName}>{item.agentName}</Text>
+        </View>
+        <Text style={styles.timestamp}>{formatTime(item.created_at)}</Text>
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <View style={[styles.tradeBadge, { backgroundColor: style.bg }]}>
+          <Text style={[styles.tradeBadgeText, { color: style.color }]}>{style.label}</Text>
+        </View>
+        {symbol && <Text style={styles.tradeSymbol}>{symbol}</Text>}
+        {direction && (
+          <View style={[styles.tradeBadge, { backgroundColor: direction === 'LONG' ? 'rgba(45,212,191,0.1)' : 'rgba(239,68,68,0.1)' }]}>
+            <Text style={[styles.tradeBadgeText, { color: direction === 'LONG' ? Colors.accentGreen : Colors.accentRed }]}>{direction}</Text>
+          </View>
+        )}
+        {price != null && <Text style={styles.tradePrice}>@ ${Number(price).toLocaleString()}</Text>}
+        {pnl != null && (
+          <Text style={[styles.tradePnl, { color: pnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+            {pnl >= 0 ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
+          </Text>
+        )}
+      </View>
+
+      {details && <Text style={styles.tradeDetails} numberOfLines={3}>{details}</Text>}
+
+      <View style={styles.cardTypeRow}>
+        <Text style={[styles.cardTypeText, { color: style.color }]}>◆ Trade</Text>
+        <Text style={styles.cardChevron}>›</Text>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
 function renderCard(item: FeedItem) {
   if (item.cardType === 'pnl' && item.pnl != null) return <PnLCard item={item} />
+  if (item.cardType === 'trade') return <TradeCard item={item} />
   return <UpdateCard item={item} />
 }
 
@@ -660,6 +721,14 @@ const styles = StyleSheet.create({
   pnlPct: { fontSize: 16, fontWeight: '600' },
 
   cardContent: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
+
+  // Trade card
+  tradeBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  tradeBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  tradeSymbol: { fontSize: 15, fontWeight: '800', color: Colors.textPrimary },
+  tradePrice: { fontSize: 13, color: Colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  tradePnl: { fontSize: 13, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  tradeDetails: { fontSize: 13, color: Colors.textMuted, lineHeight: 19, fontStyle: 'italic' },
   cardTypeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTypeText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
   cardChevron: { fontSize: 18, color: Colors.textMuted, lineHeight: 20 },

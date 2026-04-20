@@ -71,11 +71,59 @@ function formatAlert(d: TbDecision): string {
 
 const POLL_INTERVAL_MS = 2 * 60 * 1000 // 2 minutes — agent status doesn't need sub-minute freshness
 
+async function publishTradeFeedEvent(
+  firestoreAgentId: string,
+  userId: string,
+  agentName: string,
+  d: TbDecision,
+): Promise<void> {
+  const agentDoc = await db.collection('agents').doc(firestoreAgentId).get()
+  if (!agentDoc.exists) return
+  const broadcastEnabled = agentDoc.data()?.broadcast_enabled !== false
+
+  const action = d.actionType ?? d.decisionType ?? 'TRADE'
+  let actionLabel = action
+  if (action.includes('LONG')) actionLabel = 'ENTRY'
+  else if (action.includes('SHORT')) actionLabel = 'ENTRY'
+  else if (action.includes('EXIT') || action.includes('CLOSE')) actionLabel = 'EXIT'
+  else if (action.includes('STOP')) actionLabel = 'STOP_HIT'
+  else if (action.includes('PROFIT') || action.includes('TP')) actionLabel = 'TAKE_PROFIT'
+
+  const direction = d.direction ?? (action.includes('SHORT') ? 'SHORT' : action.includes('LONG') ? 'LONG' : null)
+  const symbol = d.tokenSymbol ?? null
+  const price = actionLabel === 'EXIT' ? (d.exitPrice ?? d.entryPrice) : d.entryPrice
+
+  const priceStr = price ? ` @ $${Number(price).toLocaleString()}` : ''
+  const content = `${actionLabel}: ${direction ?? ''} ${symbol ?? ''}${priceStr}`.trim()
+
+  await db.collection('feed_events').add({
+    agent_id: firestoreAgentId,
+    agent_name: agentName,
+    user_id: userId,
+    type: 'trade',
+    content,
+    is_public: broadcastEnabled,
+    payload: {
+      action: actionLabel,
+      symbol,
+      direction,
+      entry_price: d.entryPrice ?? null,
+      exit_price: d.exitPrice ?? null,
+      confidence: d.confidence ?? null,
+      details: d.details ?? null,
+      emotional_tag: d.emotionalTag ?? null,
+    },
+    created_at: FieldValue.serverTimestamp(),
+  })
+}
+
 export function startPoller(
   firestoreAgentId: string,
   apiKey: string,
   tbAgentId: string,
   tbTraderId: string,
+  userId: string,
+  agentName: string,
   openaiApiKey?: string,
 ): void {
   const seenIds = new Set<string>()
@@ -180,6 +228,7 @@ export function startPoller(
             decision_id: d.id,
             created_at: FieldValue.serverTimestamp(),
           })
+          await publishTradeFeedEvent(firestoreAgentId, userId, agentName, d)
         }
       }
 

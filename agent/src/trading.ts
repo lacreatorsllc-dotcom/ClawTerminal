@@ -179,8 +179,25 @@ export async function runTradingLoop() {
         const content = `Grid fill: ${side.toUpperCase()} ${qty} BTC @ $${Math.round(fillPrice).toLocaleString()} · PnL ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`
         console.log(`[trade] ${content}`)
 
-        // Write to trades subcollection — NOT feed_events
         await writeTrade({ side, qty, fillPrice, pnl, type: 'grid_fill' })
+        await FEED_COL.add({
+          agent_id: 'slug-001',
+          agent_name: 'Slug #001',
+          user_id: 'slug-001',
+          type: 'trade',
+          content,
+          is_public: true,
+          payload: {
+            action: side === 'buy' ? 'ENTRY' : 'EXIT',
+            symbol: 'BTC',
+            direction: side === 'buy' ? 'LONG' : 'SHORT',
+            entry_price: side === 'buy' ? Math.round(fillPrice) : null,
+            exit_price: side === 'sell' ? Math.round(fillPrice) : null,
+            pnl,
+            qty,
+          },
+          created_at: FieldValue.serverTimestamp(),
+        })
       }
     }
 
