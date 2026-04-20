@@ -18,14 +18,22 @@ const CHAT_SYSTEM_PROMPTS = {
 async function runChatReply(agentId, messageId, userMessage) {
     const agentRef = firebase_1.db.doc(`agents/${agentId}`);
     const agentSnap = await agentRef.get();
-    if (!agentSnap.exists)
+    console.log(`[chat] triggered agentId=${agentId} msgId=${messageId}`);
+    if (!agentSnap.exists) {
+        console.log(`[chat] agent ${agentId} not found`);
         return;
+    }
     const agent = agentSnap.data();
-    if (agent.status === 'disabled')
+    console.log(`[chat] agent=${agent.name} status=${agent.status} type=${agent.agent_type}`);
+    if (agent.status === 'disabled') {
+        console.log(`[chat] agent disabled, skipping`);
         return;
+    }
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey)
+    if (!apiKey) {
+        console.log(`[chat] no API key`);
         return;
+    }
     // Fetch recent chat history (last 20 messages for context)
     const historySnap = await firebase_1.db
         .collection(`agents/${agentId}/messages`)

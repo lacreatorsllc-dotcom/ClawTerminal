@@ -20,13 +20,26 @@ export async function runChatReply(
   const agentRef = db.doc(`agents/${agentId}`)
   const agentSnap = await agentRef.get()
 
-  if (!agentSnap.exists) return
+  console.log(`[chat] triggered agentId=${agentId} msgId=${messageId}`)
+
+  if (!agentSnap.exists) {
+    console.log(`[chat] agent ${agentId} not found`)
+    return
+  }
 
   const agent = agentSnap.data()!
-  if (agent.status === 'disabled') return
+  console.log(`[chat] agent=${agent.name} status=${agent.status} type=${agent.agent_type}`)
+
+  if (agent.status === 'disabled') {
+    console.log(`[chat] agent disabled, skipping`)
+    return
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return
+  if (!apiKey) {
+    console.log(`[chat] no API key`)
+    return
+  }
 
   // Fetch recent chat history (last 20 messages for context)
   const historySnap = await db
