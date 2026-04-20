@@ -15,7 +15,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
-import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, type PaperAgentState, trackAgent, untrackAgent, getPublicAgentProfile, listPublicFeedEventsForAgent, isTrackingAgent } from '../../lib/firebase'
+import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, deleteAgent, type PaperAgentState, trackAgent, untrackAgent, getPublicAgentProfile, listPublicFeedEventsForAgent, isTrackingAgent } from '../../lib/firebase'
 import { processMarketAdvisorInbound } from '../../lib/marketAdvisorClient'
 import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
@@ -31,6 +31,71 @@ function WebGlyph({ children, style }: { children: string; style?: any }) {
 
 function nowMs() {
   return typeof performance !== 'undefined' ? performance.now() : Date.now()
+}
+
+// ── Agent context menu (···) ──────────────────────────────────────────────────
+
+function AgentMenuButton({ agentId, agentName }: { agentId: string; agentName: string }) {
+  const [open, setOpen] = useState(false)
+
+  function confirmRemove() {
+    setOpen(false)
+    if (Platform.OS === 'web') {
+      if (window.confirm(`Remove "${agentName}"? This won't affect any live trading.`)) {
+        deleteAgent(agentId).then(() => router.replace('/(tabs)/agents' as any))
+      }
+    } else {
+      Alert.alert(
+        'Remove Agent',
+        `Remove "${agentName}"? This won't affect any live trading.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Remove', style: 'destructive', onPress: () =>
+            deleteAgent(agentId).then(() => router.replace('/(tabs)/agents' as any))
+          },
+        ]
+      )
+    }
+  }
+
+  return (
+    <View style={{ position: 'relative' }}>
+      <TouchableOpacity
+        onPress={() => setOpen((v) => !v)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        style={{ width: 36, height: 36, justifyContent: 'center', alignItems: 'center' }}
+      >
+        <Text style={{ color: Colors.textMuted, fontSize: 20, letterSpacing: 1, lineHeight: 20 }}>···</Text>
+      </TouchableOpacity>
+
+      {open && (
+        <>
+          {/* Dismiss overlay */}
+          <TouchableOpacity
+            style={{ position: 'fixed' as any, inset: 0, zIndex: 99 }}
+            onPress={() => setOpen(false)}
+            activeOpacity={1}
+          />
+          <View style={{
+            position: 'absolute', top: 40, right: 0, zIndex: 100,
+            backgroundColor: '#1c1b19', borderRadius: 12,
+            borderWidth: 1, borderColor: Colors.bgBorder,
+            minWidth: 180, overflow: 'hidden',
+            shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 12, elevation: 8,
+          }}>
+            <TouchableOpacity
+              onPress={confirmRemove}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 }}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 15 }}>🗑</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.accentRed }}>Remove Agent</Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
+    </View>
+  )
 }
 
 function parsePositionsFromResponse(text: string): TradeData[] {
@@ -838,9 +903,12 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
         <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
           {Platform.OS === 'web' ? <WebBackLabel /> : <Text style={s001.backText}>‹</Text>}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setShowShare(true)} style={s001.shareBtn}>
-          <Text style={s001.shareBtnText}>Share PnL</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity onPress={() => setShowShare(true)} style={s001.shareBtn}>
+            <Text style={s001.shareBtnText}>Share PnL</Text>
+          </TouchableOpacity>
+          <AgentMenuButton agentId={agentId} agentName={agentName} />
+        </View>
       </View>
 
       <ShareCardModal
@@ -2557,6 +2625,7 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
           <Text style={{ color: Colors.textPrimary, fontSize: 17, fontWeight: '700' }}>{agentName}</Text>
           <Text style={{ color: Colors.accentGreen, fontSize: 11 }}>● claude managed</Text>
         </View>
+        <AgentMenuButton agentId={agentId} agentName={agentName} />
       </View>
 
       {/* Messages */}

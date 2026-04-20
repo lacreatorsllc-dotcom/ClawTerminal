@@ -216,13 +216,6 @@ function AgentCard({ agent, username }: { agent: Agent; username: string | null 
             <Text style={styles.tagText}>{meta.platform as string}</Text>
           </View>
         )}
-        <TouchableOpacity
-          onPress={handleLongPress}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.removeBtn}
-        >
-          <Ionicons name="trash-outline" size={14} color={Colors.textMuted} />
-        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   )
