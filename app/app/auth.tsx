@@ -484,7 +484,7 @@ export default function AuthScreen() {
                   {connectingWallet === 'phantom'
                     ? <ActivityIndicator color="#fff" />
                     : <>
-                        <Text style={styles.phantomIcon}>◎</Text>
+                        <Text style={styles.phantomIcon}>👻</Text>
                         <Text style={styles.phantomBtnText}>Sign in with Phantom</Text>
                       </>
                   }
@@ -696,12 +696,24 @@ const styles = StyleSheet.create({
   walletBtnText: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
   walletBtnSub: { color: Colors.textMuted, fontSize: 11 },
   phantomBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 10, paddingVertical: 14, borderRadius: 14,
-    backgroundColor: '#AB9FF2',
+    minHeight: 60,
+    borderRadius: 18,
+    paddingHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    backgroundColor: '#111018',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
   },
-  phantomIcon: { fontSize: 18, color: '#fff', fontWeight: '700' },
-  phantomBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  phantomIcon: { fontSize: 26, lineHeight: 28, minWidth: 30, textAlign: 'center' },
+  phantomBtnText: { fontSize: 19, lineHeight: 24, fontWeight: '800', letterSpacing: 0.1, color: '#ffffff' },
   resetSentText: { color: Colors.accentGreen, fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
   usernameTitle: { fontSize: 28, fontWeight: '800', color: Colors.textPrimary, marginBottom: 10, marginTop: 32 },
   usernameSubtitle: { fontSize: 14, color: Colors.textSecondary, lineHeight: 22, marginBottom: 32 },
