@@ -389,7 +389,10 @@ export default function SlugsScreen() {
         ) : (
           <View style={styles.connectPrompt}>
             <TouchableOpacity style={styles.connectPromptBtn} onPress={() => router.push('/deploy' as any)}>
-              <Ionicons name="add" size={16} color={Colors.accentAmber} />
+              {Platform.OS === 'web'
+                ? <Text style={styles.connectPromptPlus}>+</Text>
+                : <Ionicons name="add" size={16} color={Colors.accentAmber} />
+              }
               <Text style={styles.connectPromptText}>Deploy your first agent</Text>
             </TouchableOpacity>
           </View>
@@ -497,6 +500,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(217,119,87,0.2)',
     borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12,
   },
+  connectPromptPlus: { color: Colors.accentAmber, fontSize: 18, lineHeight: 18, fontWeight: '800' },
   connectPromptText: { color: Colors.accentAmber, fontSize: 13, fontWeight: '600' },
 
   // Modal

@@ -9,26 +9,35 @@
  *   4. App decrypts to get wallet public key + session token
  */
 
+import 'react-native-get-random-values'
 import nacl from 'tweetnacl'
 import bs58 from 'bs58'
 import * as Linking from 'expo-linking'
 
-export type WalletProvider = 'phantom' | 'backpack' | 'solflare'
+export type WalletProvider = 'phantom' | 'backpack' | 'solflare' | 'seeker'
 
 const SCHEME: Record<WalletProvider, string> = {
   phantom: 'phantom',
   backpack: 'backpack',
   solflare: 'solflare',
+  seeker: 'solana-wallet',
 }
 
 // Cluster — mainnet for production
 const CLUSTER = 'mainnet-beta'
 const APP_URL = 'https://slugs.app'
 const REDIRECT_PATH = 'onConnect'
+const INSTALL_URLS: Record<WalletProvider, string> = {
+  phantom: 'https://phantom.com/download',
+  backpack: 'https://backpack.app/download',
+  solflare: 'https://solflare.com/download',
+  seeker: 'https://docs.solanamobile.com/mobile-wallet-adapter/mobile-apps',
+}
 
 // ─── Session keypair (ephemeral per-connect attempt) ─────────────────────────
 
 let _dappKeyPair: nacl.BoxKeyPair | null = null
+let _pendingProvider: WalletProvider | null = null
 
 export function getDappKeyPair(): nacl.BoxKeyPair {
   if (!_dappKeyPair) _dappKeyPair = nacl.box.keyPair()
@@ -37,6 +46,24 @@ export function getDappKeyPair(): nacl.BoxKeyPair {
 
 export function resetDappKeyPair() {
   _dappKeyPair = nacl.box.keyPair()
+}
+
+export function setPendingWalletProvider(provider: WalletProvider | null) {
+  _pendingProvider = provider
+}
+
+export function getPendingWalletProvider(): WalletProvider | null {
+  return _pendingProvider
+}
+
+export function clearPendingWalletProvider() {
+  _pendingProvider = null
+}
+
+export function beginMobileWalletConnect(provider: WalletProvider): string {
+  resetDappKeyPair()
+  setPendingWalletProvider(provider)
+  return buildConnectUrl(provider)
 }
 
 // ─── Build connect URL ────────────────────────────────────────────────────────
@@ -63,6 +90,71 @@ export interface ConnectResult {
   walletPublicKey: string   // base58 Solana public key
   session: string           // opaque session token from wallet
   provider: WalletProvider
+}
+
+interface SolanaWebWallet {
+  publicKey?: { toString(): string }
+  connect: () => Promise<{ publicKey?: { toString(): string } } | void>
+}
+
+function getWindowObject(): any {
+  if (typeof window === 'undefined') return null
+  return window as any
+}
+
+export function getWalletInstallUrl(provider: WalletProvider): string {
+  return INSTALL_URLS[provider]
+}
+
+export function inferProviderFromCallback(url: string): WalletProvider | null {
+  try {
+    const parsed = new URL(url)
+    if (parsed.searchParams.get('phantom_encryption_public_key')) return 'phantom'
+    if (parsed.searchParams.get('backpack_encryption_public_key')) return 'backpack'
+    if (parsed.searchParams.get('encryption_public_key')) return getPendingWalletProvider() ?? 'solflare'
+    return getPendingWalletProvider()
+  } catch {
+    return getPendingWalletProvider()
+  }
+}
+
+export function getInjectedWallet(provider: WalletProvider): SolanaWebWallet | null {
+  const win = getWindowObject()
+  if (!win) return null
+
+  if (provider === 'phantom') {
+    return win.phantom?.solana ?? (win.solana?.isPhantom ? win.solana : null)
+  }
+
+  if (provider === 'backpack') {
+    return win.backpack?.solana ?? (win.solana?.isBackpack ? win.solana : null)
+  }
+
+  if (provider === 'seeker') {
+    return null
+  }
+
+  return win.solflare ?? win.solflare?.solana ?? null
+}
+
+export async function connectInjectedWallet(provider: WalletProvider): Promise<ConnectResult | null> {
+  const wallet = getInjectedWallet(provider)
+  if (!wallet) return null
+
+  const result = await wallet.connect()
+  const publicKey = result && 'publicKey' in result
+    ? result.publicKey?.toString?.()
+    : wallet.publicKey?.toString?.()
+
+  if (!publicKey) {
+    throw new Error('Wallet connected but did not return a public key')
+  }
+
+  return {
+    walletPublicKey: publicKey,
+    session: `web:${provider}`,
+    provider,
+  }
 }
 
 export function decryptConnectCallback(

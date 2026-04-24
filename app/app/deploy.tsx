@@ -25,6 +25,43 @@ const STRATEGY_DESCRIPTIONS: Record<ClaudeStrategy, string> = {
   'Custom':      'Describe your own strategy in plain language — Claude will interpret and execute it.',
 }
 
+const STRATEGY_STARTERS: Record<ClaudeStrategy, string> = {
+  'Grid Trader': 'I normally trade BTC with a grid strategy inside a defined range. Keep orders evenly spaced, avoid chasing breakouts, and reduce size if volatility expands too fast.',
+  'Momentum': 'I normally trade momentum on BTC and SOL. Enter when trend strength and volume confirm the move, avoid weak breakouts, and cut the trade if momentum fades.',
+  'DCA': 'I normally DCA into high conviction positions over time. Add on a schedule or on weakness, keep position sizing steady, and avoid overbuying during euphoric spikes.',
+  'Breakout': 'I normally trade breakouts after confirmation above resistance or below support. Wait for volume confirmation, avoid fakeouts, and define risk before entry.',
+  'Custom': 'I normally trade by waiting for a clear setup, defining risk first, and only taking entries that match my rules.',
+}
+
+const STRATEGY_GUIDE = [
+  'What markets or coins should it focus on?',
+  'What kind of setups do you usually take?',
+  'How should it enter, size risk, and get out?',
+] as const
+
+function analyzeStrategyDescription(desc: string) {
+  const text = desc.trim().toLowerCase()
+  const missing: string[] = []
+  if (text.length < 40) missing.push('Add a little more detail about how you actually trade.')
+  if (!/\b(btc|eth|sol|crypto|coins?|alts?|market|markets?)\b/.test(text)) {
+    missing.push('Mention the coins or markets this agent should focus on.')
+  }
+  if (!/\b(grid|momentum|breakout|dca|scalp|swing|trend|mean reversion|range|news|sentiment|pullback)\b/.test(text)) {
+    missing.push('Describe the kind of setups or strategy logic you usually use.')
+  }
+  if (!/\b(entry|enter|buy|sell|add|scale|break|retest|support|resistance|rsi|macd|volume|candle)\b/.test(text)) {
+    missing.push('Explain what should trigger an entry.')
+  }
+  if (!/\b(stop|loss|exit|take profit|tp|risk|size|sizing|trim|close|drawdown)\b/.test(text)) {
+    missing.push('Explain how it should manage risk or exit trades.')
+  }
+
+  return {
+    missing,
+    isReady: desc.trim().length >= 24 && missing.length <= 1,
+  }
+}
+
 const CLAUDE_SKILLS = [
   { id: 'technical_analysis', label: 'Technical Analysis', emoji: '📊' },
   { id: 'news_sentiment',     label: 'News Sentiment',     emoji: '📰' },
@@ -118,23 +155,32 @@ export default function DeployScreen() {
 
   async function deployClaudeAgent() {
     if (!user) return
+    const strategyProfile = customDesc.trim()
+    const analysis = analyzeStrategyDescription(strategyProfile)
+    if (!strategyProfile) {
+      setError('Add your normal trading strategy so the agent knows how to behave.')
+      return
+    }
+    if (!analysis.isReady) {
+      setError('Add a bit more strategy context before deploying.')
+      return
+    }
     setDeploying(true); setError('')
     try {
       const agentName = name.trim() || `${claudeStrategy} Agent`
-      const res = await fetch(`${TB_BRIDGE_URL}/claude-agents/create`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.uid,
-          name: agentName,
-          strategy: claudeStrategy,
-          customDescription: claudeStrategy === 'Custom' ? customDesc.trim() : undefined,
+      const id = await createClaudeAgent(
+        user.uid,
+        agentName,
+        undefined,
+        undefined,
+        claudeStrategy,
+        {
           skills: Array.from(claudeSkills),
-        }),
-      })
-      const data = await res.json() as any
-      if (!res.ok) throw new Error(data.error ?? 'Deploy failed')
-      const id = await createClaudeAgent(user.uid, agentName, data.claudeAgentId, data.claudeEnvId, claudeStrategy)
+          coin: 'BTC',
+          customDescription: strategyProfile,
+          broadcastEnabled: true,
+        },
+      )
       setDeployed({ id, name: agentName, type: 'claude_managed', strategy: claudeStrategy, skills: Array.from(claudeSkills) })
       setStep('success')
     } catch (e: any) { setError(e.message ?? 'Deploy failed') }
@@ -167,6 +213,14 @@ export default function DeployScreen() {
     }
     setValidating(false)
   }
+
+  function applyStrategyStarter(strategy: ClaudeStrategy) {
+    const starter = STRATEGY_STARTERS[strategy]
+    setCustomDesc(starter)
+    setCustomHint(null)
+  }
+
+  const strategyAnalysis = analyzeStrategyDescription(customDesc)
 
   const headerTitle =
     step === 'pick' ? 'Deploy an Agent' :
@@ -298,7 +352,7 @@ export default function DeployScreen() {
             <Text style={s.subtitle}>A Claude-powered agent hosted 24/7. It learns from every trade and can acquire new skills over time.</Text>
 
             <View style={s.infoBox}>
-              <Text style={s.infoRow}>✦  Runs on Claude — no API key needed</Text>
+              <Text style={s.infoRow}>✦  Hosted 24/7 with your AI provider</Text>
               <Text style={s.infoRow}>🧠  Persistent memory across sessions</Text>
               <Text style={s.infoRow}>⚡  Acquires skills as it trades</Text>
               <Text style={s.infoRow}>🔒  Paper trading — no real funds</Text>
@@ -320,7 +374,11 @@ export default function DeployScreen() {
                 <TouchableOpacity
                   key={strat}
                   style={[s.coinBtn, claudeStrategy === strat && s.claudeBtnActive]}
-                  onPress={() => { setClaudeStrategy(strat); setCustomHint(null) }}
+                  onPress={() => {
+                    setClaudeStrategy(strat)
+                    setCustomHint(null)
+                    if (!customDesc.trim()) applyStrategyStarter(strat)
+                  }}
                   activeOpacity={0.7}
                 >
                   <Text style={[s.coinBtnText, claudeStrategy === strat && s.claudeBtnTextActive]}>{strat}</Text>
@@ -332,31 +390,72 @@ export default function DeployScreen() {
               <Text style={s.stratDescText}>{STRATEGY_DESCRIPTIONS[claudeStrategy]}</Text>
             </View>
 
-            {claudeStrategy === 'Custom' && (
-              <>
-                <TextInput
-                  style={[s.input, { minHeight: 96, textAlignVertical: 'top' }]}
-                  value={customDesc}
-                  onChangeText={(t) => { setCustomDesc(t); setCustomHint(null) }}
-                  onBlur={() => validateCustomStrategy(customDesc)}
-                  placeholder="e.g. Buy BTC when RSI drops below 30, sell when it hits 65. Hold max 3 positions."
-                  placeholderTextColor="#555"
-                  multiline
-                  numberOfLines={4}
-                  autoCapitalize="sentences"
-                />
-                {validating && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <ActivityIndicator size="small" color={Colors.accentAmber} />
-                    <Text style={{ fontSize: 12, color: Colors.textMuted }}>Checking strategy…</Text>
-                  </View>
-                )}
-                {customHint && !validating && (
-                  <View style={s.hintBox}>
-                    <Text style={s.hintBoxText}>{customHint}</Text>
-                  </View>
-                )}
-              </>
+            <Text style={s.fieldLabel}>How You Normally Trade</Text>
+            <Text style={s.hintText}>
+              Tell the agent how you usually trade. If anything important is missing, we&apos;ll flag it before deploy.
+            </Text>
+
+            <TextInput
+              style={[s.input, { minHeight: 112, textAlignVertical: 'top' }]}
+              value={customDesc}
+              onChangeText={(t) => { setCustomDesc(t); setCustomHint(null); setError('') }}
+              onBlur={() => validateCustomStrategy(customDesc)}
+              placeholder="Example: I trade BTC and SOL momentum setups. Enter on volume-backed breakouts and retests, risk 1-2% per trade, take partial profits into strength, and cut losers quickly if the move fails."
+              placeholderTextColor="#555"
+              multiline
+              numberOfLines={5}
+              autoCapitalize="sentences"
+            />
+
+            <View style={s.guideCard}>
+              {STRATEGY_GUIDE.map((line) => (
+                <Text key={line} style={s.guideText}>• {line}</Text>
+              ))}
+            </View>
+
+            <View style={s.presetRow}>
+              <Text style={s.presetLabel}>Quick starts</Text>
+              <TouchableOpacity onPress={() => applyStrategyStarter(claudeStrategy)}>
+                <Text style={s.presetAction}>Use {claudeStrategy} template</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={s.presetGrid}>
+              {CLAUDE_STRATEGIES.map((strat) => (
+                <TouchableOpacity
+                  key={`preset-${strat}`}
+                  style={[s.presetChip, claudeStrategy === strat && s.presetChipActive]}
+                  onPress={() => {
+                    setClaudeStrategy(strat)
+                    applyStrategyStarter(strat)
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.presetChipText, claudeStrategy === strat && s.presetChipTextActive]}>{strat}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {validating && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <ActivityIndicator size="small" color={Colors.accentAmber} />
+                <Text style={{ fontSize: 12, color: Colors.textMuted }}>Checking strategy…</Text>
+              </View>
+            )}
+
+            {strategyAnalysis.missing.length > 0 && customDesc.trim().length > 0 && (
+              <View style={s.missingCard}>
+                <Text style={s.missingTitle}>Missing context</Text>
+                {strategyAnalysis.missing.map((item) => (
+                  <Text key={item} style={s.missingItem}>• {item}</Text>
+                ))}
+              </View>
+            )}
+
+            {customHint && !validating && (
+              <View style={s.hintBox}>
+                <Text style={s.hintBoxText}>{customHint}</Text>
+              </View>
             )}
 
             <Text style={s.fieldLabel}>Skills to Equip</Text>
@@ -410,9 +509,9 @@ export default function DeployScreen() {
             {error ? <Text style={s.errorText}>{error}</Text> : null}
 
             <TouchableOpacity
-              style={[s.cta, { backgroundColor: '#fb923c' }, deploying && { opacity: 0.5 }]}
+              style={[s.cta, { backgroundColor: '#fb923c' }, (deploying || !strategyAnalysis.isReady) && { opacity: 0.5 }]}
               onPress={deployClaudeAgent}
-              disabled={deploying}
+              disabled={deploying || !strategyAnalysis.isReady}
             >
               {deploying
                 ? <ActivityIndicator color="#000" />
@@ -566,6 +665,49 @@ const s = StyleSheet.create({
     padding: 12,
   },
   stratDescText: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
+  guideCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+    padding: 12,
+    gap: 6,
+  },
+  guideText: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
+  presetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  presetLabel: { fontSize: 12, fontWeight: '600', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  presetAction: { fontSize: 13, fontWeight: '700', color: '#fb923c' },
+  presetGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  presetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: Colors.bgSubtle,
+    borderWidth: 1,
+    borderColor: Colors.borderSubtle,
+  },
+  presetChipActive: {
+    backgroundColor: 'rgba(251,146,60,0.12)',
+    borderColor: '#fb923c',
+  },
+  presetChipText: { fontSize: 12, fontWeight: '600', color: Colors.textSecondary },
+  presetChipTextActive: { color: '#fb923c' },
+  missingCard: {
+    backgroundColor: 'rgba(251,146,60,0.08)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(251,146,60,0.22)',
+    padding: 12,
+    gap: 6,
+  },
+  missingTitle: { fontSize: 12, fontWeight: '700', color: '#fb923c', textTransform: 'uppercase', letterSpacing: 0.5 },
+  missingItem: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
 
   hintBox: {
     backgroundColor: 'rgba(96,165,250,0.08)',

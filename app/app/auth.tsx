@@ -1,14 +1,165 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, Image, Linking,
 } from 'react-native'
-import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, ensureUserProfile } from '../lib/firebase'
+import * as WebBrowser from 'expo-web-browser'
+import * as AuthSession from 'expo-auth-session'
+import * as Google from 'expo-auth-session/providers/google'
+import {
+  auth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  ensureUserProfile,
+  signInWithTwitterX,
+  signInWithGoogleIdToken,
+  startNativeTwitterXSignIn,
+  completeNativeTwitterXSignIn,
+} from '../lib/firebase'
 import { Colors } from '../constants/colors'
 import type { WalletProvider } from '../lib/phantomConnect'
 import { useDesktopWebLayout } from '../lib/responsive'
+import { WalletPickerSheet } from '../components/WalletPickerSheet'
 
 type Mode = 'signin' | 'signup' | 'forgot'
+
+WebBrowser.maybeCompleteAuthSession()
+
+const BASE_SOLANA_WALLETS: { id: WalletProvider; label: string; icon: string; subtitle: string }[] = [
+  { id: 'phantom', label: 'Phantom', icon: '◎', subtitle: 'Most popular Solana wallet' },
+  { id: 'backpack', label: 'Backpack', icon: '⬡', subtitle: 'Wallet plus xNFT ecosystem' },
+  { id: 'solflare', label: 'Solflare', icon: '◌', subtitle: 'Popular Solana wallet for mobile and web' },
+]
+
+type SocialProvider = 'google' | 'twitter'
+
+function SocialMark({ provider }: { provider: SocialProvider }) {
+  if (provider === 'google') {
+    return (
+      <Text style={styles.googleMark}>
+        <Text style={{ color: '#4285F4' }}>G</Text>
+      </Text>
+    )
+  }
+
+  return <Text style={styles.xMark}>X</Text>
+}
+
+function SocialSignInButton({
+  provider,
+  label,
+  loading,
+  disabled,
+  onPress,
+}: {
+  provider: SocialProvider
+  label: string
+  loading?: boolean
+  disabled?: boolean
+  onPress: () => void
+}) {
+  const isGoogle = provider === 'google'
+  return (
+    <TouchableOpacity
+      style={[
+        styles.socialBtn,
+        isGoogle ? styles.googleSocialBtn : styles.xSocialBtn,
+        disabled && styles.walletBtnDisabled,
+      ]}
+      onPress={onPress}
+      disabled={disabled || loading}
+      activeOpacity={0.84}
+    >
+      {loading ? (
+        <ActivityIndicator color={isGoogle ? Colors.textPrimary : '#000'} />
+      ) : (
+        <>
+          <SocialMark provider={provider} />
+          <Text style={[styles.socialBtnText, isGoogle ? styles.googleSocialText : styles.xSocialText]}>
+            {label}
+          </Text>
+        </>
+      )}
+    </TouchableOpacity>
+  )
+}
+
+function paramsFromUrl(url: string) {
+  const query = url.includes('?') ? url.split('?')[1]?.split('#')[0] : ''
+  return new URLSearchParams(query ?? '')
+}
+
+function GoogleSignInButton({
+  config,
+  loading,
+  setLoading,
+  setError,
+}: {
+  config: { iosClientId?: string; androidClientId?: string; webClientId?: string }
+  loading: boolean
+  setLoading: (value: boolean) => void
+  setError: (value: string | null) => void
+}) {
+  const [, googleResponse, promptGoogleAsync] = Google.useIdTokenAuthRequest({
+    ...config,
+    selectAccount: true,
+  })
+
+  useEffect(() => {
+    if (!googleResponse) return
+
+    if (googleResponse.type === 'error') {
+      setLoading(false)
+      setError('Google sign-in failed. Please try again.')
+      return
+    }
+
+    if (googleResponse.type !== 'success') {
+      setLoading(false)
+      return
+    }
+
+    const idToken = googleResponse.params?.id_token
+    if (!idToken) {
+      setLoading(false)
+      setError('Google sign-in did not return an ID token.')
+      return
+    }
+
+    void (async () => {
+      try {
+        await signInWithGoogleIdToken(idToken)
+      } catch (e: any) {
+        setError(e?.message ?? 'Google sign-in failed')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [googleResponse, setError, setLoading])
+
+  async function handleGoogleSignIn() {
+    setLoading(true)
+    setError(null)
+
+    try {
+      await promptGoogleAsync()
+    } catch (e: any) {
+      setLoading(false)
+      setError(e?.message ?? 'Google sign-in failed')
+    }
+  }
+
+  return (
+    <SocialSignInButton
+      provider="google"
+      label="Sign in with Google"
+      loading={loading}
+      disabled={loading}
+      onPress={handleGoogleSignIn}
+    />
+  )
+}
 
 export default function AuthScreen() {
   const isDesktopWeb = useDesktopWebLayout()
@@ -19,21 +170,67 @@ export default function AuthScreen() {
   const [error, setError] = useState<string | null>(null)
   const [resetSent, setResetSent] = useState(false)
   const [connectingWallet, setConnectingWallet] = useState<WalletProvider | null>(null)
+  const [walletSheetVisible, setWalletSheetVisible] = useState(false)
+  const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
+  const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+  const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
+  const googleClientConfig =
+    Platform.OS === 'web'
+      ? { webClientId: googleWebClientId }
+      : Platform.OS === 'ios'
+        ? { iosClientId: googleIosClientId }
+        : { androidClientId: googleAndroidClientId }
+  const googleEnabled = Platform.OS === 'web'
+    ? !!googleWebClientId
+    : (Platform.OS === 'ios' ? !!googleIosClientId : !!googleAndroidClientId)
+  const walletOptions = Platform.OS === 'android'
+    ? [
+        { id: 'seeker' as WalletProvider, label: 'Seeker wallet', icon: 'S', subtitle: 'Use Android native wallet connection' },
+        ...BASE_SOLANA_WALLETS,
+      ]
+    : BASE_SOLANA_WALLETS
 
   async function handleWalletConnect(provider: WalletProvider) {
     setConnectingWallet(provider)
     setError(null)
-    const { buildConnectUrl, resetDappKeyPair } = await import('../lib/phantomConnect')
-    resetDappKeyPair()
-    const url = buildConnectUrl(provider)
-    const supported = await Linking.canOpenURL(url)
-    if (!supported) {
-      setError(`${provider.charAt(0).toUpperCase() + provider.slice(1)} is not installed`)
+    try {
+      if (provider === 'seeker' && Platform.OS === 'android') {
+        const { connectSeekerWallet } = await import('../lib/mobileWallet')
+        await connectSeekerWallet()
+        return
+      }
+
+      const {
+        beginMobileWalletConnect,
+        connectInjectedWallet,
+        getWalletInstallUrl,
+      } = await import('../lib/phantomConnect')
+
+      if (Platform.OS === 'web') {
+        const result = await connectInjectedWallet(provider)
+        if (!result) {
+          window.open(getWalletInstallUrl(provider), '_blank', 'noopener,noreferrer')
+          setError(`${provider.charAt(0).toUpperCase() + provider.slice(1)} is not installed in this browser`)
+          return
+        }
+        return
+      }
+
+      const url = beginMobileWalletConnect(provider)
+      const supported = await Linking.canOpenURL(url)
+      if (!supported) {
+        await Linking.openURL(getWalletInstallUrl(provider))
+        setError(`${provider.charAt(0).toUpperCase() + provider.slice(1)} is not installed on this device`)
+        return
+      }
+
+      await Linking.openURL(url)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Wallet connection failed'
+      setError(message)
+    } finally {
       setConnectingWallet(null)
-      return
     }
-    await Linking.openURL(url)
-    setConnectingWallet(null)
   }
 
   async function handleSignIn() {
@@ -60,6 +257,55 @@ export default function AuthScreen() {
       // _layout.tsx handles routing after auth state settles
     } catch (e: any) {
       setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleTwitterSignIn() {
+    setLoading(true)
+    setError(null)
+    try {
+      if (Platform.OS === 'web') {
+        await signInWithTwitterX()
+        return
+      }
+
+      const callbackUrl = AuthSession.makeRedirectUri({
+        native: 'slugs://auth/twitter',
+        scheme: 'slugs',
+        path: 'auth/twitter',
+      })
+      const start = await startNativeTwitterXSignIn(callbackUrl)
+      const response = await WebBrowser.openAuthSessionAsync(start.authUrl, callbackUrl)
+
+      if (response.type !== 'success') {
+        setError('X sign-in was cancelled.')
+        return
+      }
+
+      const params = paramsFromUrl(response.url)
+      const oauthToken = params.get('oauth_token')
+      const oauthVerifier = params.get('oauth_verifier')
+
+      if (!oauthToken || !oauthVerifier) {
+        setError('X sign-in did not return verification data.')
+        return
+      }
+
+      if (oauthToken !== start.oauthToken) {
+        setError('X sign-in returned an unexpected token. Please try again.')
+        return
+      }
+
+      await completeNativeTwitterXSignIn({
+        oauthToken,
+        oauthVerifier,
+        oauthTokenSecret: start.oauthTokenSecret,
+      })
+    } catch (e: any) {
+      const message = e?.message ?? 'X sign-in failed'
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -220,28 +466,69 @@ export default function AuthScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
-              {([
-                { id: 'phantom', label: 'Phantom', icon: '◎' },
-                { id: 'backpack', label: 'Backpack', icon: '⬡' },
-              ] as { id: WalletProvider; label: string; icon: string }[]).map(({ id, label, icon }) => (
-                <TouchableOpacity
-                  key={id}
-                  style={styles.walletBtn}
-                  onPress={() => handleWalletConnect(id)}
-                  disabled={!!connectingWallet}
-                >
-                  {connectingWallet === id
-                    ? <ActivityIndicator color={Colors.textPrimary} />
-                    : <>
-                        <Text style={styles.walletBtnText}>{icon}  {label}</Text>
-                        <Text style={styles.walletBtnSub}>Solana wallet</Text>
-                      </>
-                  }
-                </TouchableOpacity>
-              ))}
+              <View style={styles.socialStack}>
+                {googleEnabled ? (
+                  <GoogleSignInButton
+                    config={googleClientConfig}
+                    loading={loading}
+                    setLoading={setLoading}
+                    setError={setError}
+                  />
+                ) : (
+                  <SocialSignInButton
+                    provider="google"
+                    label="Sign in with Google"
+                    disabled={loading}
+                    onPress={() => setError('Google sign-in is not configured yet. Add the Google client IDs to the Expo env.')}
+                  />
+                )}
+
+                <SocialSignInButton
+                  provider="twitter"
+                  label="Sign in with X"
+                  loading={loading}
+                  disabled={loading}
+                  onPress={handleTwitterSignIn}
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.walletBtn}
+                onPress={() => setWalletSheetVisible(true)}
+                disabled={!!connectingWallet || loading}
+              >
+                {connectingWallet === null
+                  ? <>
+                      <Text style={styles.walletBtnText}>Connect a Solana wallet</Text>
+                      <Text style={styles.walletBtnSub}>
+                        {Platform.OS === 'android'
+                          ? 'Choose Seeker wallet, Phantom, Backpack, or Solflare'
+                          : 'Choose Phantom, Backpack, or Solflare'}
+                      </Text>
+                    </>
+                  : <ActivityIndicator color={Colors.textPrimary} />
+                }
+              </TouchableOpacity>
+
+              <Text style={styles.termsText}>
+                By signing up, you agree to our{'\n'}Terms of Service and Privacy Policy.
+              </Text>
             </View>
           </View>
         </View>
+
+        <WalletPickerSheet
+          visible={walletSheetVisible}
+          title="Connect a Solana wallet"
+          subtitle="Pick the wallet you want to use to sign in or link your account."
+          options={walletOptions}
+          connectingWallet={connectingWallet}
+          onClose={() => setWalletSheetVisible(false)}
+          onSelect={(provider) => {
+            setWalletSheetVisible(false)
+            void handleWalletConnect(provider)
+          }}
+        />
       </View>
     </KeyboardAvoidingView>
   )
@@ -355,6 +642,61 @@ const styles = StyleSheet.create({
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
   dividerLine: { flex: 1, height: 1, backgroundColor: Colors.bgBorder },
   dividerText: { color: Colors.textMuted, fontSize: 12 },
+  socialStack: { gap: 12 },
+  socialBtn: {
+    minHeight: 60,
+    borderRadius: 18,
+    paddingHorizontal: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  googleSocialBtn: {
+    backgroundColor: '#111018',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  xSocialBtn: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+  },
+  socialBtnText: {
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: '800',
+    letterSpacing: 0.1,
+  },
+  googleSocialText: { color: '#ffffff' },
+  xSocialText: { color: '#070707' },
+  googleMark: {
+    fontSize: 26,
+    lineHeight: 28,
+    fontWeight: '900',
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  xMark: {
+    color: '#000',
+    fontSize: 25,
+    lineHeight: 28,
+    fontWeight: '900',
+    minWidth: 30,
+    textAlign: 'center',
+  },
+  termsText: {
+    color: Colors.textMuted,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 6,
+  },
   walletBtn: {
     backgroundColor: Colors.bgElevated,
     borderRadius: 12,
@@ -364,6 +706,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     gap: 4,
+  },
+  googleBtn: {
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  twitterBtn: {
+    marginTop: 2,
+  },
+  walletBtnDisabled: {
     opacity: 0.5,
   },
   walletBtnText: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },

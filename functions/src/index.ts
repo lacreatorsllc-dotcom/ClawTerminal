@@ -1,13 +1,15 @@
 import { onSchedule } from 'firebase-functions/v2/scheduler'
 import { onMessagePublished } from 'firebase-functions/v2/pubsub'
 import { onDocumentCreated } from 'firebase-functions/v2/firestore'
-import { defineSecret } from 'firebase-functions/params'
+import { onRequest } from 'firebase-functions/v2/https'
 import { PubSub } from '@google-cloud/pubsub'
 import { AGENTS_COL } from './firebase'
 import { runAgentTick } from './agentLoop'
 import { runChatReply } from './chatLoop'
-
-const anthropicKey = defineSecret('ANTHROPIC_API_KEY')
+import { getMcpHealthReport } from './mcpHealth'
+import { runMarketNewsPoller } from './newsPoller'
+import { syncAgentFundingState } from './solana'
+export { startTwitterSignIn, completeTwitterSignIn } from './twitterAuth'
 
 const pubsub = new PubSub()
 const TOPIC = 'agent-tick'
@@ -39,7 +41,7 @@ export const clockAgents = onSchedule(
 
 // ── One message per agent: run its Claude loop ────────────────────────────────
 export const tickAgent = onMessagePublished(
-  { topic: TOPIC, region: 'us-central1', timeoutSeconds: 120, memory: '512MiB', secrets: [anthropicKey] },
+  { topic: TOPIC, region: 'us-central1', timeoutSeconds: 120, memory: '512MiB', secrets: ['GEMINI_API_KEY'] },
   async (event) => {
     const { agentId } = event.data.message.json as { agentId: string }
     if (!agentId) return
@@ -54,15 +56,66 @@ export const onChatMessage = onDocumentCreated(
     region: 'us-central1',
     timeoutSeconds: 60,
     memory: '512MiB',
-    secrets: [anthropicKey],
+    secrets: ['GEMINI_API_KEY'],
   },
   async (event) => {
     const data = event.data?.data()
     console.log(`[onChatMessage] doc=${event.params.agentId}/${event.params.messageId} direction=${data?.direction} hasData=${!!data}`)
     if (!data) return
     if (data.direction !== 'inbound') return
+    if (data.agent_reply === true) return
 
     const { agentId, messageId } = event.params
     await runChatReply(agentId, messageId, data.content)
   }
+)
+
+// ── Every 15 minutes: ingest fresh market news into Firestore ────────────────
+export const pollMarketNews = onSchedule(
+  { schedule: 'every 15 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' },
+  async () => {
+    await runMarketNewsPoller()
+  }
+)
+
+export const syncAgentWalletFunding = onSchedule(
+  { schedule: 'every 5 minutes', region: 'us-central1', timeoutSeconds: 120, memory: '512MiB' },
+  async () => {
+    const snap = await AGENTS_COL
+      .where('wallet_ready', '==', true)
+      .get()
+
+    if (snap.empty) {
+      console.log('[funding-sync] no wallet-ready agents found')
+      return
+    }
+
+    await Promise.all(
+      snap.docs.map(async (doc) => {
+        try {
+          await syncAgentFundingState(doc.id, doc.data())
+        } catch (error) {
+          console.error(`[funding-sync] failed for ${doc.id}:`, error)
+        }
+      }),
+    )
+  },
+)
+
+export const mcpStatus = onRequest(
+  {
+    region: 'us-central1',
+    timeoutSeconds: 30,
+    memory: '256MiB',
+  },
+  async (req, res) => {
+    if (req.method !== 'GET') {
+      res.set('Allow', 'GET')
+      res.status(405).json({ ok: false, error: 'Method not allowed' })
+      return
+    }
+
+    const report = await getMcpHealthReport()
+    res.status(report.ok ? 200 : 503).json(report)
+  },
 )

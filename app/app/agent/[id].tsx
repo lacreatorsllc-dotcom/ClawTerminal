@@ -15,7 +15,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { Ionicons } from '@expo/vector-icons'
 import { Colors } from '../../constants/colors'
 import type { Message, AgentStatus } from '../../lib/types'
-import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, deleteAgent, type PaperAgentState, trackAgent, untrackAgent, getPublicAgentProfile, listPublicFeedEventsForAgent, subscribeToAgentActivity, isTrackingAgent } from '../../lib/firebase'
+import { subscribeToSlug001, subscribeToSlug001Feed, subscribeToSlug001Trades, subscribeToMessages, addMessage, subscribeToDecisions, addFeedEvent, db, deleteAgent, type PaperAgentState, trackAgent, untrackAgent, getPublicAgentProfile, listPublicFeedEventsForAgent, subscribeToAgentActivity, isTrackingAgent, ensureAgentWallet } from '../../lib/firebase'
 import { processMarketAdvisorInbound } from '../../lib/marketAdvisorClient'
 import { doc, onSnapshot as fsOnSnapshot } from 'firebase/firestore'
 
@@ -23,6 +23,10 @@ type Tab = 'chat' | 'trades' | 'status' | 'vitals' | 'activity' | 'skills' | 'st
 
 function WebBackLabel() {
   return <Text style={styles.webBackLabel}>Back</Text>
+}
+
+function WebBackMark() {
+  return <Text style={styles.webBackMark}>{'<'}</Text>
 }
 
 function WebGlyph({ children, style }: { children: string; style?: any }) {
@@ -770,8 +774,6 @@ function formatTime001(ts: string): string {
 
 // ── TradingBoyScreen ──────────────────────────────────────────────────────────
 
-type TbTab = 'chat' | 'trades' | 'positions' | 'status' | 'activity'
-
 const TB_SLASH_COMMANDS = [
   { cmd: '/help',               desc: 'Show available commands' },
   { cmd: '/status',             desc: 'Agent status & health' },
@@ -787,50 +789,17 @@ const TB_SLASH_COMMANDS = [
 ]
 
 function TradingBoyScreen({ agentId }: { agentId: string }) {
-  const [activeTab, setActiveTab] = useState<TbTab>('chat')
   const [messages, setMessages] = useState<any[]>([])
   const [agentDoc, setAgentDoc] = useState<any>(null)
-  const [decisions, setDecisions] = useState<any[]>([])
   const [input, setInput] = useState('')
   const [cmdPickerVisible, setCmdPickerVisible] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [pendingReplies, setPendingReplies] = useState(0)
-  const [sharing, setSharing] = useState(false)
-  const [shareMsg, setShareMsg] = useState('')
   const [showShare, setShowShare] = useState(false)
   const { user } = useAuthStore()
   const flatRef = useRef<any>(null)
 
-  async function sharePnl() {
-    if (!user || sharing) return
-    setSharing(true)
-    setShareMsg('')
-    try {
-      const live = agentDoc?.live_state ?? {}
-      const name = agentDoc?.name ?? 'Agent'
-      const daily = live.dailyPnlUsd ?? 0
-      const unrealized = live.unrealizedPnlUsd ?? 0
-      const positions = live.openPositions?.length ?? 0
-      const sign = (n: number) => n >= 0 ? '+' : ''
-      const content = `${name} · Daily P&L: ${sign(daily)}$${Math.abs(daily).toFixed(2)} · Unrealized: ${sign(unrealized)}$${Math.abs(unrealized).toFixed(2)} · ${positions} open position${positions !== 1 ? 's' : ''}`
-      await addFeedEvent({
-        agent_id: agentId,
-        user_id: user.uid,
-        type: 'pnl',
-        content,
-        payload: { daily_pnl: daily, unrealized_pnl: unrealized, open_positions: positions, agent_name: name },
-        is_public: true,
-      })
-      setShareMsg('Shared to your feed ✓')
-      setTimeout(() => setShareMsg(''), 3000)
-    } catch (e: any) {
-      setShareMsg('Failed to share')
-    }
-    setSharing(false)
-  }
-
   useEffect(() => subscribeToMessages(agentId, setMessages), [agentId])
-  useEffect(() => subscribeToDecisions(agentId, setDecisions), [agentId])
   useEffect(() => {
     const unsub = fsOnSnapshot(doc(db, 'agents', agentId), (snap) => {
       if (snap.exists()) setAgentDoc(snap.data())
@@ -873,24 +842,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
   const isConnected = agentDoc?.status === 'connected'
   const isPaused = agentDoc?.live_admin?.paused === true
   const agentName = agentDoc?.name ?? 'Agent'
-  const liveState = agentDoc?.live_state ?? {}
-  const tbRecentTrades = liveState?.recentTrades ?? liveState?.openPositions ?? []
-  const tbWatchlist = Array.isArray(agentDoc?.watchlist) ? agentDoc.watchlist : []
-  const tbOpenPositions = Array.isArray(liveState?.openPositions) ? liveState.openPositions.length : 0
-  const tbDailyTrades = Number(liveState?.dailyTradeCount ?? tbRecentTrades.length ?? 0)
-  const tbActiveSetups = Number(liveState?.activeConditionalSetups ?? 0)
-  const tbModeLabel = isPaused ? 'Paused' : isConnected ? 'Autonomous' : 'Offline'
-  const tbStrategyBrief =
-    tbWatchlist.length > 0
-      ? `Monitoring ${tbWatchlist.slice(0, 4).join(', ')}${tbWatchlist.length > 4 ? ' and other names' : ''}. Trading Boy scans for live setups, manages risk automatically, and updates entries as market structure changes.`
-      : 'Scanning for high-conviction setups, sizing entries automatically, and managing open risk as conditions change.'
   const showTyping = agentDoc?.is_typing || pendingReplies > 0 || hasPendingReply(messages)
-
-  function decisionColor(actionType: string): string {
-    if (actionType === 'BUY' || actionType?.includes('BUY')) return Colors.accentGreen
-    if (actionType === 'SELL' || actionType?.includes('SELL')) return Colors.accentRed
-    return Colors.textMuted
-  }
 
   return (
     <KeyboardAvoidingView
@@ -958,468 +910,119 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
               )}
             </TouchableOpacity>
           </View>
+          <TouchableOpacity onPress={() => router.push(`/slug/${agentId}` as any)} activeOpacity={0.7}>
+            <Text style={tb.profileLink}>View profile for positions, trades, and status</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Stats strip */}
-      {(() => {
-        const daily = agentDoc?.live_state?.dailyPnlUsd ?? 0
-        const isPos = daily >= 0
-        const unrealized = agentDoc?.live_state?.unrealizedPnlUsd ?? 0
-        const openPos = agentDoc?.live_state?.openPositions?.length ?? 0
-        const dailyTrades = agentDoc?.live_state?.dailyTradeCount ?? 0
-        return (
-          <View style={[s001.pnlStrip, { marginHorizontal: 20, marginTop: 12 }]}>
-            <View style={s001.pnlMain}>
-              <Text style={[s001.pnlValue, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
-                {isPos ? '+$' : '-$'}{Math.abs(daily).toFixed(2)}
-              </Text>
-              <Text style={s001.pnlLabel}>daily pnl</Text>
-            </View>
-            <View style={s001.stripDivider} />
-            <View style={s001.stripStat}>
-              <Text style={[s001.stripValue, { color: unrealized >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-                {unrealized >= 0 ? '+$' : '-$'}{Math.abs(unrealized).toFixed(2)}
-              </Text>
-              <Text style={s001.stripLabel}>unrealized</Text>
-            </View>
-            <View style={s001.stripDivider} />
-            <View style={s001.stripStat}>
-              <Text style={s001.stripValue}>{openPos}</Text>
-              <Text style={s001.stripLabel}>positions</Text>
-            </View>
-            <View style={s001.stripDivider} />
-            <View style={s001.stripStat}>
-              <Text style={s001.stripValue}>{dailyTrades}</Text>
-              <Text style={s001.stripLabel}>trades</Text>
-            </View>
-          </View>
-        )
-      })()}
-
-      {/* Tab pills */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={tb.tabScroller}
-        contentContainerStyle={tb.tabScrollContent}
-      >
-        {(['chat', 'trades', 'positions', 'status', 'activity'] as TbTab[]).map((t) => (
+      <View style={{ flex: 1 }}>
+        <FlatList
+          ref={flatRef}
+          data={reversed}
+          keyExtractor={(item) => item.id ?? String(item.created_at)}
+          inverted
+          contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
+          onScroll={(e) => setShowScrollBtn(e.nativeEvent.contentOffset.y > 80)}
+          scrollEventThrottle={100}
+          ListHeaderComponent={showTyping ? <TypingBubble /> : null}
+          renderItem={({ item }) => {
+            const isUser = item.direction === 'inbound'
+            const isAlert = item.alert === true
+            const bubbleBg = isUser
+              ? '#d27454'
+              : (isAlert ? '#1a1500' : '#1a1a1a')
+            const bubbleBorder = isAlert ? 1 : 0
+            const bubbleBorderColor = isAlert ? Colors.accentAmber : 'transparent'
+            const textColor = isUser ? '#281e1a' : Colors.textPrimary
+            return (
+              <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+                <View style={{
+                  backgroundColor: bubbleBg,
+                  borderRadius: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  maxWidth: '88%',
+                  borderWidth: bubbleBorder,
+                  borderColor: bubbleBorderColor,
+                }}>
+                  <MessageText
+                    content={item.content ?? ''}
+                    outbound={isUser}
+                    textStyle={{ color: textColor, fontSize: 15, lineHeight: 21 }}
+                  />
+                </View>
+                <Text style={{ color: Colors.textMuted, fontSize: 11, marginTop: 3, marginHorizontal: 4 }}>
+                  {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                </Text>
+              </View>
+            )
+          }}
+        />
+        {showScrollBtn && (
           <TouchableOpacity
-            key={t}
-            style={[tb.tabPill, activeTab === t && tb.tabPillActive]}
-            onPress={() => setActiveTab(t)}
-            activeOpacity={1}
+            style={{
+              position: 'absolute', bottom: 12, alignSelf: 'center',
+              backgroundColor: '#1a1a1a', borderRadius: 20,
+              paddingHorizontal: 14, paddingVertical: 8,
+              flexDirection: 'row', alignItems: 'center', gap: 6,
+              borderWidth: 1, borderColor: '#333',
+            }}
+            onPress={() => {
+              flatRef.current?.scrollToOffset({ offset: 0, animated: true })
+              setShowScrollBtn(false)
+            }}
           >
-            <View style={tb.tabPillInner}>
-              <Text style={[tb.tabPillText, activeTab === t && tb.tabPillTextActive]}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
-              </Text>
-            </View>
+            {Platform.OS === 'web' ? <WebGlyph style={styles.webMiniGlyph}>v</WebGlyph> : <Ionicons name="arrow-down" size={14} color={Colors.textSecondary} />}
+            <Text style={{ color: Colors.textSecondary, fontSize: 13 }}>Latest</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Chat tab */}
-      {activeTab === 'chat' && (
-        <>
-          <View style={{ flex: 1 }}>
-            <FlatList
-              ref={flatRef}
-              data={reversed}
-              keyExtractor={(item) => item.id ?? String(item.created_at)}
-              inverted
-              contentContainerStyle={{ padding: 16, paddingBottom: 8 }}
-              onScroll={(e) => setShowScrollBtn(e.nativeEvent.contentOffset.y > 80)}
-              scrollEventThrottle={100}
-              ListHeaderComponent={showTyping ? <TypingBubble /> : null}
-              renderItem={({ item }) => {
-                const isUser = item.direction === 'inbound'
-                const isAlert = item.alert === true
-                const bubbleBg = isUser
-                  ? '#d27454'
-                  : (isAlert ? '#1a1500' : '#1a1a1a')
-                const bubbleBorder = isAlert ? 1 : 0
-                const bubbleBorderColor = isAlert ? Colors.accentAmber : 'transparent'
-                const textColor = isUser ? '#281e1a' : Colors.textPrimary
-                return (
-                  <View style={{ alignItems: isUser ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
-                    <View style={{
-                      backgroundColor: bubbleBg,
-                      borderRadius: 14,
-                      paddingHorizontal: 14,
-                      paddingVertical: 10,
-                      maxWidth: '88%',
-                      borderWidth: bubbleBorder,
-                      borderColor: bubbleBorderColor,
-                    }}>
-                      <MessageText
-                        content={item.content ?? ''}
-                        outbound={isUser}
-                        textStyle={{ color: textColor, fontSize: 15, lineHeight: 21 }}
-                      />
-                    </View>
-                    <Text style={{ color: Colors.textMuted, fontSize: 11, marginTop: 3, marginHorizontal: 4 }}>
-                      {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                    </Text>
-                  </View>
-                )
+        )}
+      </View>
+      {cmdPickerVisible && (
+        <ScrollView style={styles.cmdPicker} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {TB_SLASH_COMMANDS.filter(c => c.cmd.startsWith(input)).map((c) => (
+            <TouchableOpacity
+              key={c.cmd}
+              style={styles.cmdPickerRow}
+              onPress={async () => {
+                setCmdPickerVisible(false)
+                setInput('')
+                if (!user) return
+                setPendingReplies((count) => count + 1)
+                await addMessage(agentId, {
+                  agent_id: agentId,
+                  user_id: user.uid ?? (user as any).id,
+                  direction: 'inbound',
+                  content: c.cmd,
+                })
               }}
-            />
-            {showScrollBtn && (
-              <TouchableOpacity
-                style={{
-                  position: 'absolute', bottom: 12, alignSelf: 'center',
-                  backgroundColor: '#1a1a1a', borderRadius: 20,
-                  paddingHorizontal: 14, paddingVertical: 8,
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  borderWidth: 1, borderColor: '#333',
-                }}
-                onPress={() => {
-                  flatRef.current?.scrollToOffset({ offset: 0, animated: true })
-                  setShowScrollBtn(false)
-                }}
-              >
-                {Platform.OS === 'web' ? <WebGlyph style={styles.webMiniGlyph}>v</WebGlyph> : <Ionicons name="arrow-down" size={14} color={Colors.textSecondary} />}
-                <Text style={{ color: Colors.textSecondary, fontSize: 13 }}>Latest</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          {cmdPickerVisible && (
-            <ScrollView style={styles.cmdPicker} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              {TB_SLASH_COMMANDS.filter(c => c.cmd.startsWith(input)).map((c) => (
-                <TouchableOpacity
-                  key={c.cmd}
-                  style={styles.cmdPickerRow}
-                  onPress={async () => {
-                    setCmdPickerVisible(false)
-                    setInput('')
-                    if (!user) return
-                    setPendingReplies((count) => count + 1)
-                    await addMessage(agentId, {
-                      agent_id: agentId,
-                      user_id: user.uid ?? (user as any).id,
-                      direction: 'inbound',
-                      content: c.cmd,
-                    })
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.cmdPickerCmd}>{c.cmd}</Text>
-                  <Text style={styles.cmdPickerDesc}>{c.desc}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-          <View style={tb.inputRow}>
-            <TextInput
-              style={tb.input}
-              value={input}
-              onChangeText={(v) => {
-                setInput(v)
-                const matches = TB_SLASH_COMMANDS.filter(c => c.cmd.startsWith(v))
-                setCmdPickerVisible(v.startsWith('/') && !v.includes(' ') && !(matches.length === 1 && matches[0].cmd === v))
-              }}
-              placeholder={`Message ${agentName}...`}
-              placeholderTextColor={Colors.textMuted}
-              onSubmitEditing={sendChat}
-              returnKeyType="send"
-              multiline
-            />
-            <TouchableOpacity onPress={sendChat} style={[tb.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]} disabled={!input.trim()}>
-              {Platform.OS === 'web' ? <WebGlyph style={styles.webSendGlyph}>^</WebGlyph> : <Ionicons name="arrow-up" size={18} color="#fff" />}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.cmdPickerCmd}>{c.cmd}</Text>
+              <Text style={styles.cmdPickerDesc}>{c.desc}</Text>
             </TouchableOpacity>
-          </View>
-        </>
-      )}
-
-      {/* Status tab */}
-      {activeTab === 'status' && (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-          {/* Name + connection */}
-          <View style={tb.card}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={tb.cardTitle}>{agentName}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <View style={[tb.statusDot, { backgroundColor: isConnected ? Colors.accentGreen : Colors.accentRed }]} />
-                <Text style={{ color: isConnected ? Colors.accentGreen : Colors.accentRed, fontSize: 12 }}>
-                  {isConnected ? 'connected' : 'disconnected'}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Live state */}
-          <View style={tb.card}>
-            <Text style={tb.cardLabel}>STATE</Text>
-            <Text style={tb.cardValue}>{agentDoc?.live_state?.state ?? '—'}</Text>
-          </View>
-
-          <View style={tb.cardRow}>
-            <View style={[tb.card, { flex: 1 }]}>
-              <Text style={tb.cardLabel}>DAILY P&L</Text>
-              <Text style={[tb.cardValue, { color: (agentDoc?.live_state?.dailyPnlUsd ?? 0) >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-                {(agentDoc?.live_state?.dailyPnlUsd ?? 0) >= 0 ? '+' : ''}${(agentDoc?.live_state?.dailyPnlUsd ?? 0).toFixed(2)}
-              </Text>
-            </View>
-            <View style={[tb.card, { flex: 1 }]}>
-              <Text style={tb.cardLabel}>OPEN POS.</Text>
-              <Text style={tb.cardValue}>{agentDoc?.live_state?.openPositions?.length ?? 0}</Text>
-            </View>
-          </View>
-
-          {(() => {
-            const unrealized = agentDoc?.live_state?.unrealizedPnlUsd ?? 0
-            return (
-              <View style={tb.card}>
-                <Text style={tb.cardLabel}>UNREALIZED P&L</Text>
-                <Text style={[tb.cardValue, { color: unrealized >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-                  {unrealized >= 0 ? '+' : '-'}${Math.abs(unrealized).toFixed(2)}
-                </Text>
-              </View>
-            )
-          })()}
-
-          {/* PnL History chart — mirrors Slug #001 sparkline */}
-          {(() => {
-            const hist: number[] | undefined = agentDoc?.live_state?.pnlHistory ?? agentDoc?.live_state?.pnl_history
-            if (!hist || hist.length < 2) return null
-            return (
-              <View style={s001.chartCard}>
-                <Text style={s001.chartLabel}>PnL History</Text>
-                <Sparkline history={hist} />
-              </View>
-            )
-          })()}
-
-          <View style={tb.cardRow}>
-            <View style={[tb.card, { flex: 1 }]}>
-              <Text style={tb.cardLabel}>ACTIVE SETUPS</Text>
-              <Text style={tb.cardValue}>{agentDoc?.live_state?.activeConditionalSetups ?? '—'}</Text>
-            </View>
-            <View style={[tb.card, { flex: 1 }]}>
-              <Text style={tb.cardLabel}>PAUSED</Text>
-              <Text style={[tb.cardValue, { color: isPaused ? Colors.accentAmber : Colors.textSecondary }]}>
-                {isPaused ? 'Yes' : 'No'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={tb.card}>
-            <Text style={tb.cardLabel}>LAST TICK</Text>
-            <Text style={tb.cardValue}>
-              {agentDoc?.last_tick_at ? formatTime001(agentDoc.last_tick_at) : '—'}
-            </Text>
-          </View>
-
-          {agentDoc?.watchlist && agentDoc.watchlist.length > 0 && (
-            <View style={tb.card}>
-              <Text style={tb.cardLabel}>WATCHLIST</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                {agentDoc.watchlist.map((sym: string) => (
-                  <View key={sym} style={tb.chip}>
-                    <Text style={tb.chipText}>{sym}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Share P&L */}
-          <TouchableOpacity
-            style={[tb.shareBtn, sharing && { opacity: 0.5 }]}
-            onPress={sharePnl}
-            disabled={sharing}
-            activeOpacity={0.8}
-          >
-            {Platform.OS !== 'web' && <Ionicons name="share-outline" size={16} color={Colors.accentAmber} />}
-            <Text style={tb.shareBtnText}>{sharing ? 'Sharing…' : 'Share P&L to Feed'}</Text>
-          </TouchableOpacity>
-          {!!shareMsg && (
-            <Text style={{ color: Colors.accentGreen, fontSize: 13, textAlign: 'center', marginTop: -4 }}>{shareMsg}</Text>
-          )}
+          ))}
         </ScrollView>
       )}
-
-      {/* Activity tab */}
-      {activeTab === 'activity' && (
-        <FlatList
-          data={decisions}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 16, gap: 8 }}
-          ListEmptyComponent={
-            <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 32 }}>
-              No decisions yet
-            </Text>
-          }
-          renderItem={({ item }) => {
-            const label = item.actionType || item.decisionType || null
-            const body = item.details || null
-            if (!label && !body) return null
-            return (
-              <View style={tb.decisionRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: body ? 4 : 0 }}>
-                  <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{item.tokenSymbol}</Text>
-                  {!!label && (
-                    <View style={[tb.actionBadge, { backgroundColor: decisionColor(label) + '22', borderColor: decisionColor(label) }]}>
-                      <Text style={{ color: decisionColor(label), fontSize: 10, fontWeight: '700' }}>{label}</Text>
-                    </View>
-                  )}
-                  <Text style={{ color: Colors.textMuted, fontSize: 11, marginLeft: 'auto' }}>
-                    {item.eventTime ? formatTime001(item.eventTime) : ''}
-                  </Text>
-                </View>
-                {!!body && (
-                  <Text style={{ color: Colors.textSecondary, fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
-                    {body}
-                  </Text>
-                )}
-              </View>
-            )
+      <View style={tb.inputRow}>
+        <TextInput
+          style={tb.input}
+          value={input}
+          onChangeText={(v) => {
+            setInput(v)
+            const matches = TB_SLASH_COMMANDS.filter(c => c.cmd.startsWith(v))
+            setCmdPickerVisible(v.startsWith('/') && !v.includes(' ') && !(matches.length === 1 && matches[0].cmd === v))
           }}
+          placeholder={`Message ${agentName}...`}
+          placeholderTextColor={Colors.textMuted}
+          onSubmitEditing={sendChat}
+          returnKeyType="send"
+          multiline
         />
-      )}
-
-      {/* Trades tab */}
-      {activeTab === 'trades' && (
-        <ScrollView contentContainerStyle={tb.tradesContent} showsVerticalScrollIndicator={false}>
-          <Text style={tb.strategyBrief}>{tbStrategyBrief}</Text>
-
-          <View style={tb.strategyCard}>
-            <Text style={tb.strategyCardLabel}>TRADING PLAN</Text>
-            <View style={tb.strategyStats}>
-              <View style={tb.strategyStat}>
-                <Text style={tb.strategyStatLabel}>mode</Text>
-                <Text style={tb.strategyStatValue}>{tbModeLabel}</Text>
-              </View>
-              <View style={tb.strategyDivider} />
-              <View style={tb.strategyStat}>
-                <Text style={tb.strategyStatLabel}>setups</Text>
-                <Text style={tb.strategyStatValue}>{tbActiveSetups}</Text>
-              </View>
-              <View style={tb.strategyDivider} />
-              <View style={tb.strategyStat}>
-                <Text style={tb.strategyStatLabel}>trades</Text>
-                <Text style={tb.strategyStatValue}>{tbDailyTrades}</Text>
-              </View>
-              <View style={tb.strategyDivider} />
-              <View style={tb.strategyStat}>
-                <Text style={tb.strategyStatLabel}>open</Text>
-                <Text style={tb.strategyStatValue}>{tbOpenPositions}</Text>
-              </View>
-            </View>
-            {tbWatchlist.length > 0 && (
-              <View style={tb.strategyTags}>
-                {tbWatchlist.slice(0, 5).map((sym: string) => (
-                  <View key={sym} style={tb.strategyTag}>
-                    <Text style={tb.strategyTagText}>{sym}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-
-          {tbRecentTrades.length === 0 ? (
-            <View style={tb.emptyTradesCard}>
-              <Text style={tb.emptyTradesText}>No trades yet</Text>
-            </View>
-          ) : tbRecentTrades.map((item: any, i: number) => {
-            const sideRaw = (item.direction ?? item.side ?? '').toString().toUpperCase()
-            const isBuy = sideRaw.includes('BUY') || sideRaw === 'LONG'
-            const pnl = item.pnl ?? item.realizedPnl ?? item.unrealizedPnl ?? item.unrealizedPnlUsd ?? null
-            const symbol = item.tokenSymbol ?? item.symbol ?? item.token ?? 'MARKET'
-            const tradeType = item.type ?? item.strategy ?? (item.takeProfit != null || item.stopLoss != null ? 'Managed' : 'Spot')
-            const entry = item.entryPrice ?? item.fillPrice ?? null
-            const size = item.sizeUsd ?? item.size ?? item.qty ?? null
-
-            return (
-              <View key={item.id ?? `${symbol}-${i}`} style={tb.tradeCard}>
-                <View style={tb.tradeTopRow}>
-                  <View style={[tb.tradeSideBadge, { backgroundColor: isBuy ? 'rgba(0,200,150,0.12)' : 'rgba(255,69,58,0.12)' }]}>
-                    <Text style={[tb.tradeSideText, { color: isBuy ? Colors.accentGreen : Colors.accentRed }]}>
-                      {sideRaw || '?'}
-                    </Text>
-                  </View>
-                  <Text style={tb.tradePair}>{symbol}</Text>
-                  <View style={tb.tradeAgentTag}>
-                    <Text style={tb.tradeAgentTagText}>{agentName}</Text>
-                  </View>
-                  <View style={{ flex: 1 }} />
-                  {pnl != null && (
-                    <Text style={[tb.tradePnl, { color: Number(pnl) >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-                      {Number(pnl) >= 0 ? '+' : ''}${Math.abs(Number(pnl)).toFixed(2)}
-                    </Text>
-                  )}
-                </View>
-
-                <View style={tb.tradeMetaRow}>
-                  {entry != null && (
-                    <View style={tb.tradeMetaCol}>
-                      <Text style={tb.tradeMetaLabel}>entry</Text>
-                      <Text style={tb.tradeMetaValue}>${Number(entry).toLocaleString('en-US', { maximumFractionDigits: 2 })}</Text>
-                    </View>
-                  )}
-                  {size != null && (
-                    <View style={tb.tradeMetaCol}>
-                      <Text style={tb.tradeMetaLabel}>size</Text>
-                      <Text style={tb.tradeMetaValue}>{typeof size === 'number' ? size : String(size)}</Text>
-                    </View>
-                  )}
-                  <View style={tb.tradeMetaCol}>
-                    <Text style={tb.tradeMetaLabel}>type</Text>
-                    <Text style={tb.tradeMetaValue}>{String(tradeType)}</Text>
-                  </View>
-                  <View style={{ flex: 1 }} />
-                  <Text style={tb.tradeTime}>
-                    {item.created_at ? formatTime001(item.created_at) : ''}
-                  </Text>
-                </View>
-              </View>
-            )
-          })}
-        </ScrollView>
-      )}
-
-      {/* Positions tab */}
-      {activeTab === 'positions' && (
-        <FlatList
-          data={agentDoc?.live_state?.openPositions ?? []}
-          keyExtractor={(item, i) => item.id ?? String(i)}
-          contentContainerStyle={{ padding: 16, gap: 8 }}
-          ListEmptyComponent={
-            <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 32 }}>No open positions</Text>
-          }
-          renderItem={({ item }) => {
-            const isBuy = (item.direction ?? '').toUpperCase().includes('BUY') || (item.side ?? '').toUpperCase() === 'BUY'
-            const upnl = item.unrealizedPnl ?? item.unrealizedPnlUsd ?? null
-            return (
-              <View style={tb.decisionRow}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 15 }}>
-                    {item.tokenSymbol ?? item.symbol ?? item.token ?? '?'}
-                  </Text>
-                  <View style={[tb.actionBadge, { backgroundColor: (isBuy ? Colors.accentGreen : Colors.accentRed) + '22', borderColor: isBuy ? Colors.accentGreen : Colors.accentRed }]}>
-                    <Text style={{ color: isBuy ? Colors.accentGreen : Colors.accentRed, fontSize: 10, fontWeight: '700' }}>
-                      {item.direction ?? item.side ?? 'LONG'}
-                    </Text>
-                  </View>
-                  {upnl != null && (
-                    <Text style={{ color: upnl >= 0 ? Colors.accentGreen : Colors.accentRed, fontSize: 14, fontWeight: '600', marginLeft: 'auto' }}>
-                      {upnl >= 0 ? '+' : ''}${Number(upnl).toFixed(2)}
-                    </Text>
-                  )}
-                </View>
-                <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
-                  {item.entryPrice != null && <Text style={{ color: Colors.textSecondary, fontSize: 12 }}>Entry: ${item.entryPrice}</Text>}
-                  {item.sizeUsd != null && <Text style={{ color: Colors.textSecondary, fontSize: 12 }}>Size: ${item.sizeUsd}</Text>}
-                  {item.stopLoss != null && <Text style={{ color: Colors.accentRed, fontSize: 12 }}>SL: ${item.stopLoss}</Text>}
-                  {item.takeProfit != null && <Text style={{ color: Colors.accentGreen, fontSize: 12 }}>TP: ${item.takeProfit}</Text>}
-                </View>
-              </View>
-            )
-          }}
-        />
-      )}
+        <TouchableOpacity onPress={sendChat} style={[tb.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]} disabled={!input.trim()}>
+          <Text style={styles.sendBtnText}>↑</Text>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   )
 }
@@ -1436,6 +1039,11 @@ const tb = StyleSheet.create({
   controlBtn: {
     width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center',
     backgroundColor: '#1a1a18', borderWidth: 1, borderColor: '#2a2a28',
+  },
+  profileLink: {
+    marginTop: 6,
+    fontSize: 12,
+    color: Colors.textMuted,
   },
   tabBar: {
     flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#1e1e1c',
@@ -1765,7 +1373,7 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
           multiline
         />
         <TouchableOpacity onPress={sendChat} style={[s001.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]} disabled={!input.trim()}>
-          {Platform.OS === 'web' ? <WebGlyph style={styles.webSendGlyph}>^</WebGlyph> : <Ionicons name="arrow-up" size={18} color="#fff" />}
+          <Text style={styles.sendBtnText}>↑</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -1940,7 +1548,7 @@ function MarketAdvisorScreen({ agentId }: { agentId: string }) {
           multiline
         />
         <TouchableOpacity onPress={sendChat} style={[s001.sendBtn, { opacity: input.trim() ? 1 : 0.4 }]} disabled={!input.trim()}>
-          {Platform.OS === 'web' ? <WebGlyph style={styles.webSendGlyph}>^</WebGlyph> : <Ionicons name="arrow-up" size={18} color="#fff" />}
+          <Text style={styles.sendBtnText}>↑</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -2577,23 +2185,30 @@ const s001 = StyleSheet.create({
 
 // ── Claude Managed Agent Screen ───────────────────────────────────────────────
 
-const TB_BRIDGE_URL = 'https://tb-bridge-1094657124615.us-central1.run.app'
-
 function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
   const { user } = useAuthStore()
+  const showToast = useUIStore((s) => s.showToast)
   const agentSnap = useAgentsStore.getState().agents.find((a) => a.id === agentId) as any
   const agentName = agentSnap?.name ?? 'Claude Agent'
-  const claudeAgentId: string = agentSnap?.claude_agent_id ?? ''
-  const claudeEnvId: string = agentSnap?.claude_env_id ?? ''
 
-  const [messages, setMessages] = useState<Array<{ id: string; direction: string; content: string; created_at: string }>>([])
+  const [messages, setMessages] = useState<Array<{ id: string; direction: string; content: string; created_at: string; agent_reply?: boolean }>>([])
+  const [agentDoc, setAgentDoc] = useState<any>(agentSnap ?? null)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [provisioningWallet, setProvisioningWallet] = useState(false)
   const flatListRef = useRef<FlatList>(null)
 
   useEffect(() => {
     return subscribeToMessages(agentId, (msgs) => setMessages(msgs.slice().reverse()))
   }, [agentId])
+
+  useEffect(() => {
+    return fsOnSnapshot(doc(db, 'agents', agentId), (snap) => {
+      if (snap.exists()) setAgentDoc({ id: snap.id, ...snap.data() })
+    })
+  }, [agentId])
+
+  const waitingOnAgent = messages[0]?.agent_reply !== true && messages[0]?.direction === 'inbound'
 
   async function send() {
     const text = input.trim()
@@ -2601,20 +2216,66 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
     setInput('')
     setSending(true)
 
-    // Optimistically add outbound message to Firestore
-    await addMessage(agentId, { agent_id: agentId, user_id: user.uid, direction: 'outbound', content: text, created_at: new Date().toISOString() })
-
     try {
-      await fetch(`${TB_BRIDGE_URL}/claude-agents/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ firestoreId: agentId, claudeAgentId, claudeEnvId, message: text, userId: user.uid }),
+      await addMessage(agentId, {
+        agent_id: agentId,
+        user_id: user.uid,
+        direction: 'inbound',
+        content: text,
       })
     } catch (e) {
-      console.warn('[claude-chat] fetch error', e)
+      console.warn('[claude-chat] send error', e)
+    } finally {
+      setSending(false)
     }
-    setSending(false)
   }
+
+  async function handleProvisionAgentWallet() {
+    setProvisioningWallet(true)
+    try {
+      const address = await ensureAgentWallet(agentId)
+      setAgentDoc((current: any) => ({
+        ...(current ?? {}),
+        id: agentId,
+        wallet_address: address,
+        wallet_network: 'solana',
+        wallet_mode: 'agent_custody',
+        wallet_ready: true,
+      }))
+      showToast('Agent wallet ready')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create agent wallet'
+      showToast(message)
+    } finally {
+      setProvisioningWallet(false)
+    }
+  }
+
+  const isLiveFunded =
+    agentDoc?.wallet_funding_state === 'funded' ||
+    agentDoc?.paper_mode === false ||
+    agentDoc?.live_trading_enabled === true ||
+    agentDoc?.funding_mode === 'agent_wallet_live'
+
+  const providerLabel = (() => {
+    const explicit = String(
+      agentDoc?.metadata?.llmProvider ??
+      agentDoc?.metadata?.provider ??
+      agentDoc?.provider ??
+      ''
+    ).trim().toLowerCase()
+    if (explicit === 'openai') return 'openai'
+    if (explicit === 'gemini') return 'gemini'
+    if (explicit === 'anthropic' || explicit === 'claude') return 'claude managed'
+    if (explicit === 'openrouter') return 'openrouter'
+
+    const agentType = String(agentDoc?.agent_type ?? '').toLowerCase()
+    if (agentType === 'claude_managed') return 'claude managed'
+    if (agentType === 'market_advisor') return 'market advisor'
+    if (agentType === 'cabal_trading_boy') return 'trading boy'
+
+    return 'agent'
+  })()
 
   return (
     <View style={{ flex: 1, backgroundColor: Colors.bgPrimary }}>
@@ -2625,9 +2286,50 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
         </TouchableOpacity>
         <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/slug/${agentId}` as any)} activeOpacity={0.7}>
           <Text style={{ color: Colors.textPrimary, fontSize: 17, fontWeight: '700' }}>{agentName}</Text>
-          <Text style={{ color: Colors.accentGreen, fontSize: 11 }}>● claude managed</Text>
+          <Text style={{ color: Colors.accentGreen, fontSize: 11 }}>{`● ${providerLabel}`}</Text>
         </TouchableOpacity>
         <AgentMenuButton agentId={agentId} agentName={agentName} />
+      </View>
+
+      <View style={cmStyles.walletCard}>
+        <View style={cmStyles.walletCopy}>
+          <Text style={cmStyles.walletEyebrow}>Agent wallet</Text>
+          <Text style={cmStyles.walletTitle}>
+            {agentDoc?.wallet_address ? `${agentDoc.wallet_address.slice(0, 6)}…${agentDoc.wallet_address.slice(-6)}` : 'No funding wallet yet'}
+          </Text>
+          <Text style={cmStyles.walletSubtitle}>
+            Start with paper trading. Once you trust this agent's performance, fund this wallet and it will switch to live trading automatically as soon as the deposit lands.
+          </Text>
+        </View>
+        {agentDoc?.wallet_address ? (
+          <View style={cmStyles.walletButtonStack}>
+            <TouchableOpacity
+              style={cmStyles.walletButton}
+              onPress={async () => {
+                await Clipboard.setStringAsync(agentDoc.wallet_address)
+                showToast('Agent wallet copied')
+              }}
+              activeOpacity={0.85}
+            >
+              <Text style={cmStyles.walletButtonText}>Copy</Text>
+            </TouchableOpacity>
+            <View style={cmStyles.walletSecondaryButton}>
+              <Text style={cmStyles.walletSecondaryButtonText}>{isLiveFunded ? 'Live wallet active' : 'Auto-switches when funded'}</Text>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[cmStyles.walletButton, provisioningWallet && cmStyles.walletButtonDisabled]}
+            onPress={handleProvisionAgentWallet}
+            disabled={provisioningWallet}
+            activeOpacity={0.85}
+          >
+            {provisioningWallet
+              ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
+              : <Text style={cmStyles.walletButtonText}>Create</Text>
+            }
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Messages */}
@@ -2638,15 +2340,16 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
         inverted
         contentContainerStyle={{ padding: 16, gap: 10 }}
         renderItem={({ item }) => {
-          const isOut = item.direction === 'outbound'
+          const isAgentReply = item.agent_reply === true || item.direction === 'outbound'
+          const isUserMessage = !isAgentReply
           return (
-            <View style={{ alignItems: isOut ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
+            <View style={{ alignItems: isUserMessage ? 'flex-end' : 'flex-start', marginBottom: 8 }}>
               <View style={{
-                backgroundColor: isOut ? Colors.accentAmber : '#1a1a1a',
+                backgroundColor: isUserMessage ? Colors.accentAmber : '#1a1a1a',
                 borderRadius: 16, padding: 12, maxWidth: '80%',
-                borderWidth: isOut ? 0 : 1, borderColor: Colors.bgBorder,
+                borderWidth: isUserMessage ? 0 : 1, borderColor: Colors.bgBorder,
               }}>
-                <Text style={{ color: isOut ? '#000' : Colors.textPrimary, fontSize: 14, lineHeight: 20 }}>{item.content}</Text>
+                <Text style={{ color: isUserMessage ? '#000' : Colors.textPrimary, fontSize: 14, lineHeight: 20 }}>{item.content}</Text>
               </View>
             </View>
           )
@@ -2654,9 +2357,9 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
       />
 
       {/* Typing indicator */}
-      {sending && (
-        <View style={{ paddingHorizontal: 20, paddingBottom: 4 }}>
-          <Text style={{ color: Colors.textMuted, fontSize: 12 }}>Agent is thinking…</Text>
+      {(sending || waitingOnAgent) && (
+        <View style={{ paddingHorizontal: 16, paddingBottom: 6, alignItems: 'flex-start' }}>
+          <TypingBubble />
         </View>
       )}
 
@@ -2766,7 +2469,7 @@ function PublicAgentView({ agentId }: { agentId: string }) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.bgPrimary }}>
         <TouchableOpacity onPress={() => router.back()} style={pubStyles.backBtn}>
-          <Ionicons name="chevron-back" size={20} color={Colors.accentAmber} />
+          {Platform.OS === 'web' ? <WebBackMark /> : <Ionicons name="chevron-back" size={20} color={Colors.accentAmber} />}
           <Text style={pubStyles.backLabel}>Back</Text>
         </TouchableOpacity>
         <ActivityIndicator size="large" color={Colors.accentAmber} style={{ marginTop: 80 }} />
@@ -2778,7 +2481,7 @@ function PublicAgentView({ agentId }: { agentId: string }) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.bgPrimary }}>
         <TouchableOpacity onPress={() => router.back()} style={pubStyles.backBtn}>
-          <Ionicons name="chevron-back" size={20} color={Colors.accentAmber} />
+          {Platform.OS === 'web' ? <WebBackMark /> : <Ionicons name="chevron-back" size={20} color={Colors.accentAmber} />}
           <Text style={pubStyles.backLabel}>Back</Text>
         </TouchableOpacity>
         <Text style={{ color: Colors.textMuted, textAlign: 'center', marginTop: 60 }}>Slug not found</Text>
@@ -2789,7 +2492,7 @@ function PublicAgentView({ agentId }: { agentId: string }) {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: Colors.bgPrimary }} contentContainerStyle={{ paddingBottom: 80 }}>
       <TouchableOpacity onPress={() => router.back()} style={pubStyles.backBtn}>
-        <Ionicons name="chevron-back" size={20} color={Colors.accentAmber} />
+        {Platform.OS === 'web' ? <WebBackMark /> : <Ionicons name="chevron-back" size={20} color={Colors.accentAmber} />}
         <Text style={pubStyles.backLabel}>Back</Text>
       </TouchableOpacity>
 
@@ -2974,12 +2677,8 @@ export default function AgentDetailScreen() {
   if (id === 'slug-001') return <Slug001Screen />
 
   const agentSnap = useAgentsStore.getState().agents.find((a) => a.id === id) as any
-  // cabal_trading_boy always goes to TradingBoyScreen (even if named "Blue Chip")
-  if (agentSnap?.agent_type === 'cabal_trading_boy' && id) return <TradingBoyScreen agentId={id} />
-  // Legacy connector-based Blue Chip
-  if (agentSnap?.agent_type === 'cabal_blue_chip' && id) return <BlueChipScreen agentId={id} />
-  if (agentSnap?.agent_type === 'market_advisor' && id) return <MarketAdvisorScreen agentId={id} />
-  if (agentSnap?.agent_type === 'claude_managed' && id) return <ClaudeManagedAgentScreen agentId={id} />
+  // All owned agents should use the current chat experience.
+  if (agentSnap && id) return <ClaudeManagedAgentScreen agentId={id} />
   // Agent not owned by current user — show public profile
   if (!agentSnap && id) return <PublicAgentView agentId={id} />
 
@@ -3019,6 +2718,7 @@ export default function AgentDetailScreen() {
   const [orModels, setOrModels] = useState<{ id: string; name: string }[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
   const [savingModel, setSavingModel] = useState(false)
+  const [provisioningWallet, setProvisioningWallet] = useState(false)
   const sendTimingRef = useRef<Record<string, { startedAt: number; contentPreview: string }>>({})
 
   const { agents, getConnectionStatus, upsertAgent } = useAgentsStore()
@@ -3079,6 +2779,27 @@ export default function AgentDetailScreen() {
     const label = selectedWorkflow === 'openrouter' ? orModel : selectedWorkflow === 'anthropic' ? 'Anthropic' : 'OpenAI'
     showToast(`Switched to ${label}`)
   }
+
+  async function handleProvisionAgentWallet() {
+    if (!agent?.id) return
+    setProvisioningWallet(true)
+    try {
+      const address = await ensureAgentWallet(agent.id)
+      upsertAgent({ ...agent, wallet_address: address, wallet_network: 'solana', wallet_mode: 'agent_custody', wallet_ready: true })
+      showToast('Agent wallet ready')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create agent wallet'
+      showToast(message)
+    } finally {
+      setProvisioningWallet(false)
+    }
+  }
+
+  const isLiveFunded =
+    (agent as any)?.wallet_funding_state === 'funded' ||
+    agent?.paper_mode === false ||
+    (agent as any)?.live_trading_enabled === true ||
+    (agent as any)?.funding_mode === 'agent_wallet_live'
 
   const slashCommands = useMemo(() => getSlashCommands(agent?.name), [agent?.name])
   const agentTabs = useMemo(() => getAgentTabs(agent?.name), [agent?.name])
@@ -3872,6 +3593,47 @@ export default function AgentDetailScreen() {
             <Row label="Member since" value={agent.created_at ? new Date(agent.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'} />
           </View>
 
+          <View style={styles.statusCard}>
+            <Row label="Wallet mode" value={agent.wallet_mode === 'agent_custody' || agent.wallet_address ? 'Agent wallet' : 'Not configured'} />
+            <Row label="Network" value={agent.wallet_network ?? 'Solana'} />
+            <Row
+              label="Deposit address"
+              value={agent.wallet_address ? `${agent.wallet_address.slice(0, 6)}…${agent.wallet_address.slice(-6)}` : 'Not provisioned'}
+              mono
+            />
+            {agent.wallet_address ? (
+              <View style={styles.walletActionStack}>
+                <TouchableOpacity
+                  style={styles.walletActionButton}
+                  onPress={async () => {
+                    await Clipboard.setStringAsync(agent.wallet_address)
+                    showToast('Deposit address copied')
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.walletActionButtonText}>Copy deposit address</Text>
+                </TouchableOpacity>
+                <View style={styles.walletSecondaryActionButton}>
+                  <Text style={styles.walletSecondaryActionButtonText}>
+                    {isLiveFunded ? 'Live wallet active' : 'Auto-switches when funded'}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.walletActionButton, provisioningWallet && styles.walletActionButtonDisabled]}
+                onPress={handleProvisionAgentWallet}
+                disabled={provisioningWallet}
+                activeOpacity={0.8}
+              >
+                {provisioningWallet
+                  ? <ActivityIndicator size="small" color={Colors.bgPrimary} />
+                  : <Text style={styles.walletActionButtonText}>Create agent wallet</Text>
+                }
+              </TouchableOpacity>
+            )}
+          </View>
+
           {/* Metadata badges */}
           {(agent.metadata?.storage_mode || agent.metadata?.platform || agent.metadata?.protocol_version) && (
             <View style={styles.badgeRow}>
@@ -4216,9 +3978,9 @@ const styles = StyleSheet.create({
   backBtn: { padding: 4 },
   backBtnText: { fontSize: 28, color: Colors.textSecondary, lineHeight: 28 },
   webBackLabel: { color: Colors.accentAmber, fontSize: 16, lineHeight: 20, fontWeight: '700' },
+  webBackMark: { color: Colors.accentAmber, fontSize: 16, lineHeight: 20, fontWeight: '700' },
   webGlyph: { color: Colors.textSecondary, fontSize: 14, lineHeight: 14, fontWeight: '700', textAlign: 'center' },
   webMiniGlyph: { fontSize: 12, lineHeight: 12 },
-  webSendGlyph: { color: '#fff', fontSize: 16, lineHeight: 16 },
   webChevronGlyph: { fontSize: 16, lineHeight: 16 },
   webCheckGlyph: { color: '#fff', fontSize: 9, lineHeight: 9, textTransform: 'uppercase' },
   headerInfo: { flex: 1 },
@@ -4368,6 +4130,44 @@ const styles = StyleSheet.create({
   rowLabel: { color: Colors.textSecondary, fontSize: 14 },
   rowValue: { color: Colors.textPrimary, fontSize: 14 },
   mono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  walletActionButton: {
+    marginHorizontal: 14,
+    marginBottom: 14,
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: Colors.accentAmber,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  walletActionButtonDisabled: {
+    opacity: 0.7,
+  },
+  walletActionStack: {
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+  },
+  walletActionButtonText: {
+    color: Colors.bgPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  walletSecondaryActionButton: {
+    minHeight: 44,
+    borderRadius: 12,
+    backgroundColor: '#181818',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+  },
+  walletSecondaryActionButtonText: {
+    color: Colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
   reconnectBox: { marginTop: 16, backgroundColor: 'rgba(245, 158, 11, 0.08)', borderRadius: 12, padding: 16, gap: 8 },
   reconnectLabel: { color: Colors.accentAmber, fontSize: 13 },
   reconnectCmd: { color: Colors.accentTeal, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12 },
@@ -4615,6 +4415,81 @@ const modelStyles = StyleSheet.create({
     paddingVertical: 14, alignItems: 'center', marginTop: 16,
   },
   saveBtnText: { fontSize: 15, fontWeight: '700', color: '#000' },
+})
+
+const cmStyles = StyleSheet.create({
+  walletCard: {
+    marginHorizontal: 16,
+    marginBottom: 10,
+    marginTop: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: '#111111',
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  walletCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  walletEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  walletTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  walletSubtitle: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: Colors.textMuted,
+  },
+  walletButton: {
+    minWidth: 84,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: Colors.accentAmber,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  walletButtonDisabled: {
+    opacity: 0.7,
+  },
+  walletButtonStack: {
+    gap: 8,
+  },
+  walletButtonText: {
+    color: Colors.bgPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  walletSecondaryButton: {
+    minWidth: 110,
+    minHeight: 38,
+    borderRadius: 12,
+    backgroundColor: '#181818',
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  walletSecondaryButtonText: {
+    color: Colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
 })
 
 const pubStyles = StyleSheet.create({

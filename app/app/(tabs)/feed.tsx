@@ -1,25 +1,31 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, FlatList, StyleSheet, Platform, TouchableOpacity,
-  Modal, ScrollView, Animated,
+  Modal, ScrollView, Animated, LayoutAnimation, UIManager,
 } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import {
   subscribeToFollowing,
+  subscribeToFollowingLeaderboard,
+  subscribeToMyFeed,
   subscribeToPublicFeed,
   subscribeToTrackedAgents,
   subscribeToTrackedAgentFeed,
   subscribeToTrackedAgentDocs,
+  subscribeToUserAgents,
   subscribeToUserAgentsPnl,
   subscribeToMarketNews,
   publishAgentPnl,
   getPnlSharingPref,
   setPnlSharingPref,
+  batchGetUsernames,
+  fetchAgentsByIds,
 } from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
 import { Colors } from '../../constants/colors'
 import { useDesktopWebLayout } from '../../lib/responsive'
+import { ShareCardModal, type TradeData } from '../../components/share-card'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,6 +50,32 @@ interface FeedItem {
   pnl?: PnLData | null
   payload?: Record<string, any>
   rawType?: string
+  source: 'mine' | 'following' | 'tracked' | 'news'
+}
+
+interface FeedAgentSnapshot {
+  id: string
+  name?: string
+  owner_username?: string | null
+  last_seen?: string | null
+  last_synced?: string | null
+  live_state?: Record<string, any> | null
+}
+
+function agentSnapshotActivityIso(agent?: { last_seen?: string | null; last_synced?: string | null } | null) {
+  return agent?.last_seen ?? agent?.last_synced ?? null
+}
+
+interface LeaderboardEntry {
+  uid: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+  total_pnl: number
+  active_agents: number
+  total_agents: number
+  top_agents: Array<{ id: string; name: string; pnl: number }>
+  updated_at: string | null
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,7 +91,7 @@ function formatTime(ts: string): string {
   return `${date} · ${time}`
 }
 
-function toFeedItem(raw: any, nameMap?: Map<string, string>): FeedItem {
+function toFeedItem(raw: any, nameMap?: Map<string, string>, source: FeedItem['source'] = 'following'): FeedItem {
   const cardType: CardType =
     raw.type === 'pnl' || raw.type === 'daily_pnl' ? 'pnl'
     : raw.type === 'trade' ? 'trade'
@@ -86,7 +118,211 @@ function toFeedItem(raw: any, nameMap?: Map<string, string>): FeedItem {
     pnl,
     payload: raw.payload,
     rawType: raw.type,
+    source,
   }
+}
+
+function sourceLabel(source: FeedItem['source']) {
+  if (source === 'mine') return 'Your agent'
+  if (source === 'tracked') return 'Tracked'
+  if (source === 'news') return 'News'
+  return 'Following'
+}
+
+function getFilterGroup(item: FeedItem): FeedItem['source'] {
+  if (item.cardType === 'news') return 'news'
+  return item.source
+}
+
+function openFeedItem(item: FeedItem) {
+  const kind = item.cardType === 'news' && item.agent_id === 'market_news' ? 'news' : 'feed'
+  router.push({
+    pathname: '/feed-event/[id]' as any,
+    params: { id: item.id, kind },
+  })
+}
+
+function WebInlineArrow({ color }: { color: string }) {
+  return <Text style={[styles.webInlineArrow, { color }]}>{'>'}</Text>
+}
+
+function slugifyName(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+}
+
+function buildAgentHandleKey(ownerUsername: string | null | undefined, agentName: string | null | undefined) {
+  const owner = normalizeAgentKey(ownerUsername)
+  const slug = normalizeAgentKey(slugifyName(String(agentName ?? '')))
+  if (!owner || !slug) return ''
+  return `${owner}/${slug}`
+}
+
+function normalizeAgentKey(value: string | null | undefined) {
+  if (!value) return ''
+  return String(value).trim().toLowerCase()
+}
+
+function normalizeSymbol(value: string | null | undefined) {
+  return String(value ?? '').trim().toUpperCase()
+}
+
+function resolvePositionPnl(position: any): number | null {
+  const explicit =
+    position?.unrealizedPnlUsd ??
+    position?.unrealized_pnl ??
+    position?.unrealizedPnl ??
+    position?.unrealized ??
+    position?.floatingPnl ??
+    position?.pnl
+
+  if (explicit != null && Number.isFinite(Number(explicit))) {
+    return Number(explicit)
+  }
+
+  const current = Number(position?.currentPrice ?? position?.current_price ?? position?.markPrice ?? position?.mark_price)
+  const entry = Number(position?.entryPrice ?? position?.entry_price ?? position?.fillPrice ?? position?.fill_price)
+  const qty = Number(position?.qty ?? position?.size ?? position?.quantity ?? 0)
+  const sizeUsd = Number(position?.sizeUsd ?? position?.positionSize ?? 0)
+  const sideRaw = String(position?.side ?? position?.direction ?? '').toLowerCase()
+
+  const multiplier = sideRaw.includes('sell') || sideRaw.includes('short') ? -1 : 1
+
+  if (Number.isFinite(current) && Number.isFinite(entry) && Number.isFinite(qty) && qty !== 0) {
+    return (current - entry) * qty * multiplier
+  }
+
+  if (Number.isFinite(current) && Number.isFinite(entry) && entry > 0 && Number.isFinite(sizeUsd) && sizeUsd > 0) {
+    return multiplier * ((current - entry) / entry) * sizeUsd
+  }
+
+  return null
+}
+
+function resolveTradePnlFromPrices(params: {
+  actionLabel: string
+  direction?: string | null
+  qty?: number | null
+  entryPrice?: number | null
+  exitPrice?: number | null
+  currentPrice?: number | null
+}): number | null {
+  const { actionLabel, direction, qty, entryPrice, exitPrice, currentPrice } = params
+  const safeQty = Number(qty ?? 0)
+  if (!Number.isFinite(safeQty) || safeQty <= 0) return null
+
+  const sideRaw = String(direction ?? '').toLowerCase()
+  const multiplier = sideRaw.includes('short') || actionLabel === 'SOLD' ? -1 : 1
+
+  if ((actionLabel === 'SOLD' || actionLabel === 'CLOSED') && entryPrice != null && exitPrice != null) {
+    return (Number(exitPrice) - Number(entryPrice)) * safeQty * multiplier
+  }
+
+  if (actionLabel === 'BOUGHT' && entryPrice != null && currentPrice != null) {
+    return (Number(currentPrice) - Number(entryPrice)) * safeQty * multiplier
+  }
+
+  return null
+}
+
+function readNumeric(...values: any[]): number | null {
+  for (const value of values) {
+    if (value == null || value === '') continue
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) return numeric
+  }
+  return null
+}
+
+function resolveAgentSnapshotPnl(agent: any): number | null {
+  if (!agent) return null
+  const liveState = agent.live_state ?? agent.liveState ?? agent.state ?? agent.metadata?.live_state ?? agent.metadata?.liveState ?? null
+  const explicit = readNumeric(
+    liveState?.unrealizedPnlUsd,
+    liveState?.unrealized_pnl,
+    liveState?.unrealizedPnl,
+    liveState?.dailyPnlUsd,
+    liveState?.daily_pnl,
+    liveState?.dailyPnl,
+    liveState?.session_pnl,
+    agent?.unrealizedPnlUsd,
+    agent?.unrealized_pnl,
+    agent?.unrealizedPnl,
+    agent?.dailyPnlUsd,
+    agent?.daily_pnl,
+    agent?.dailyPnl,
+    agent?.session_pnl,
+    agent?.metadata?.unrealizedPnlUsd,
+    agent?.metadata?.unrealized_pnl,
+    agent?.metadata?.unrealizedPnl,
+    agent?.metadata?.dailyPnlUsd,
+    agent?.metadata?.daily_pnl,
+    agent?.metadata?.dailyPnl,
+    agent?.metadata?.session_pnl,
+  )
+  if (explicit != null) return explicit
+
+  const openPositions = Array.isArray(liveState?.openPositions)
+    ? liveState.openPositions
+    : Array.isArray(liveState?.positions)
+      ? liveState.positions
+      : Array.isArray(liveState?.open_positions)
+        ? liveState.open_positions
+        : []
+  const derivedPositionPnl = openPositions
+    .map((position: any) => resolvePositionPnl(position))
+    .filter((value: number | null): value is number => value != null)
+  if (derivedPositionPnl.length > 0) {
+    return derivedPositionPnl.reduce((sum, value) => sum + value, 0)
+  }
+
+  const recentTrades = Array.isArray(liveState?.recentTrades)
+    ? liveState.recentTrades
+    : Array.isArray(liveState?.recent_trades)
+      ? liveState.recent_trades
+      : []
+  const derivedTradePnl = recentTrades
+    .map((trade: any) => readNumeric(
+      trade?.pnlUsd,
+      trade?.pnl,
+      trade?.realizedPnlUsd,
+      trade?.realized_pnl,
+      trade?.realizedPnl,
+      trade?.unrealizedPnlUsd,
+      trade?.unrealized_pnl,
+      trade?.unrealizedPnl,
+    ))
+    .filter((value: number | null): value is number => value != null)
+  if (derivedTradePnl.length > 0) return derivedTradePnl[0]
+
+  return null
+}
+
+function toShareTrade(item: FeedItem): TradeData | null {
+  if (item.cardType === 'pnl' && item.pnl) {
+    return {
+      pair: item.pnl.symbol ? `${item.pnl.symbol}/USD` : item.agentName,
+      direction: item.pnl.side ?? 'LONG',
+      leverage: '',
+      pnl: String(item.pnl.pnl),
+      pnlPct: String(item.pnl.pct ?? 0),
+      entryPrice: item.payload?.entry_price != null ? String(item.payload.entry_price) : '',
+      markPrice: item.payload?.mark_price != null ? String(item.payload.mark_price) : '',
+    }
+  }
+
+  if (item.cardType === 'trade' && item.payload?.pnl != null) {
+    return {
+      pair: item.payload?.symbol ? `${item.payload.symbol}/USD` : item.agentName,
+      direction: item.payload?.direction ?? 'LONG',
+      leverage: item.payload?.leverage ? String(item.payload.leverage) : '',
+      pnl: String(item.payload.pnl),
+      pnlPct: String(item.payload?.pnl_pct ?? 0),
+      entryPrice: item.payload?.entry_price != null ? String(item.payload.entry_price) : '',
+      markPrice: item.payload?.exit_price != null ? String(item.payload.exit_price) : '',
+    }
+  }
+
+  return null
 }
 
 // ── Avatar ─────────────────────────────────────────────────────────────────────
@@ -98,26 +334,133 @@ function agentColor(name: string): string {
   return palette[Math.abs(h) % palette.length]
 }
 
-function AgentAvatar({ name }: { name: string }) {
+function AgentAvatar({ name, size = 44 }: { name: string; size?: number }) {
   const color = agentColor(name)
   return (
-    <View style={[styles.avatar, { backgroundColor: color + '22', borderColor: color }]}>
-      <Text style={[styles.avatarText, { color }]}>{name[0]?.toUpperCase() ?? 'A'}</Text>
+    <View
+      style={[
+        styles.avatar,
+        {
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: color + '22',
+          borderColor: color,
+        },
+      ]}
+    >
+      <Text style={[styles.avatarText, { color, fontSize: size >= 40 ? 18 : 15 }]}>{name[0]?.toUpperCase() ?? 'A'}</Text>
     </View>
+  )
+}
+
+function LeaderboardCard({
+  entry,
+  rank,
+}: {
+  entry: LeaderboardEntry
+  rank: number
+}) {
+  const isPositive = entry.total_pnl >= 0
+  const pnlColor = isPositive ? Colors.accentGreen : Colors.accentRed
+  const label = entry.total_agents === 1 ? 'agent' : 'agents'
+  const displayName = entry.display_name?.trim() || entry.username
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      style={styles.leaderboardCard}
+      onPress={() => router.push({ pathname: '/profile/[username]' as any, params: { username: entry.username, uid: entry.uid } })}
+    >
+      <View style={styles.leaderboardCardInner}>
+        <View style={styles.leaderboardAvatarWrap}>
+          <AgentAvatar name={entry.username || 'U'} />
+          <View style={styles.rankBadge}>
+            <Text style={styles.rankBadgeText}>{rank}</Text>
+          </View>
+        </View>
+        <View style={styles.leaderboardCopy}>
+          <Text style={styles.leaderboardName} numberOfLines={1}>
+            {displayName}
+          </Text>
+          <Text style={styles.leaderboardHandle} numberOfLines={1}>@{entry.username}</Text>
+          <Text style={styles.leaderboardMeta} numberOfLines={1}>
+            {entry.total_agents} {label}
+            <Text style={styles.leaderboardDot}> · </Text>
+            <Text style={[styles.leaderboardInlinePnl, { color: pnlColor }]}>
+              {entry.total_pnl >= 0 ? '+' : '-'}${Math.abs(entry.total_pnl).toLocaleString('en-US', { maximumFractionDigits: 0 })}
+            </Text>
+            <Text style={styles.leaderboardMetaMuted}> this week</Text>
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
   )
 }
 
 // ── Cards ──────────────────────────────────────────────────────────────────────
 
-function PnLCard({ item }: { item: FeedItem }) {
-  const data = item.pnl
-  const isPositive = !data || data.pnl >= 0
-  const pnlColor = isPositive ? Colors.accentGreen : Colors.accentRed
+function TrackedAgentCard({ agent }: { agent: any }) {
+  const resolvedPnl = resolveAgentSnapshotPnl(agent)
+  const unrealized = Number(resolvedPnl ?? 0)
+  const hasPnl = resolvedPnl != null
+  const isPositive = unrealized >= 0
+  const color = hasPnl ? (isPositive ? Colors.accentGreen : Colors.accentRed) : Colors.textMuted
+  const symbol = String(agent.coin ?? agent.metadata?.coin ?? agent.live_state?.coin ?? '').toUpperCase()
+  const statusLabel = agent.status === 'connected' ? 'LIVE' : 'TRACKED'
+  const ownerUsername = String(agent.owner_username ?? agent.metadata?.owner_username ?? '').trim()
+  const handle = ownerUsername
+    ? `@${ownerUsername}/${slugifyName(agent.name ?? 'tracked-agent')}`
+    : (agent.name ?? 'Tracked agent')
 
   return (
     <TouchableOpacity
       activeOpacity={0.75}
-      onPress={() => router.push(`/agent/${item.agent_id}` as any)}
+      onPress={() => router.push(`/agent/${agent.id}` as any)}
+      style={styles.tradeFeedRow}
+    >
+      <View style={styles.tradeFeedIdentity}>
+        <AgentAvatar name={agent.name ?? 'A'} size={36} />
+        <View style={styles.tradeFeedCopy}>
+          <View style={styles.tradeFeedTopLine}>
+            <Text style={styles.tradeFeedHandle} numberOfLines={1}>
+              {handle}
+            </Text>
+          </View>
+          <View style={styles.tradeFeedBottomLine}>
+            <Text style={[styles.tradeFeedAction, { color: Colors.accentAmber }]}>
+              {statusLabel}
+            </Text>
+            {symbol ? <Text style={styles.tradeFeedSymbol}>{symbol}</Text> : null}
+            <Text style={styles.tradeFeedTime}>· {formatTime(agentSnapshotActivityIso(agent) ?? new Date().toISOString())}</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.tradeFeedRight}>
+        {hasPnl ? (
+          <Text style={[styles.tradeFeedPnl, { color }]}>
+            {unrealized >= 0 ? '+' : '-'}${Math.abs(unrealized).toFixed(2)}
+          </Text>
+        ) : (
+          <Text style={styles.tradeFeedTime}>watching</Text>
+        )}
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+function PnLCard({ item, onShare }: { item: FeedItem; onShare: () => void }) {
+  const data = item.pnl
+  const isPositive = !data || data.pnl >= 0
+  const pnlColor = isPositive ? Colors.accentGreen : Colors.accentRed
+  const symbol = item.payload?.symbol ?? null
+  const details = item.payload?.details ?? item.content
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={() => openFeedItem(item)}
       style={styles.card}
     >
       <View style={styles.cardTopRow}>
@@ -126,6 +469,9 @@ function PnLCard({ item }: { item: FeedItem }) {
           <View style={{ gap: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={styles.agentName}>{item.agentName}</Text>
+              <View style={styles.sourceBadge}>
+                <Text style={styles.sourceBadgeText}>{sourceLabel(item.source)}</Text>
+              </View>
               {data?.symbol && (
                 <View style={styles.symbolBadge}>
                   <Text style={styles.symbolText}>{data.symbol}</Text>
@@ -138,21 +484,34 @@ function PnLCard({ item }: { item: FeedItem }) {
       </View>
 
       {data && (
-        <View style={styles.pnlRow}>
-          <Text style={[styles.pnlDollar, { color: pnlColor }]}>
-            {data.pnl >= 0 ? '+$' : '-$'}{Math.abs(data.pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </Text>
-          {data.pct !== 0 && (
-            <Text style={[styles.pnlPct, { color: pnlColor }]}>
-              {data.pct > 0 ? '+' : ''}{data.pct.toFixed(2)}%
+        <>
+          <View style={styles.tradeMetaWrap}>
+            <View style={[styles.tradeBadge, { backgroundColor: 'rgba(45,212,191,0.12)' }]}>
+              <Text style={[styles.tradeBadgeText, { color: Colors.accentGreen }]}>PNL</Text>
+            </View>
+            {symbol ? <Text style={styles.tradeSymbol}>{symbol}</Text> : null}
+            <Text style={[styles.tradePnl, { color: pnlColor }]}>
+              {data.pnl >= 0 ? '+$' : '-$'}{Math.abs(data.pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </Text>
-          )}
-        </View>
+            {data.pct !== 0 && (
+              <Text style={[styles.tradePnl, { color: pnlColor }]}>
+                {data.pct > 0 ? '+' : ''}{data.pct.toFixed(2)}%
+              </Text>
+            )}
+          </View>
+
+          {details ? <Text style={styles.tradeDetails} numberOfLines={3}>{details}</Text> : null}
+        </>
       )}
 
       <View style={styles.cardTypeRow}>
-        <Text style={[styles.cardTypeText, { color: Colors.accentGreen }]}>◆ Unrealized PnL</Text>
-        <Text style={styles.cardChevron}>›</Text>
+        <Text style={[styles.cardTypeText, { color: Colors.accentGreen }]}>◆ PnL Snapshot</Text>
+        <View style={styles.cardActions}>
+          <TouchableOpacity style={styles.inlineAction} onPress={onShare} activeOpacity={0.8}>
+            <Text style={styles.inlineActionText}>Share card</Text>
+          </TouchableOpacity>
+          <Text style={styles.cardChevron}>›</Text>
+        </View>
       </View>
     </TouchableOpacity>
   )
@@ -162,18 +521,22 @@ function UpdateCard({ item }: { item: FeedItem }) {
   return (
     <TouchableOpacity
       activeOpacity={0.75}
-      onPress={() => router.push(`/agent/${item.agent_id}` as any)}
+      onPress={() => openFeedItem(item)}
       style={styles.card}
     >
       <View style={styles.cardTopRow}>
         <View style={styles.agentRow}>
           <AgentAvatar name={item.agentName} />
-          <Text style={styles.agentName}>{item.agentName}</Text>
+          <View style={{ gap: 3 }}>
+            <Text style={styles.agentName}>{item.agentName}</Text>
+            <Text style={styles.feedMetaText}>{sourceLabel(item.source)}</Text>
+          </View>
         </View>
         <Text style={styles.timestamp}>{formatTime(item.created_at)}</Text>
       </View>
-      <Text style={styles.cardContent}>{item.content}</Text>
+      <Text style={styles.cardContent} numberOfLines={4}>{item.content}</Text>
       <View style={styles.cardTypeRow}>
+        <Text style={[styles.cardTypeText, styles.cardTypeMuted]}>◆ Update</Text>
         <Text style={styles.cardChevron}>›</Text>
       </View>
     </TouchableOpacity>
@@ -187,53 +550,192 @@ const TRADE_ACTION_STYLES: Record<string, { label: string; color: string; bg: st
   TAKE_PROFIT: { label: 'TAKE PROFIT',color: Colors.accentGreen, bg: 'rgba(45,212,191,0.12)' },
 }
 
-function TradeCard({ item }: { item: FeedItem }) {
+function TradeCard({ item, agentSnapshot }: { item: FeedItem; agentSnapshot?: FeedAgentSnapshot | null }) {
   const p = item.payload ?? {}
   const action = String(p.action ?? 'TRADE').toUpperCase()
   const style = TRADE_ACTION_STYLES[action] ?? { label: action, color: Colors.textMuted, bg: 'rgba(255,255,255,0.06)' }
   const symbol = p.symbol ?? null
-  const direction = p.direction ?? null
-  const price = p.entry_price ?? p.exit_price ?? null
-  const pnl: number | null = p.pnl != null ? Number(p.pnl) : null
-  const details = p.details ?? null
+  const actionLabel = action === 'ENTRY' ? 'BOUGHT' : action === 'EXIT' ? 'SOLD' : action === 'TAKE_PROFIT' ? 'CLOSED' : style.label
+  const isCloseTrade =
+    action === 'EXIT' ||
+    action === 'TAKE_PROFIT' ||
+    action === 'STOP_HIT' ||
+    actionLabel === 'SOLD' ||
+    actionLabel === 'CLOSED'
+  const unrealizedPnlRaw = readNumeric(
+    p.unrealizedPnlUsd,
+    p.unrealized_pnl,
+    p.unrealizedPnl,
+    p.pnl_unrealized,
+  )
+  const realizedPnlRaw = readNumeric(
+    p.realizedPnlUsd,
+    p.realized_pnl,
+    p.realizedPnl,
+    p.pnl,
+    p.session_pnl,
+    p.daily_pnl,
+  )
+  const liveState = agentSnapshot?.live_state ?? (agentSnapshot as any)?.liveState ?? (agentSnapshot as any)?.state ?? null
+  const agentLevelUnrealizedPnl = readNumeric(
+    liveState?.unrealizedPnlUsd,
+    liveState?.unrealized_pnl,
+    liveState?.unrealizedPnl,
+    liveState?.pnl,
+    liveState?.session_pnl,
+    (agentSnapshot as any)?.unrealizedPnlUsd,
+    (agentSnapshot as any)?.unrealized_pnl,
+    (agentSnapshot as any)?.session_pnl,
+  )
+  const agentLevelRealizedPnl = readNumeric(
+    liveState?.realizedPnlUsd,
+    liveState?.realized_pnl,
+    liveState?.realizedPnl,
+    liveState?.dailyPnlUsd,
+    liveState?.daily_pnl,
+    (agentSnapshot as any)?.dailyPnlUsd,
+    (agentSnapshot as any)?.daily_pnl,
+  )
+  const openPositions = Array.isArray(liveState?.openPositions)
+    ? liveState.openPositions
+    : Array.isArray(liveState?.positions)
+      ? liveState.positions
+      : Array.isArray(liveState?.open_positions)
+        ? liveState.open_positions
+        : []
+  const recentTrades = Array.isArray(liveState?.recentTrades)
+    ? liveState.recentTrades
+    : Array.isArray(liveState?.recent_trades)
+      ? liveState.recent_trades
+      : []
+  const targetSymbol = normalizeSymbol(symbol ?? p.tokenSymbol ?? p.token ?? liveState?.coin ?? agentSnapshot?.name)
+  const matchingPosition = openPositions.find((position: any) => {
+    const positionSymbol = normalizeSymbol(position?.symbol ?? position?.tokenSymbol ?? position?.token ?? position?.pair)
+    return positionSymbol && positionSymbol === targetSymbol
+  }) ?? openPositions[0] ?? null
+  const matchingRecentTrade = recentTrades.find((trade: any) => {
+    const tradeSymbol = normalizeSymbol(trade?.symbol ?? trade?.tokenSymbol ?? trade?.token ?? trade?.pair)
+    return tradeSymbol && tradeSymbol === targetSymbol
+  }) ?? recentTrades[0] ?? null
+  const positionUnrealizedPnl = matchingPosition ? resolvePositionPnl(matchingPosition) : null
+  const currentPrice = readNumeric(
+    p.current_price,
+    p.currentPrice,
+    p.mark_price,
+    p.markPrice,
+    matchingPosition?.currentPrice,
+    matchingPosition?.current_price,
+    matchingPosition?.markPrice,
+    matchingPosition?.mark_price,
+    liveState?.priceUsd,
+    liveState?.lastPrice,
+    liveState?.markPrice,
+    liveState?.mark_price,
+  )
+  const payloadQty = readNumeric(
+    p.qty,
+    p.quantity,
+    p.size,
+    p.position_size,
+  )
+  const payloadEntryPrice = readNumeric(
+    p.entry_price,
+    p.entryPrice,
+    p.fillPrice,
+    p.fill_price,
+    matchingPosition?.entryPrice,
+    matchingPosition?.entry_price,
+  )
+  const payloadExitPrice = readNumeric(
+    p.exit_price,
+    p.exitPrice,
+    matchingRecentTrade?.exitPrice,
+    matchingRecentTrade?.exit_price,
+  )
+  const inferredTradePnl = resolveTradePnlFromPrices({
+    actionLabel,
+    direction: p.direction ?? matchingPosition?.direction ?? matchingPosition?.side ?? null,
+    qty: payloadQty ?? matchingPosition?.qty ?? matchingPosition?.size ?? matchingPosition?.quantity ?? null,
+    entryPrice: payloadEntryPrice,
+    exitPrice: payloadExitPrice,
+    currentPrice,
+  })
+  const recentTradePnl = readNumeric(
+    matchingRecentTrade?.pnlUsd,
+    matchingRecentTrade?.pnl,
+    matchingRecentTrade?.realizedPnlUsd,
+    matchingRecentTrade?.realizedPnl,
+    matchingRecentTrade?.unrealizedPnlUsd,
+    matchingRecentTrade?.unrealizedPnl,
+  )
+  const liveUnrealizedPnl = readNumeric(
+    inferredTradePnl,
+    positionUnrealizedPnl,
+    liveState?.unrealizedPnlUsd,
+    liveState?.unrealized_pnl,
+    liveState?.unrealizedPnl,
+    liveState?.pnl,
+    liveState?.dailyPnlUsd,
+    liveState?.daily_pnl,
+    liveState?.session_pnl,
+    (agentSnapshot as any)?.unrealizedPnlUsd,
+    (agentSnapshot as any)?.unrealized_pnl,
+    recentTradePnl,
+    agentLevelUnrealizedPnl,
+  )
+  const liveRealizedPnl = readNumeric(
+    inferredTradePnl,
+    liveState?.realizedPnlUsd,
+    liveState?.realized_pnl,
+    liveState?.realizedPnl,
+    p.pnlUsd,
+    p.pnl_usd,
+    recentTradePnl,
+    liveState?.dailyPnlUsd,
+    liveState?.daily_pnl,
+    liveState?.session_pnl,
+    (agentSnapshot as any)?.dailyPnlUsd,
+    (agentSnapshot as any)?.daily_pnl,
+    (agentSnapshot as any)?.session_pnl,
+    agentLevelRealizedPnl,
+  )
+  const pnlRaw = isCloseTrade
+    ? (realizedPnlRaw ?? liveRealizedPnl ?? unrealizedPnlRaw ?? liveUnrealizedPnl)
+    : (unrealizedPnlRaw ?? liveUnrealizedPnl ?? realizedPnlRaw ?? liveRealizedPnl)
+  const pnlValue = pnlRaw != null ? Number(pnlRaw) : null
+  const pnl: number | null = pnlValue != null && Number.isFinite(pnlValue) ? pnlValue : null
+  const displayPnl = pnl
 
   return (
     <TouchableOpacity
       activeOpacity={0.75}
-      onPress={() => router.push(`/agent/${item.agent_id}` as any)}
-      style={styles.card}
+      onPress={() => openFeedItem(item)}
+      style={styles.tradeFeedRow}
     >
-      <View style={styles.cardTopRow}>
-        <View style={styles.agentRow}>
-          <AgentAvatar name={item.agentName} />
-          <Text style={styles.agentName}>{item.agentName}</Text>
-        </View>
-        <Text style={styles.timestamp}>{formatTime(item.created_at)}</Text>
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <View style={[styles.tradeBadge, { backgroundColor: style.bg }]}>
-          <Text style={[styles.tradeBadgeText, { color: style.color }]}>{style.label}</Text>
-        </View>
-        {symbol && <Text style={styles.tradeSymbol}>{symbol}</Text>}
-        {direction && (
-          <View style={[styles.tradeBadge, { backgroundColor: direction === 'LONG' ? 'rgba(45,212,191,0.1)' : 'rgba(239,68,68,0.1)' }]}>
-            <Text style={[styles.tradeBadgeText, { color: direction === 'LONG' ? Colors.accentGreen : Colors.accentRed }]}>{direction}</Text>
+      <View style={styles.tradeFeedIdentity}>
+        <AgentAvatar name={item.agentName} size={36} />
+        <View style={styles.tradeFeedCopy}>
+          <View style={styles.tradeFeedTopLine}>
+            <Text style={styles.tradeFeedHandle} numberOfLines={1}>
+              {p.owner_username ? `@${p.owner_username}/${slugifyName(item.agentName)}` : item.agentName}
+            </Text>
           </View>
-        )}
-        {price != null && <Text style={styles.tradePrice}>@ ${Number(price).toLocaleString()}</Text>}
-        {pnl != null && (
-          <Text style={[styles.tradePnl, { color: pnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
-            {pnl >= 0 ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
-          </Text>
-        )}
+          <View style={styles.tradeFeedBottomLine}>
+            <Text style={[styles.tradeFeedAction, { color: style.color }]}>
+              {actionLabel}
+            </Text>
+            {symbol ? <Text style={styles.tradeFeedSymbol}>{symbol}</Text> : null}
+            <Text style={styles.tradeFeedTime}>· {formatTime(item.created_at)}</Text>
+          </View>
+        </View>
       </View>
 
-      {details && <Text style={styles.tradeDetails} numberOfLines={3}>{details}</Text>}
-
-      <View style={styles.cardTypeRow}>
-        <Text style={[styles.cardTypeText, { color: style.color }]}>◆ Trade</Text>
-        <Text style={styles.cardChevron}>›</Text>
+      <View style={styles.tradeFeedRight}>
+        {displayPnl != null ? (
+          <Text style={[styles.tradeFeedPnl, { color: displayPnl >= 0 ? Colors.accentGreen : Colors.accentRed }]}>
+            {displayPnl >= 0 ? '+' : '-'}${Math.abs(displayPnl).toFixed(2)}
+          </Text>
+        ) : null}
       </View>
     </TouchableOpacity>
   )
@@ -242,64 +744,65 @@ function TradeCard({ item }: { item: FeedItem }) {
 function NewsSentimentCard({ item }: { item: FeedItem }) {
   const p = item.payload ?? {}
   const headline: string = p.headline ?? item.content
-  const summary: string | null = p.summary ?? null
   const sentiment: 'bullish' | 'bearish' | 'neutral' = p.sentiment ?? 'neutral'
   const markets: string[] = p.markets ?? []
   const source: string | null = p.source ?? null
-  const sentimentColor = sentiment === 'bullish' ? Colors.accentGreen : sentiment === 'bearish' ? Colors.accentRed : Colors.textMuted
-  const sentimentBg = sentiment === 'bullish' ? 'rgba(52,211,153,0.1)' : sentiment === 'bearish' ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.06)'
-  const sentimentLabel = sentiment === 'bullish' ? '▲ Bullish' : sentiment === 'bearish' ? '▼ Bearish' : '● Neutral'
+  const sentimentColor = sentiment === 'bullish' ? Colors.accentGreen : sentiment === 'bearish' ? Colors.accentRed : Colors.textSecondary
+  const sentimentBg = sentiment === 'bullish' ? 'rgba(45,212,191,0.12)' : sentiment === 'bearish' ? 'rgba(239,68,68,0.10)' : 'rgba(255,255,255,0.05)'
+  const sentimentLabel = sentiment === 'bullish' ? 'Bullish' : sentiment === 'bearish' ? 'Bearish' : 'Neutral'
 
   return (
     <TouchableOpacity
       activeOpacity={0.75}
-      onPress={() => router.push(`/agent/${item.agent_id}` as any)}
-      style={[styles.card, { borderLeftWidth: 3, borderLeftColor: sentimentColor }]}
+      onPress={() => openFeedItem(item)}
+      style={styles.card}
     >
       <View style={styles.cardTopRow}>
         <View style={styles.agentRow}>
-          <View style={[styles.avatar, { backgroundColor: 'rgba(96,165,250,0.15)', borderColor: '#60a5fa' }]}>
-            <Text style={{ fontSize: 13, color: '#60a5fa' }}>📰</Text>
-          </View>
-          <View style={{ gap: 1 }}>
+          <AgentAvatar name={item.agentName} />
+          <View style={{ gap: 2 }}>
             <Text style={styles.agentName}>{item.agentName}</Text>
-            {source && <Text style={{ fontSize: 11, color: Colors.textMuted }}>{source}</Text>}
+            <Text style={styles.feedMetaText}>{sourceLabel(item.source)}{source ? ` · ${source}` : ''}</Text>
           </View>
         </View>
         <Text style={styles.timestamp}>{formatTime(item.created_at)}</Text>
       </View>
 
-      <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.textPrimary, lineHeight: 19, marginBottom: 4 }}>
+      <Text style={styles.newsHeadline}>
         {headline}
       </Text>
-      {summary && (
-        <Text style={{ fontSize: 13, color: Colors.textSecondary, lineHeight: 18, marginBottom: 8 }} numberOfLines={3}>
-          {summary}
-        </Text>
-      )}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <View style={styles.newsMetaRow}>
         <View style={[styles.tradeBadge, { backgroundColor: sentimentBg }]}>
           <Text style={[styles.tradeBadgeText, { color: sentimentColor }]}>{sentimentLabel}</Text>
         </View>
         {markets.map((m) => (
-          <View key={m} style={[styles.tradeBadge, { backgroundColor: 'rgba(255,255,255,0.06)' }]}>
+          <View key={m} style={[styles.tradeBadge, styles.newsTickerBadge]}>
             <Text style={[styles.tradeBadgeText, { color: Colors.textSecondary }]}>{m}</Text>
           </View>
         ))}
       </View>
 
-      <View style={[styles.cardTypeRow, { marginTop: 8 }]}>
-        <Text style={[styles.cardTypeText, { color: '#60a5fa' }]}>◆ News Sentiment</Text>
+      <View style={[styles.cardTypeRow, styles.newsFooterRow]}>
+        <Text style={[styles.cardTypeText, styles.cardTypeNews]}>◆ News Sentiment</Text>
         <Text style={styles.cardChevron}>›</Text>
       </View>
     </TouchableOpacity>
   )
 }
 
-function renderCard(item: FeedItem) {
-  if (item.cardType === 'pnl' && item.pnl != null) return <PnLCard item={item} />
-  if (item.cardType === 'trade') return <TradeCard item={item} />
+function renderCard(item: FeedItem, onShare: (item: FeedItem) => void, agentSnapshots?: Record<string, FeedAgentSnapshot>) {
+  const normalizedName = normalizeAgentKey(item.agentName)
+  const normalizedSlug = normalizeAgentKey(slugifyName(item.agentName))
+  const handleKey = buildAgentHandleKey(item.payload?.owner_username, item.agentName)
+  const resolvedAgentSnapshot =
+    agentSnapshots?.[item.agent_id] ??
+    agentSnapshots?.[handleKey] ??
+    agentSnapshots?.[normalizedName] ??
+    agentSnapshots?.[normalizedSlug]
+
+  if (item.cardType === 'pnl' && item.pnl != null) return <PnLCard item={item} onShare={() => onShare(item)} />
+  if (item.cardType === 'trade') return <TradeCard item={item} agentSnapshot={resolvedAgentSnapshot ?? null} />
   if (item.cardType === 'news') return <NewsSentimentCard item={item} />
   return <UpdateCard item={item} />
 }
@@ -455,81 +958,23 @@ function PostPnlModal({
   )
 }
 
-// ── Tracked Slug Card ──────────────────────────────────────────────────────────
-
-function TrackedSlugCard({ agent }: { agent: { id: string; name: string; status: string; last_seen: string | null; live_state: Record<string, any> | null } }) {
-  const pnl: number = agent.live_state?.unrealizedPnlUsd ?? 0
-  const dailyPnl: number = agent.live_state?.dailyPnlUsd ?? 0
-  const isPos = pnl >= 0
-  const hasPnl = agent.live_state?.unrealizedPnlUsd != null
-  const isOnline = agent.status === 'connected'
-  const color = agentColor(agent.name)
-
-  return (
-    <TouchableOpacity
-      style={trackedStyles.card}
-      onPress={() => router.push(`/agent/${agent.id}` as any)}
-      activeOpacity={0.75}
-    >
-      <View style={trackedStyles.left}>
-        <View style={[trackedStyles.avatar, { backgroundColor: color + '22', borderColor: isOnline ? Colors.accentGreen : color }]}>
-          <Text style={[trackedStyles.avatarText, { color }]}>{agent.name[0]?.toUpperCase() ?? '?'}</Text>
-          {isOnline && <View style={trackedStyles.onlineDot} />}
-        </View>
-        <View style={trackedStyles.info}>
-          <Text style={trackedStyles.name} numberOfLines={1}>{agent.name}</Text>
-          <Text style={trackedStyles.statusText}>{isOnline ? 'Live' : 'Offline'}</Text>
-        </View>
-      </View>
-      <View style={trackedStyles.right}>
-        {hasPnl ? (
-          <>
-            <Text style={[trackedStyles.pnl, { color: isPos ? Colors.accentGreen : Colors.accentRed }]}>
-              {isPos ? '+$' : '-$'}{Math.abs(pnl).toFixed(2)}
-            </Text>
-            <Text style={trackedStyles.pnlLabel}>unrealized</Text>
-          </>
-        ) : (
-          <Text style={trackedStyles.pnlMuted}>No data</Text>
-        )}
-      </View>
-    </TouchableOpacity>
-  )
-}
-
-function TrackedSlugsSection({ agentIds }: { agentIds: string[] }) {
-  const [agents, setAgents] = useState<any[]>([])
-
-  useEffect(() => {
-    return subscribeToTrackedAgentDocs(agentIds, setAgents)
-  }, [agentIds.join(',')])
-
-  if (agents.length === 0) return null
-
-  return (
-    <View style={trackedStyles.section}>
-      <View style={trackedStyles.sectionHeader}>
-        <Text style={trackedStyles.sectionLabel}>TRACKING</Text>
-      </View>
-      <View style={trackedStyles.list}>
-        {agents.map((a) => <TrackedSlugCard key={a.id} agent={a} />)}
-      </View>
-    </View>
-  )
-}
-
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export default function FeedScreen() {
   const isDesktopWeb = useDesktopWebLayout()
-  const { user } = useAuthStore()
+  const { user, walletAddress, walletProvider } = useAuthStore()
+  const leaderboardIntroOpacity = useRef(new Animated.Value(0)).current
   const [followingUids, setFollowingUids] = useState<string[]>([])
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  const [usernameMap, setUsernameMap] = useState<Record<string, string>>({})
   const [trackedAgentIds, setTrackedAgentIds] = useState<string[]>([])
   const [trackedAgentDocs, setTrackedAgentDocs] = useState<any[]>([])
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
   const [followingFeed, setFollowingFeed] = useState<FeedItem[]>([])
   const [trackedFeed, setTrackedFeed] = useState<FeedItem[]>([])
   const [userAgents, setUserAgents] = useState<any[]>([])
+  const [ownedAgents, setOwnedAgents] = useState<any[]>([])
+  const [feedAgentSnapshots, setFeedAgentSnapshots] = useState<Record<string, FeedAgentSnapshot>>({})
   const [newsFeed, setNewsFeed] = useState<FeedItem[]>([])
   const [myAgentsFeed, setMyAgentsFeed] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -537,8 +982,16 @@ export default function FeedScreen() {
   const [showSharingPrompt, setShowSharingPrompt] = useState(false)
   const [showPostModal, setShowPostModal] = useState(false)
   const [posting, setPosting] = useState(false)
+  const [feedFilter, setFeedFilter] = useState<'all' | 'mine' | 'following' | 'tracked' | 'news'>('all')
+  const [shareItem, setShareItem] = useState<FeedItem | null>(null)
 
   // Load sharing pref once
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true)
+    }
+  }, [])
+
   useEffect(() => {
     if (!user) return
     getPnlSharingPref(user.uid).then((pref) => {
@@ -557,6 +1010,25 @@ export default function FeedScreen() {
       setFollowingUids(ids)
     })
   }, [user?.uid])
+
+  useEffect(() => {
+    if (!user || followingUids.length === 0) {
+      setLeaderboard([])
+      return
+    }
+    return subscribeToFollowingLeaderboard(followingUids, (rows) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut)
+      setLeaderboard(rows)
+    })
+  }, [user?.uid, followingUids.join(',')])
+
+  useEffect(() => {
+    Animated.timing(leaderboardIntroOpacity, {
+      toValue: leaderboard.length > 0 ? 1 : 0,
+      duration: 220,
+      useNativeDriver: true,
+    }).start()
+  }, [leaderboard.length, leaderboardIntroOpacity])
 
   useEffect(() => {
     if (!user) return
@@ -582,10 +1054,80 @@ export default function FeedScreen() {
     const unsub = subscribeToPublicFeed(followingUids, (events) => {
       // Skip events from agents already shown in the TRACKING section
       const filtered = events.filter((e) => !trackedSet.has(String(e.agent_id ?? '')))
-      setFollowingFeed(filtered.map((e) => toFeedItem(e, nameMap)))
+      setFollowingFeed(filtered.map((e) => toFeedItem(e, nameMap, 'following')))
     })
     return unsub
   }, [user?.uid, followingUids.join(','), trackedAgentIds.join(',')])
+
+  useEffect(() => {
+    const ids = Array.from(new Set([...followingFeed, ...trackedFeed, ...myAgentsFeed]
+      .map((item) => item.user_id)
+      .filter(Boolean)))
+    if (ids.length === 0) return
+    void batchGetUsernames(ids).then((map) => {
+      setUsernameMap((prev) => ({ ...prev, ...map }))
+    })
+  }, [followingFeed, trackedFeed, myAgentsFeed])
+
+  useEffect(() => {
+    const agentIds = Array.from(new Set(
+      [...followingFeed, ...trackedFeed, ...myAgentsFeed]
+        .filter((item) => item.cardType === 'trade')
+        .map((item) => item.agent_id)
+        .filter(Boolean)
+    ))
+
+    if (agentIds.length === 0) {
+      setFeedAgentSnapshots({})
+      return
+    }
+
+    let active = true
+    void fetchAgentsByIds(agentIds).then((rows) => {
+      if (!active) return
+      const next: Record<string, FeedAgentSnapshot> = {}
+
+      ;[...ownedAgents, ...userAgents, ...trackedAgentDocs].forEach((row) => {
+        if (!row?.id) return
+        next[row.id] = row
+        const normalizedName = normalizeAgentKey(row.name)
+        const normalizedSlug = normalizeAgentKey(slugifyName(row.name ?? ''))
+        const handleKey = buildAgentHandleKey(row.owner_username, row.name)
+        if (normalizedName) next[normalizedName] = row
+        if (normalizedSlug) next[normalizedSlug] = row
+        if (handleKey) next[handleKey] = row
+      })
+
+      rows.forEach((row) => {
+        next[row.id] = row
+        const normalizedName = normalizeAgentKey(row.name)
+        const normalizedSlug = normalizeAgentKey(slugifyName(row.name ?? ''))
+        const handleKey = buildAgentHandleKey(row.owner_username, row.name)
+        if (normalizedName) next[normalizedName] = row
+        if (normalizedSlug) next[normalizedSlug] = row
+        if (handleKey) next[handleKey] = row
+      })
+      setFeedAgentSnapshots(next)
+    }).catch(() => {
+      if (!active) return
+      const fallback: Record<string, FeedAgentSnapshot> = {}
+      ;[...ownedAgents, ...userAgents, ...trackedAgentDocs].forEach((row) => {
+        if (!row?.id) return
+        fallback[row.id] = row
+        const normalizedName = normalizeAgentKey(row.name)
+        const normalizedSlug = normalizeAgentKey(slugifyName(row.name ?? ''))
+        const handleKey = buildAgentHandleKey(row.owner_username, row.name)
+        if (normalizedName) fallback[normalizedName] = row
+        if (normalizedSlug) fallback[normalizedSlug] = row
+        if (handleKey) fallback[handleKey] = row
+      })
+      setFeedAgentSnapshots(fallback)
+    })
+
+    return () => {
+      active = false
+    }
+  }, [followingFeed, trackedFeed, myAgentsFeed, ownedAgents, userAgents, trackedAgentDocs])
 
   useEffect(() => {
     if (!user) return
@@ -595,26 +1137,23 @@ export default function FeedScreen() {
     }
     const nameMap = new Map(trackedAgentDocs.map((a) => [a.id, a.name]))
     const unsub = subscribeToTrackedAgentFeed(trackedAgentIds, (events) => {
-      setTrackedFeed(events.map((e) => toFeedItem(e, nameMap)))
+      setTrackedFeed(events.map((e) => toFeedItem(e, nameMap, 'tracked')))
     })
     return unsub
   }, [user?.uid, trackedAgentIds.join(','), trackedAgentDocs])
 
-  // Subscribe to user's own claude_managed agents' feed_events
+  // Subscribe to the user's own public feed events from all owned agents.
   useEffect(() => {
-    const myAgentIds = userAgents
-      .filter((a) => a.agent_type === 'claude_managed' || a.metadata?.agent_type === 'claude_managed')
-      .map((a) => a.id)
-    if (myAgentIds.length === 0) { setMyAgentsFeed([]); return }
+    if (!user) return
     const nameMap = new Map(userAgents.map((a) => [a.id, a.name]))
-    return subscribeToTrackedAgentFeed(myAgentIds, (events) => {
-      setMyAgentsFeed(events.map((e) => toFeedItem(e, nameMap)))
+    return subscribeToMyFeed(user.uid, (events) => {
+      setMyAgentsFeed(events.map((e) => toFeedItem(e, nameMap, 'mine')))
     })
-  }, [userAgents.map((a) => a.id).join(',')])
+  }, [user?.uid, userAgents.map((a) => a.id).join(',')])
 
   useEffect(() => {
     const seen = new Set<string>()
-    const merged = [...followingFeed, ...myAgentsFeed, ...newsFeed]
+    const merged = [...followingFeed, ...trackedFeed, ...myAgentsFeed, ...newsFeed]
       .filter((item) => { if (seen.has(item.id)) return false; seen.add(item.id); return true })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     setFeedItems(merged)
@@ -634,6 +1173,11 @@ export default function FeedScreen() {
         return prev
       })
     })
+  }, [user?.uid])
+
+  useEffect(() => {
+    if (!user) return
+    return subscribeToUserAgents(user.uid, setOwnedAgents)
   }, [user?.uid])
 
   // Subscribe to market news if user has any agent with news_sentiment skill
@@ -664,6 +1208,7 @@ export default function FeedScreen() {
         created_at: e.created_at,
         cardType: 'news' as CardType,
         payload: e,
+        source: 'news' as const,
       })))
     })
   }, [user?.uid, userAgents.map(a => a.id).join(',')])
@@ -694,48 +1239,230 @@ export default function FeedScreen() {
   }
 
   const showPostBtn = sharingPref === 'manual' && userAgents.length > 0
+  const filteredFeedItems = useMemo(() => {
+    if (feedFilter === 'all') {
+      return feedItems.filter((item) => item.cardType !== 'update')
+    }
+    return feedItems.filter((item) => getFilterGroup(item) === feedFilter)
+  }, [feedFilter, feedItems])
+  const decoratedFeedItems = useMemo(
+    () => filteredFeedItems.map((item) => ({
+      ...item,
+      payload: {
+        ...(item.payload ?? {}),
+        owner_username: item.payload?.owner_username ?? usernameMap[item.user_id] ?? null,
+      },
+    })),
+    [filteredFeedItems, usernameMap]
+  )
+  const trackedActivityAgentIds = useMemo(
+    () => new Set(trackedFeed.map((item) => item.agent_id)),
+    [trackedFeed]
+  )
+  const silentTrackedAgents = useMemo(
+    () => trackedAgentDocs.filter((agent) => !trackedActivityAgentIds.has(agent.id)),
+    [trackedAgentDocs, trackedActivityAgentIds]
+  )
+
+  const shareTrade = shareItem ? toShareTrade(shareItem) : null
+  const portfolioPnl = useMemo(
+    () => userAgents.reduce((sum, agent) => sum + Number(agent.live_state?.unrealizedPnlUsd ?? 0), 0),
+    [userAgents]
+  )
+  const portfolioDailyPnl = useMemo(
+    () => userAgents.reduce((sum, agent) => sum + Number(agent.live_state?.dailyPnlUsd ?? 0), 0),
+    [userAgents]
+  )
+  const portfolioPnlPositive = portfolioPnl >= 0
+  const portfolioDailyPositive = portfolioDailyPnl >= 0
+  const liveAgentCount = ownedAgents.filter((agent) => agent.status === 'connected').length
+  const trackedCount = trackedAgentIds.length
+  const newsCount = feedItems.filter((item) => getFilterGroup(item) === 'news').length
+  const fundedWalletCount = ownedAgents.filter((agent) => typeof agent.wallet_address === 'string' && agent.wallet_address.length > 0).length
+  const depositedBalanceUsd = useMemo(
+    () => ownedAgents.reduce((sum, agent) => sum + Number(agent.live_state?.walletBalanceUsd ?? agent.live_state?.fundedUsd ?? 0), 0),
+    [ownedAgents]
+  )
+  const hasConnectedWallet = !!walletAddress
+  const filterChips: { key: typeof feedFilter; label: string; count: number }[] = [
+    { key: 'all', label: 'All', count: feedItems.length },
+    { key: 'mine', label: 'Agents', count: ownedAgents.length },
+    { key: 'following', label: 'Friends', count: followingUids.length },
+    { key: 'tracked', label: 'Tracked', count: trackedAgentIds.length },
+    { key: 'news', label: 'News', count: newsCount },
+  ]
+
+  const feedChrome = (
+    <>
+      <View style={[styles.header, isDesktopWeb && styles.headerDesktop]}>
+        <View>
+          <Text style={styles.title}>Feed</Text>
+          {isDesktopWeb ? <Text style={styles.desktopSubtitle}>Performance from the traders you follow and the specific slugs you track.</Text> : null}
+        </View>
+        <View style={styles.headerRight} />
+      </View>
+
+      <View style={[styles.heroSection, isDesktopWeb && styles.heroSectionDesktop]}>
+        <View style={styles.heroPanel}>
+          <View style={styles.heroStatusWrap}>
+            <View style={styles.heroStatusRow}>
+              <View style={styles.heroStatusDot} />
+              <Text style={styles.heroStatusText}>{hasConnectedWallet ? 'Wallet-ready' : 'Setup wallet'}</Text>
+            </View>
+          </View>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroEyebrow}>Crypto Balance</Text>
+            <Text style={styles.heroValue}>
+              ${depositedBalanceUsd.toLocaleString('en-US', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}
+            </Text>
+            <Text style={styles.heroDelta}>
+              {fundedWalletCount} agent wallet{fundedWalletCount === 1 ? '' : 's'} ready
+            </Text>
+          </View>
+
+          <View style={styles.heroActionsCol}>
+            <TouchableOpacity
+              style={styles.heroAction}
+              activeOpacity={0.85}
+              onPress={() => router.push((ownedAgents.length > 0 ? '/agent-wallets' : '/deploy') as any)}
+            >
+              <Text style={styles.heroActionText}>{ownedAgents.length > 0 ? 'Deposit' : 'Deploy agent'}</Text>
+            </TouchableOpacity>
+            {!hasConnectedWallet ? (
+              <TouchableOpacity
+                style={styles.heroSecondaryAction}
+                activeOpacity={0.85}
+                onPress={() => router.push('/account' as any)}
+              >
+                <Text style={styles.heroSecondaryActionText}>Connect wallet</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        </View>
+      </View>
+
+      {leaderboard.length > 0 ? (
+        <Animated.View style={{ opacity: leaderboardIntroOpacity }}>
+          <View style={[styles.leaderboardSection, isDesktopWeb && styles.leaderboardSectionDesktop]}>
+            <View style={styles.sectionHeader}>
+              <View style={styles.leaderboardTitleRow}>
+                <Ionicons name="trophy-outline" size={16} color={Colors.textMuted} />
+                <Text style={styles.sectionTitle}>Weekly Top Agents</Text>
+              </View>
+              <Text style={styles.leaderboardCaption}>Friends ranked by live paper performance</Text>
+            </View>
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[styles.leaderboardScroller, isDesktopWeb && styles.leaderboardScrollerDesktop]}
+              contentContainerStyle={[styles.leaderboardList, isDesktopWeb && styles.leaderboardListDesktop]}
+            >
+              {leaderboard.map((entry, index) => (
+                <View key={entry.uid} style={styles.leaderboardItem}>
+                  <LeaderboardCard entry={entry} rank={index + 1} />
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </Animated.View>
+      ) : null}
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[styles.filterRow, isDesktopWeb && styles.filterRowDesktop]}
+      >
+        {filterChips.map((chip) => (
+          <TouchableOpacity
+            key={chip.key}
+            style={[styles.filterChip, feedFilter === chip.key && styles.filterChipActive]}
+            onPress={() => setFeedFilter(chip.key)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.filterChipText, feedFilter === chip.key && styles.filterChipTextActive]}>{chip.label}</Text>
+            <Text style={[styles.filterChipCount, feedFilter === chip.key && styles.filterChipCountActive]}>{chip.count}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      {!loading && (
+        <View style={[styles.activityHeader, isDesktopWeb && styles.activityHeaderDesktop]}>
+          <View>
+            <Text style={styles.activityTitle}>
+              {feedFilter === 'all'
+                ? 'Live Activity'
+                : feedFilter === 'mine'
+                  ? 'Your Agents'
+                  : feedFilter === 'following'
+                    ? 'Friends'
+                    : feedFilter === 'tracked'
+                      ? 'Tracked Agents'
+                      : 'News Flow'}
+            </Text>
+            <Text style={styles.activitySubtitle}>
+              {feedFilter === 'news'
+                ? 'Headlines and agent-posted market context in one place.'
+                : 'Fast-moving updates from agents you own, follow, and track.'}
+            </Text>
+          </View>
+        </View>
+      )}
+    </>
+  )
 
   return (
     <View style={styles.container}>
       <View style={[styles.pageFrame, isDesktopWeb && styles.pageFrameDesktop]}>
-        {/* Header */}
-        <View style={[styles.header, isDesktopWeb && styles.headerDesktop]}>
-          <View>
-            <Text style={styles.title}>Feed</Text>
-            {isDesktopWeb ? <Text style={styles.desktopSubtitle}>Performance from the traders you follow and the specific slugs you track.</Text> : null}
-          </View>
-          <View style={styles.headerRight}>
-            {showPostBtn && (
-              <TouchableOpacity
-                style={[styles.postBtn, posting && { opacity: 0.5 }]}
-                onPress={() => !posting && setShowPostModal(true)}
-                disabled={posting}
-              >
-                <Ionicons name="send" size={13} color={Colors.accentAmber} />
-                <Text style={styles.postBtnText}>Post PnL</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        {/* Tracked slugs row */}
-        {trackedAgentIds.length > 0 && (
-          <TrackedSlugsSection agentIds={trackedAgentIds} />
-        )}
-
         {/* Feed */}
         {loading ? null : followingUids.length === 0 && trackedAgentIds.length === 0 ? (
-          <EmptyFollowing />
-        ) : feedItems.length === 0 ? (
-          <EmptyPosts />
+          <FlatList
+            style={styles.feedList}
+            data={[]}
+            keyExtractor={(item, index) => String(index)}
+            ListHeaderComponent={feedChrome}
+            ListEmptyComponent={<EmptyFollowing />}
+            contentContainerStyle={[styles.list, isDesktopWeb && styles.listDesktop]}
+            showsVerticalScrollIndicator={false}
+          />
+        ) : feedFilter === 'tracked' && trackedAgentDocs.length > 0 ? (
+          <FlatList
+            style={styles.feedList}
+            data={[
+              ...silentTrackedAgents.map((agent) => ({ kind: 'tracked-agent' as const, id: `tracked-${agent.id}`, agent })),
+              ...decoratedFeedItems.map((item) => ({ kind: 'feed-item' as const, id: item.id, item })),
+            ]}
+            keyExtractor={(entry) => entry.id}
+            ListHeaderComponent={feedChrome}
+            renderItem={({ item }) => (
+              <View style={isDesktopWeb ? styles.desktopListItem : undefined}>
+                {item.kind === 'tracked-agent'
+                  ? <TrackedAgentCard agent={item.agent} />
+                  : renderCard(item.item, setShareItem, feedAgentSnapshots)}
+              </View>
+            )}
+            contentContainerStyle={[styles.list, isDesktopWeb && styles.listDesktop]}
+            showsVerticalScrollIndicator={false}
+          />
+        ) : decoratedFeedItems.length === 0 ? (
+          <FlatList
+            style={styles.feedList}
+            data={[]}
+            keyExtractor={(item, index) => String(index)}
+            ListHeaderComponent={feedChrome}
+            ListEmptyComponent={<EmptyPosts />}
+            contentContainerStyle={[styles.list, isDesktopWeb && styles.listDesktop]}
+            showsVerticalScrollIndicator={false}
+          />
         ) : (
           <FlatList
             style={styles.feedList}
-            data={feedItems}
+            data={decoratedFeedItems}
             keyExtractor={(i) => i.id}
+            ListHeaderComponent={feedChrome}
             renderItem={({ item }) => (
               <View style={isDesktopWeb ? styles.desktopListItem : undefined}>
-                {renderCard(item)}
+                {renderCard(item, setShareItem, feedAgentSnapshots)}
               </View>
             )}
             contentContainerStyle={[styles.list, isDesktopWeb && styles.listDesktop]}
@@ -755,6 +1482,15 @@ export default function FeedScreen() {
         onClose={() => setShowPostModal(false)}
         onPost={handlePostPnl}
       />
+      {shareItem && shareTrade && (
+        <ShareCardModal
+          visible={!!shareItem}
+          onClose={() => setShareItem(null)}
+          agentId={shareItem.agent_id}
+          agentName={shareItem.agentName}
+          initialTrade={shareTrade}
+        />
+      )}
     </View>
   )
 }
@@ -770,7 +1506,7 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 0,
     paddingTop: 60,
     paddingBottom: 16,
     flexDirection: 'row',
@@ -779,11 +1515,225 @@ const styles = StyleSheet.create({
   },
   headerDesktop: {
     paddingTop: 42,
-    paddingHorizontal: 20,
+    paddingHorizontal: 0,
   },
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
   desktopSubtitle: { fontSize: 14, color: Colors.textMuted, marginTop: 4 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  heroSection: {
+    paddingHorizontal: 0,
+    paddingBottom: 14,
+    gap: 10,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  heroSectionDesktop: {
+    paddingHorizontal: 0,
+  },
+  heroPanel: {
+    position: 'relative',
+    backgroundColor: '#16130f',
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,87,0.24)',
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  heroStatusWrap: {
+    position: 'absolute',
+    top: 14,
+    right: 16,
+    zIndex: 2,
+  },
+  heroStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heroStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.accentGreen,
+  },
+  heroStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.accentGreen,
+  },
+  heroCopy: {
+    flex: 1,
+    gap: 4,
+    paddingRight: 10,
+  },
+  heroEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: Colors.textMuted,
+  },
+  heroValue: {
+    fontSize: 29,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+    letterSpacing: -0.6,
+  },
+  heroDelta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.accentGreen,
+  },
+  heroActionsCol: {
+    gap: 10,
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    paddingTop: 30,
+  },
+  heroAction: {
+    minWidth: 118,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: Colors.accentAmber,
+    borderWidth: 1,
+    borderColor: Colors.accentAmber,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.bgPrimary,
+  },
+  heroSecondaryAction: {
+    minWidth: 118,
+    minHeight: 44,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(217,119,87,0.08)',
+    borderWidth: 1,
+    borderColor: Colors.accentAmber,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroSecondaryActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.accentAmber,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  leaderboardSection: {
+    paddingHorizontal: 0,
+    paddingBottom: 14,
+    gap: 8,
+  },
+  leaderboardSectionDesktop: {
+    paddingHorizontal: 0,
+  },
+  leaderboardCaption: {
+    fontSize: 11,
+    color: Colors.textMuted,
+  },
+  leaderboardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  leaderboardScroller: {
+    marginHorizontal: 0,
+  },
+  leaderboardScrollerDesktop: {
+    marginHorizontal: 0,
+  },
+  leaderboardList: {
+    gap: 8,
+    paddingHorizontal: 0,
+  },
+  leaderboardListDesktop: {
+    paddingHorizontal: 0,
+  },
+  leaderboardItem: {
+    width: 278,
+  },
+  leaderboardCard: {
+    backgroundColor: '#1a1b18',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  leaderboardCardInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  leaderboardAvatarWrap: {
+    position: 'relative',
+  },
+  rankBadge: {
+    position: 'absolute',
+    right: -3,
+    bottom: -3,
+    minWidth: 17,
+    height: 17,
+    borderRadius: 8.5,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#101010',
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,87,0.28)',
+  },
+  rankBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: Colors.accentAmber,
+  },
+  leaderboardCopy: { flex: 1, gap: 2 },
+  leaderboardName: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  leaderboardHandle: {
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
+  leaderboardMeta: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  leaderboardDot: {
+    color: Colors.textMuted,
+  },
+  leaderboardInlinePnl: {
+    fontWeight: '800',
+  },
+  leaderboardMetaMuted: {
+    color: Colors.textMuted,
+    fontSize: 13,
+  },
   postBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: 'rgba(217,119,87,0.1)',
@@ -791,17 +1741,90 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(217,119,87,0.2)',
   },
   postBtnText: { color: Colors.accentAmber, fontSize: 13, fontWeight: '600' },
+  webInlineArrow: { fontSize: 13, lineHeight: 13, fontWeight: '800' },
+  filterRow: {
+    paddingHorizontal: 0,
+    paddingBottom: 16,
+    gap: 8,
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+  },
+  filterRowDesktop: {
+    paddingHorizontal: 0,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 40,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#1a1a18',
+    borderWidth: 1,
+    borderColor: '#2a2a28',
+    alignSelf: 'flex-start',
+  },
+  filterChipActive: {
+    backgroundColor: 'rgba(217,119,87,0.12)',
+    borderColor: Colors.accentAmber,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textMuted,
+  },
+  filterChipTextActive: {
+    color: Colors.accentAmber,
+  },
+  filterChipCount: {
+    minWidth: 18,
+    textAlign: 'center',
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  filterChipCountActive: {
+    color: Colors.accentAmber,
+  },
+  activityHeader: {
+    paddingHorizontal: 0,
+    paddingBottom: 12,
+  },
+  activityHeaderDesktop: {
+    paddingHorizontal: 0,
+  },
+  activityTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.textPrimary,
+  },
+  activitySubtitle: {
+    marginTop: 4,
+    fontSize: 13,
+    lineHeight: 18,
+    color: Colors.textMuted,
+  },
 
   feedList: { flex: 1 },
   list: { paddingHorizontal: 16, paddingBottom: 120, gap: 10 },
   listDesktop: { paddingHorizontal: 20, paddingBottom: 48 },
-  desktopListItem: { width: '100%', maxWidth: 760, alignSelf: 'center' },
+  desktopListItem: { width: '100%', alignSelf: 'stretch' },
 
   // Cards
-  card: { backgroundColor: '#0f0f0f', borderRadius: 16, padding: 16, gap: 10 },
+  card: {
+    backgroundColor: '#10100f',
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
   cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   agentRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  agentName: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  agentName: { fontSize: 14, fontWeight: '700', color: Colors.textSecondary },
+  feedMetaText: { fontSize: 12, color: Colors.textMuted, lineHeight: 17 },
   timestamp: { fontSize: 11, color: Colors.textMuted },
 
   avatar: {
@@ -812,23 +1835,150 @@ const styles = StyleSheet.create({
 
   symbolBadge: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 },
   symbolText: { fontSize: 10, fontWeight: '700', color: Colors.textPrimary, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  sourceBadge: {
+    backgroundColor: 'rgba(217,119,87,0.08)',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  sourceBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.accentAmber,
+  },
 
   pnlRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
+  metricRow: { gap: 4 },
+  metricPrimary: { lineHeight: 32 },
+  metricSupport: { fontSize: 12, lineHeight: 18, color: Colors.textMuted },
   pnlDollar: { fontSize: 28, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   pnlPct: { fontSize: 16, fontWeight: '600' },
 
-  cardContent: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
+  cardContent: { fontSize: 14, color: Colors.textSecondary, lineHeight: 21 },
 
   // Trade card
+  tradeMetaWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   tradeBadge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   tradeBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   tradeSymbol: { fontSize: 15, fontWeight: '800', color: Colors.textPrimary },
   tradePrice: { fontSize: 13, color: Colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   tradePnl: { fontSize: 13, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   tradeDetails: { fontSize: 13, color: Colors.textMuted, lineHeight: 19, fontStyle: 'italic' },
+  tradeFeedRow: {
+    backgroundColor: '#181916',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  tradeFeedIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  tradeFeedCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  tradeFeedTopLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 2,
+  },
+  tradeFeedHandle: {
+    fontSize: 14,
+    color: Colors.textPrimary,
+    fontWeight: '500',
+  },
+  tradeFeedTime: {
+    fontSize: 12,
+    color: Colors.textMuted,
+  },
+  tradeFeedBottomLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 5,
+  },
+  tradeFeedAction: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.35,
+  },
+  tradeFeedSymbol: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontWeight: '500',
+  },
+  tradeFeedRight: {
+    minWidth: 96,
+    width: 96,
+    flexShrink: 0,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 0,
+  },
+  tradeFeedPnl: {
+    fontSize: 14,
+    fontWeight: '800',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    textAlign: 'right',
+  },
+  tradeFeedChevron: {
+    fontSize: 16,
+    color: Colors.textMuted,
+    lineHeight: 16,
+  },
   cardTypeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   cardTypeText: { fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  cardTypeTracked: { color: Colors.accentGreen },
+  cardTypeMuted: { color: Colors.textMuted },
+  cardTypeNews: { color: '#b79667' },
   cardChevron: { fontSize: 18, color: Colors.textMuted, lineHeight: 20 },
+  inlineAction: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  inlineActionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondary,
+  },
+  newsHeadline: {
+    fontSize: 15,
+    lineHeight: 22,
+    color: Colors.textPrimary,
+    fontWeight: '700',
+  },
+  newsSummary: {
+    fontSize: 13,
+    color: Colors.textMuted,
+    lineHeight: 20,
+  },
+  newsMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  newsTickerBadge: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  newsFooterRow: {
+    paddingTop: 2,
+  },
 
   // Empty states
   emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingBottom: 80 },
@@ -897,52 +2047,4 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: Colors.textSecondary, fontSize: 15, fontWeight: '600' },
   noAgentsPnl: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   noAgentsPnlText: { fontSize: 14, color: Colors.textMuted },
-})
-
-const trackedStyles = StyleSheet.create({
-  section: { paddingBottom: 8 },
-  sectionHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingBottom: 10,
-  },
-  sectionLabel: {
-    fontSize: 11, fontWeight: '700', color: Colors.textMuted,
-    letterSpacing: 1.2, textTransform: 'uppercase',
-  },
-  totalPnl: {
-    fontSize: 12, fontWeight: '700',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  list: { paddingHorizontal: 16, gap: 8, alignItems: 'stretch' },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#0f0f0f',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: Colors.bgBorder,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    width: '100%',
-  },
-  left: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  right: { alignItems: 'flex-end', gap: 2 },
-  avatar: {
-    width: 44, height: 44, borderRadius: 22,
-    borderWidth: 1.5, justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: { fontSize: 18, fontWeight: '700' },
-  onlineDot: {
-    position: 'absolute', bottom: 1, right: 1,
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: Colors.accentGreen,
-    borderWidth: 2, borderColor: '#0f0f0f',
-  },
-  info: { gap: 2, flex: 1 },
-  name: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
-  statusText: { fontSize: 12, color: Colors.textMuted },
-  pnl: { fontSize: 17, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  pnlLabel: { fontSize: 10, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  pnlMuted: { fontSize: 12, color: Colors.textMuted },
 })

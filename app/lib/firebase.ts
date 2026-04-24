@@ -3,6 +3,9 @@
 
 import { initializeApp, getApps } from 'firebase/app'
 import { Platform } from 'react-native'
+import 'react-native-get-random-values'
+import nacl from 'tweetnacl'
+import bs58 from 'bs58'
 import {
   initializeAuth,
   getAuth,
@@ -10,11 +13,19 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInWithPopup,
+  signInWithCredential,
+  TwitterAuthProvider,
+  GoogleAuthProvider,
+  getAdditionalUserInfo,
+  type UserCredential,
   signOut as fbSignOut,
   sendPasswordResetEmail,
   type User,
 } from 'firebase/auth'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { getFunctions, httpsCallable } from 'firebase/functions'
 import {
   getFirestore,
   doc,
@@ -32,6 +43,7 @@ import {
   getDocs,
   collectionGroup,
   runTransaction,
+  documentId,
   type DocumentData,
   type Timestamp,
 } from 'firebase/firestore'
@@ -61,10 +73,22 @@ export const auth = Platform.OS === 'web'
       : getAuth(app))
 
 export const db = getFirestore(app)
+export const storage = getStorage(app)
+export const functions = getFunctions(app, 'us-central1')
 
 /** Owner-only secrets: `agents/{agentId}/private/secrets` (see Firestore rules). */
 export const AGENT_PRIVATE_COLLECTION = 'private'
 export const AGENT_SECRETS_DOC_ID = 'secrets'
+
+function generateAgentWallet() {
+  const seed = nacl.randomBytes(32)
+  const keyPair = nacl.sign.keyPair.fromSeed(seed)
+
+  return {
+    address: bs58.encode(keyPair.publicKey),
+    secretKey: bs58.encode(keyPair.secretKey),
+  }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -87,16 +111,68 @@ export const firestoreTsToIso = tsToISO
 export { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, fbSignOut as signOut, sendPasswordResetEmail }
 export type { User }
 
+type ProfileSeed = {
+  preferredUsername?: string | null
+  displayName?: string | null
+  avatarUrl?: string | null
+  provider?: string | null
+  providerUid?: string | null
+}
+
+export type AppUserProfile = Record<string, unknown> & {
+  email?: string | null
+  username?: string | null
+  display_name?: string | null
+  avatar_url?: string | null
+  wallet_address?: string | null
+  wallet_provider?: string | null
+  auth_provider?: string | null
+  twitter_uid?: string | null
+  x_username?: string | null
+}
+
+function normalizeAvatarUrl(raw?: string | null): string | null {
+  const value = String(raw ?? '').trim()
+  if (!value) return null
+  return value.replace('_normal.', '.')
+}
+
+function buildProfileSeed(seed?: ProfileSeed): ProfileSeed {
+  return {
+    preferredUsername: typeof seed?.preferredUsername === 'string' ? seed.preferredUsername.trim() : null,
+    displayName: typeof seed?.displayName === 'string' ? seed.displayName.trim() : null,
+    avatarUrl: normalizeAvatarUrl(seed?.avatarUrl),
+    provider: typeof seed?.provider === 'string' ? seed.provider.trim() : null,
+    providerUid: typeof seed?.providerUid === 'string' ? seed.providerUid.trim() : null,
+  }
+}
+
 // ── Collections ───────────────────────────────────────────────────────────────
 
 // /users/{uid}
 export async function getProfile(uid: string) {
   const snap = await getDoc(doc(db, 'users', uid))
-  return snap.exists() ? snap.data() : null
+  return snap.exists() ? (snap.data() as AppUserProfile) : null
 }
 
 export async function setProfile(uid: string, data: Record<string, unknown>) {
   await setDoc(doc(db, 'users', uid), data, { merge: true })
+}
+
+export async function fetchAgentsByIds(agentIds: string[]): Promise<any[]> {
+  const ids = Array.from(new Set(agentIds.filter(Boolean)))
+  if (ids.length === 0) return []
+
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += 30) {
+    chunks.push(ids.slice(i, i + 30))
+  }
+
+  const snapshots = await Promise.all(
+    chunks.map((chunk) => getDocs(query(collection(db, 'agents'), where(documentId(), 'in', chunk))))
+  )
+
+  return snapshots.flatMap((snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() })))
 }
 
 function sanitizeUsernameSeed(raw: string): string {
@@ -117,6 +193,17 @@ function usernameCandidate(base: string, attempt: number): string {
   if (attempt === 0) return base
   const suffix = String(attempt + 1)
   return `${base.slice(0, Math.max(3, 20 - suffix.length))}${suffix}`
+}
+
+function isGeneratedUsername(username?: string | null): boolean {
+  return /^user\d*$/i.test(String(username ?? '').trim())
+}
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
 }
 
 async function reserveUsername(uid: string, preferred: string): Promise<string> {
@@ -153,36 +240,255 @@ async function reserveUsername(uid: string, preferred: string): Promise<string> 
   throw new Error('Could not reserve a username')
 }
 
-export async function ensureUserProfile(uid: string, email?: string | null) {
+export async function ensureUserProfile(uid: string, email?: string | null, seedInput?: ProfileSeed): Promise<AppUserProfile> {
   const existing = await getProfile(uid)
   const normalizedEmail = email?.trim().toLowerCase() ?? null
+  const seed = buildProfileSeed(seedInput)
+  const providerPatch: Record<string, unknown> = {}
+
+  if (seed.provider) {
+    providerPatch.auth_provider = seed.provider
+  }
+
+  if (seed.provider === 'twitter.com') {
+    if (seed.providerUid) providerPatch.twitter_uid = seed.providerUid
+    if (seed.preferredUsername) providerPatch.x_username = seed.preferredUsername
+  }
 
   if (existing?.username) {
+    const preferred = seed.preferredUsername ? sanitizeUsernameSeed(seed.preferredUsername) : null
+    if (
+      seed.provider === 'twitter.com' &&
+      preferred &&
+      preferred !== 'user' &&
+      preferred !== String(existing.username).toLowerCase() &&
+      isGeneratedUsername(existing.username)
+    ) {
+      const reserved = await reserveUsername(uid, preferred)
+      const previousUsername = String(existing.username).toLowerCase()
+      if (previousUsername && previousUsername !== reserved) {
+        const { deleteDoc } = await import('firebase/firestore')
+        await deleteDoc(doc(db, 'usernames', previousUsername)).catch(() => {})
+      }
+      await setProfile(uid, {
+        username: reserved,
+        ...providerPatch,
+        updated_at: serverTimestamp(),
+      })
+      return {
+        ...(existing ?? {}),
+        email: normalizedEmail ?? existing?.email ?? null,
+        display_name: existing?.display_name ?? seed.displayName ?? null,
+        avatar_url: existing?.avatar_url ?? seed.avatarUrl ?? null,
+        username: reserved,
+        ...providerPatch,
+      }
+    }
+
     const usernameRef = doc(db, 'usernames', String(existing.username).toLowerCase())
     const usernameSnap = await getDoc(usernameRef)
     if (!usernameSnap.exists() || usernameSnap.data().uid !== uid) {
       await setDoc(usernameRef, { uid })
     }
-    if (normalizedEmail && existing.email !== normalizedEmail) {
-      await setProfile(uid, { email: normalizedEmail, updated_at: serverTimestamp() })
+    const patch: Record<string, unknown> = {
+      ...providerPatch,
+      updated_at: serverTimestamp(),
     }
-    return existing
+
+    if (normalizedEmail && existing.email !== normalizedEmail) {
+      patch.email = normalizedEmail
+    }
+    if (!existing.display_name && seed.displayName) {
+      patch.display_name = seed.displayName
+    }
+    if (!existing.avatar_url && seed.avatarUrl) {
+      patch.avatar_url = seed.avatarUrl
+    }
+
+    if (Object.keys(patch).length > 1 || patch.email) {
+      await setProfile(uid, patch)
+    }
+    return {
+      ...(existing ?? {}),
+      email: normalizedEmail ?? existing?.email ?? null,
+      display_name: existing?.display_name ?? seed.displayName ?? null,
+      avatar_url: existing?.avatar_url ?? seed.avatarUrl ?? null,
+      ...providerPatch,
+    }
   }
 
-  const reserved = await reserveUsername(uid, usernameFromEmail(normalizedEmail))
+  const reserved = await reserveUsername(
+    uid,
+    seed.preferredUsername || usernameFromEmail(normalizedEmail),
+  )
   await setProfile(uid, {
     email: normalizedEmail,
-    display_name: existing?.display_name ?? null,
-    avatar_url: existing?.avatar_url ?? null,
+    display_name: existing?.display_name ?? seed.displayName ?? null,
+    avatar_url: existing?.avatar_url ?? seed.avatarUrl ?? null,
     username: reserved,
+    ...providerPatch,
     updated_at: serverTimestamp(),
   })
 
   return {
     ...(existing ?? {}),
     email: normalizedEmail,
+    display_name: existing?.display_name ?? seed.displayName ?? null,
+    avatar_url: existing?.avatar_url ?? seed.avatarUrl ?? null,
     username: reserved,
+    ...providerPatch,
   }
+}
+
+export async function signInWithTwitterX() {
+  if (Platform.OS !== 'web') {
+    throw new Error('X sign-in is currently available on web only.')
+  }
+
+  const provider = new TwitterAuthProvider()
+  provider.setCustomParameters({ lang: 'en' })
+
+  const result = await signInWithPopup(auth, provider)
+  await syncTwitterProfileFromCredential(result)
+  return result
+}
+
+type TwitterStartResponse = {
+  authUrl?: string
+  oauthToken?: string
+  oauthTokenSecret?: string
+}
+
+type TwitterCompleteResponse = {
+  accessToken?: string
+  accessTokenSecret?: string
+  userId?: string | null
+  screenName?: string | null
+}
+
+export async function startNativeTwitterXSignIn(callbackUrl: string) {
+  const startTwitterSignIn = httpsCallable<{ callbackUrl: string }, TwitterStartResponse>(
+    functions,
+    'startTwitterSignIn',
+  )
+  const result = await startTwitterSignIn({ callbackUrl })
+  const authUrl = result.data?.authUrl
+  const oauthToken = result.data?.oauthToken
+  const oauthTokenSecret = result.data?.oauthTokenSecret
+
+  if (!authUrl || !oauthToken || !oauthTokenSecret) {
+    throw new Error('X sign-in did not return a valid login URL.')
+  }
+
+  return { authUrl, oauthToken, oauthTokenSecret }
+}
+
+export async function completeNativeTwitterXSignIn({
+  oauthToken,
+  oauthVerifier,
+  oauthTokenSecret,
+}: {
+  oauthToken: string
+  oauthVerifier: string
+  oauthTokenSecret: string
+}) {
+  const completeTwitterSignIn = httpsCallable<
+    { oauthToken: string; oauthVerifier: string; oauthTokenSecret: string },
+    TwitterCompleteResponse
+  >(functions, 'completeTwitterSignIn')
+  const result = await completeTwitterSignIn({ oauthToken, oauthVerifier, oauthTokenSecret })
+  const accessToken = result.data?.accessToken
+  const accessTokenSecret = result.data?.accessTokenSecret
+
+  if (!accessToken || !accessTokenSecret) {
+    throw new Error('X sign-in did not return a valid access token.')
+  }
+
+  const credential = TwitterAuthProvider.credential(accessToken, accessTokenSecret)
+  const userCredential = await signInWithCredential(auth, credential)
+  await syncTwitterProfileFromCredential(userCredential)
+  return userCredential
+}
+
+export async function signInWithGoogleIdToken(idToken: string) {
+  const credential = GoogleAuthProvider.credential(idToken)
+  const result = await signInWithCredential(auth, credential)
+  await syncGoogleProfileFromCredential(result)
+  return result
+}
+
+export async function syncTwitterProfileFromCredential(result: UserCredential) {
+  const info = getAdditionalUserInfo(result)
+  const profile = (info?.profile ?? {}) as Record<string, unknown>
+  const reloadInfo = ((result.user as any)?.reloadUserInfo ?? {}) as Record<string, unknown>
+  const providerProfile = result.user.providerData.find((entry) => entry.providerId === 'twitter.com')
+  const displayName = firstString(result.user.displayName, providerProfile?.displayName, profile.name, reloadInfo.displayName)
+  const preferredUsername = firstString(
+    info?.username,
+    profile.screen_name,
+    profile.username,
+    reloadInfo.screenName,
+    reloadInfo.username,
+    displayName,
+  )
+  const seed = {
+    preferredUsername,
+    displayName,
+    avatarUrl: firstString(
+      result.user.photoURL,
+      providerProfile?.photoURL,
+      profile.profile_image_url_https,
+      profile.profile_image_url,
+      reloadInfo.photoUrl,
+    ),
+    provider: info?.providerId ?? 'twitter.com',
+    providerUid: firstString(profile.id_str, profile.id, reloadInfo.localId, providerProfile?.uid),
+  }
+
+  return ensureUserProfile(result.user.uid, result.user.email, seed)
+}
+
+export async function syncGoogleProfileFromCredential(result: UserCredential) {
+  const info = getAdditionalUserInfo(result)
+  const profile = (info?.profile ?? {}) as Record<string, unknown>
+  const seed = {
+    preferredUsername:
+      typeof result.user.email === 'string' && result.user.email.includes('@')
+        ? result.user.email.split('@')[0]
+        : (typeof profile.given_name === 'string' ? profile.given_name : null),
+    displayName:
+      (typeof result.user.displayName === 'string' && result.user.displayName.trim())
+        ? result.user.displayName
+        : (typeof profile.name === 'string' ? profile.name : null),
+    avatarUrl:
+      (typeof result.user.photoURL === 'string' && result.user.photoURL.trim())
+        ? result.user.photoURL
+        : (typeof profile.picture === 'string' ? profile.picture : null),
+    provider: info?.providerId ?? 'google.com',
+    providerUid:
+      typeof profile.sub === 'string'
+        ? profile.sub
+        : (typeof result.user.uid === 'string' ? result.user.uid : null),
+  }
+
+  return ensureUserProfile(result.user.uid, result.user.email, seed)
+}
+
+export async function uploadProfileAvatar(uid: string, fileUri: string) {
+  const response = await fetch(fileUri)
+  const blob = await response.blob()
+  const avatarRef = storageRef(storage, `avatars/${uid}/profile.jpg`)
+  await uploadBytes(avatarRef, blob, {
+    contentType: blob.type || 'image/jpeg',
+    cacheControl: 'public,max-age=3600',
+  })
+  const downloadUrl = await getDownloadURL(avatarRef)
+  const normalizedUrl = normalizeAvatarUrl(downloadUrl)
+  await setProfile(uid, {
+    avatar_url: normalizedUrl,
+    updated_at: serverTimestamp(),
+  })
+  return normalizedUrl
 }
 
 // Username uniqueness check via /usernames/{username} → { uid }
@@ -225,23 +531,40 @@ export async function claimUsername(uid: string, username: string) {
 export function subscribeToUserAgents(uid: string, cb: (agents: any[]) => void) {
   const q = query(collection(db, 'agents'), where('user_id', '==', uid))
   return onSnapshot(q, (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...d.data(), last_seen: tsToISO(d.data().last_seen as any) })))
+    cb(snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+      last_seen: tsToISO(d.data().last_seen as any),
+      last_synced: tsToISO(d.data().last_synced as any),
+    })))
   }, _noop)
 }
 
 export async function createAgent(uid: string, name: string, metadata?: Record<string, unknown>) {
+  const wallet = generateAgentWallet()
   const ref = await addDoc(collection(db, 'agents'), {
     user_id: uid,
     name,
     status: 'disconnected',
     last_seen: null,
+    wallet_address: wallet.address,
+    wallet_network: 'solana',
+    wallet_mode: 'agent_custody',
+    wallet_ready: true,
     metadata: metadata ?? {},
     created_at: serverTimestamp(),
   })
+  await setDoc(doc(db, 'agents', ref.id, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    solana_wallet_public_key: wallet.address,
+    solana_wallet_secret_key: wallet.secretKey,
+    custody_mode: 'agent_custody',
+    updated_at: serverTimestamp(),
+  }, { merge: true })
   return ref.id
 }
 
 export async function createRangeFarmerAgent(uid: string, name: string, coin = 'BTC'): Promise<string> {
+  const wallet = generateAgentWallet()
   const ref = await addDoc(collection(db, 'agents'), {
     user_id: uid,
     name,
@@ -251,14 +574,33 @@ export async function createRangeFarmerAgent(uid: string, name: string, coin = '
     hosted: true,
     paper_mode: true,
     coin: coin.toUpperCase(),
+    wallet_address: wallet.address,
+    wallet_network: 'solana',
+    wallet_mode: 'agent_custody',
+    wallet_ready: true,
     deployment_status: 'active',
-    metadata: { agent_type: 'range_farmer', hosted: true, paper_mode: true, platform: 'grid', coin: coin.toUpperCase() },
+    metadata: {
+      agent_type: 'range_farmer',
+      hosted: true,
+      paper_mode: true,
+      platform: 'grid',
+      coin: coin.toUpperCase(),
+      wallet_mode: 'agent_custody',
+      wallet_network: 'solana',
+    },
     created_at: serverTimestamp(),
   })
+  await setDoc(doc(db, 'agents', ref.id, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    solana_wallet_public_key: wallet.address,
+    solana_wallet_secret_key: wallet.secretKey,
+    custody_mode: 'agent_custody',
+    updated_at: serverTimestamp(),
+  }, { merge: true })
   return ref.id
 }
 
 export async function createCabalAgent(uid: string, cabalChatId: string): Promise<string> {
+  const wallet = generateAgentWallet()
   const ref = await addDoc(collection(db, 'agents'), {
     user_id: uid,
     name: 'Blue Chip',
@@ -267,14 +609,27 @@ export async function createCabalAgent(uid: string, cabalChatId: string): Promis
     agent_type: 'cabal_blue_chip',
     hosted: false,
     paper_mode: false,
+    wallet_address: wallet.address,
+    wallet_network: 'solana',
+    wallet_mode: 'agent_custody',
+    wallet_ready: true,
     deployment_status: 'active',
-    metadata: { agent_type: 'cabal_blue_chip', hosted: false, platform: 'cabal' },
+    metadata: {
+      agent_type: 'cabal_blue_chip',
+      hosted: false,
+      platform: 'cabal',
+      wallet_mode: 'agent_custody',
+      wallet_network: 'solana',
+    },
     created_at: serverTimestamp(),
   })
   await setDoc(doc(db, 'agents', ref.id, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    solana_wallet_public_key: wallet.address,
+    solana_wallet_secret_key: wallet.secretKey,
+    custody_mode: 'agent_custody',
     cabal_chat_id: cabalChatId,
     updated_at: serverTimestamp(),
-  })
+  }, { merge: true })
   return ref.id
 }
 
@@ -310,6 +665,17 @@ export function subscribeToMyFeed(uid: string, cb: (events: any[]) => void) {
       created_at: tsToISO(d.data().created_at as any) ?? new Date().toISOString(),
     })))
   })
+}
+
+export async function getFeedEventById(eventId: string) {
+  const snap = await getDoc(doc(db, 'feed_events', eventId))
+  if (!snap.exists()) return null
+  const data = snap.data()
+  return {
+    id: snap.id,
+    ...data,
+    created_at: tsToISO(data.created_at as any) ?? new Date().toISOString(),
+  }
 }
 
 export function subscribeToPublicFeed(uids: string[], cb: (events: any[]) => void) {
@@ -480,6 +846,13 @@ export async function publishAgentPnl(
   if (agentSnap.exists() && agentSnap.data().broadcast_enabled === false) {
     return false
   }
+  const agentData = agentSnap.exists() ? agentSnap.data() : null
+  const symbol = String(
+    agentData?.coin ??
+    agentData?.metadata?.coin ??
+    agentData?.live_state?.coin ??
+    ''
+  ).toUpperCase()
   await addDoc(collection(db, 'feed_events'), {
     user_id: uid,
     agent_id: agentId,
@@ -490,6 +863,10 @@ export async function publishAgentPnl(
       pnl: unrealizedPnl,
       pct: 0,
       daily_pnl: dailyPnl ?? null,
+      symbol: symbol || null,
+      details: symbol
+        ? `${symbol} paper portfolio snapshot for ${agentName}.`
+        : `Paper portfolio snapshot for ${agentName}.`,
     },
     is_public: true,
     created_at: serverTimestamp(),
@@ -514,9 +891,154 @@ export function subscribeToUserAgentsPnl(uid: string, cb: (agents: any[]) => voi
     cb(
       snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
-        .filter((a: any) => a.live_state?.unrealizedPnlUsd != null)
+        .filter((a: any) => {
+          const live = a.live_state ?? a.metadata?.live_state ?? a.metadata?.liveState ?? {}
+          return (
+            live?.unrealizedPnlUsd != null ||
+            live?.unrealized_pnl != null ||
+            live?.unrealizedPnl != null ||
+            live?.dailyPnlUsd != null ||
+            live?.daily_pnl != null ||
+            live?.dailyPnl != null ||
+            live?.session_pnl != null
+          )
+        })
     )
   })
+}
+
+export function subscribeToFollowingLeaderboard(
+  uids: string[],
+  cb: (rows: Array<{
+    uid: string
+    username: string
+    display_name: string | null
+    avatar_url: string | null
+    total_pnl: number
+    active_agents: number
+    total_agents: number
+    top_agents: Array<{ id: string; name: string; pnl: number }>
+    updated_at: string | null
+  }>) => void,
+) {
+  const uniqueUids = [...new Set(uids.filter(Boolean))].slice(0, 20)
+  if (uniqueUids.length === 0) {
+    cb([])
+    return () => {}
+  }
+
+  const rows = new Map<string, {
+    uid: string
+    username: string
+    display_name: string | null
+    avatar_url: string | null
+    total_pnl: number
+    active_agents: number
+    total_agents: number
+    top_agents: Array<{ id: string; name: string; pnl: number }>
+    updated_at: string | null
+  }>()
+
+  function readLeaderboardPnl(agentData: Record<string, any>): number {
+    const live = (agentData.live_state as Record<string, any> | undefined)
+      ?? ((agentData.metadata as Record<string, any> | undefined)?.live_state)
+      ?? ((agentData.metadata as Record<string, any> | undefined)?.liveState)
+      ?? {}
+
+    const candidates = [
+      live.unrealizedPnlUsd,
+      live.unrealized_pnl,
+      live.unrealizedPnl,
+      live.session_pnl,
+      live.dailyPnlUsd,
+      live.daily_pnl,
+      live.dailyPnl,
+      (agentData.metadata as Record<string, any> | undefined)?.unrealizedPnlUsd,
+      (agentData.metadata as Record<string, any> | undefined)?.unrealized_pnl,
+      (agentData.metadata as Record<string, any> | undefined)?.unrealizedPnl,
+      (agentData.metadata as Record<string, any> | undefined)?.session_pnl,
+      (agentData.metadata as Record<string, any> | undefined)?.dailyPnlUsd,
+      (agentData.metadata as Record<string, any> | undefined)?.daily_pnl,
+      (agentData.metadata as Record<string, any> | undefined)?.dailyPnl,
+    ]
+
+    for (const value of candidates) {
+      if (value == null || value === '') continue
+      const numeric = Number(value)
+      if (Number.isFinite(numeric)) return numeric
+    }
+
+    return 0
+  }
+
+  function emit() {
+    cb(
+      Array.from(rows.values()).sort((a, b) => {
+        if (b.total_pnl !== a.total_pnl) return b.total_pnl - a.total_pnl
+        return new Date(b.updated_at ?? 0).getTime() - new Date(a.updated_at ?? 0).getTime()
+      })
+    )
+  }
+
+  const profileUnsubs = uniqueUids.map((uid) =>
+    onSnapshot(doc(db, 'users', uid), (snap) => {
+      const data = snap.exists() ? snap.data() : {}
+      const current = rows.get(uid)
+      rows.set(uid, {
+        uid,
+        username: typeof data?.username === 'string' ? data.username.toLowerCase() : current?.username ?? 'user',
+        display_name: (data?.display_name as string) ?? (data?.displayName as string) ?? current?.display_name ?? null,
+        avatar_url: (data?.avatar_url as string) ?? (data?.avatarUrl as string) ?? current?.avatar_url ?? null,
+        total_pnl: current?.total_pnl ?? 0,
+        active_agents: current?.active_agents ?? 0,
+        total_agents: current?.total_agents ?? 0,
+        top_agents: current?.top_agents ?? [],
+        updated_at: current?.updated_at ?? null,
+      })
+      emit()
+    }, _noop)
+  )
+
+  const agentUnsubs = uniqueUids.map((uid) => {
+    const q = query(collection(db, 'agents'), where('user_id', '==', uid))
+    return onSnapshot(q, (snap) => {
+      const agents = snap.docs.map((docSnap) => {
+        const data = docSnap.data()
+        const pnl = readLeaderboardPnl(data as Record<string, any>)
+        return {
+          id: docSnap.id,
+          name: String(data.name ?? 'Agent'),
+          pnl: Number.isFinite(pnl) ? pnl : 0,
+          status: String(data.status ?? 'disconnected'),
+          last_seen: tsToISO(data.last_seen as Timestamp | null),
+        }
+      })
+
+      agents.sort((a, b) => {
+        if (b.pnl !== a.pnl) return b.pnl - a.pnl
+        return new Date(b.last_seen ?? 0).getTime() - new Date(a.last_seen ?? 0).getTime()
+      })
+
+      const current = rows.get(uid)
+      rows.set(uid, {
+        uid,
+        username: current?.username ?? 'user',
+        display_name: current?.display_name ?? null,
+        avatar_url: current?.avatar_url ?? null,
+        total_pnl: agents.reduce((sum, agent) => sum + agent.pnl, 0),
+        active_agents: agents.filter((agent) => agent.status === 'connected').length,
+        total_agents: agents.length,
+        top_agents: agents.slice(0, 3).map((agent) => ({ id: agent.id, name: agent.name, pnl: agent.pnl })),
+        updated_at: agents[0]?.last_seen ?? null,
+      })
+      emit()
+    }, _noop)
+  })
+
+  return () => {
+    profileUnsubs.forEach((unsub) => unsub())
+    agentUnsubs.forEach((unsub) => unsub())
+  }
 }
 
 // Search agents by name prefix
@@ -617,6 +1139,8 @@ export async function listAgentsForUser(uid: string): Promise<Array<{
   name: string
   status: string
   last_seen: string | null
+  last_synced: string | null
+  live_state: Record<string, any> | null
   metadata: Record<string, unknown>
 }>> {
   const q = query(collection(db, 'agents'), where('user_id', '==', uid))
@@ -628,12 +1152,14 @@ export async function listAgentsForUser(uid: string): Promise<Array<{
       name: data.name as string,
       status: (data.status as string) ?? 'disconnected',
       last_seen: tsToISO(data.last_seen as Timestamp | null),
+      last_synced: tsToISO(data.last_synced as Timestamp | null),
+      live_state: (data.live_state as Record<string, any>) ?? null,
       metadata: (data.metadata as Record<string, unknown>) ?? {},
     }
   })
   rows.sort((a, b) => {
-    const ta = a.last_seen ? new Date(a.last_seen).getTime() : 0
-    const tb = b.last_seen ? new Date(b.last_seen).getTime() : 0
+    const ta = a.last_seen ? new Date(a.last_seen).getTime() : (a.last_synced ? new Date(a.last_synced).getTime() : 0)
+    const tb = b.last_seen ? new Date(b.last_seen).getTime() : (b.last_synced ? new Date(b.last_synced).getTime() : 0)
     return tb - ta
   })
   return rows
@@ -897,7 +1423,7 @@ export function subscribeToTrackedAgents(uid: string, cb: (agentIds: string[]) =
 
 export function subscribeToTrackedAgentDocs(
   agentIds: string[],
-  cb: (agents: Array<{ id: string; name: string; status: string; last_seen: string | null; owner_username: string | null; live_state: Record<string, any> | null }>) => void,
+  cb: (agents: Array<{ id: string; name: string; status: string; last_seen: string | null; last_synced: string | null; owner_username: string | null; live_state: Record<string, any> | null }>) => void,
 ) {
   if (agentIds.length === 0) { cb([]); return () => {} }
   const results = new Map<string, any>()
@@ -910,6 +1436,7 @@ export function subscribeToTrackedAgentDocs(
           name: String(d.name ?? 'Agent'),
           status: String(d.status ?? 'disconnected'),
           last_seen: tsToISO(d.last_seen as Timestamp | null),
+          last_synced: tsToISO(d.last_synced as Timestamp | null),
           owner_username: null, // resolved separately if needed
           live_state: (d.live_state as Record<string, any>) ?? null,
         })
@@ -1066,10 +1593,17 @@ export async function sendDirectMessage(threadId: string, senderUid: string, con
 export async function createClaudeAgent(
   uid: string,
   name: string,
-  claudeAgentId: string,
-  claudeEnvId: string,
+  claudeAgentId?: string,
+  claudeEnvId?: string,
   strategy?: string,
+  options?: {
+    skills?: string[]
+    coin?: string
+    customDescription?: string
+    broadcastEnabled?: boolean
+  },
 ): Promise<string> {
+  const wallet = generateAgentWallet()
   const ref = await addDoc(collection(db, 'agents'), {
     user_id: uid,
     name,
@@ -1077,15 +1611,94 @@ export async function createClaudeAgent(
     last_seen: serverTimestamp(),
     agent_type: 'claude_managed',
     strategy: strategy ?? 'Grid Trader',
-    // Pointers into Anthropic — all config/skills/sessions live there
-    claude_agent_id: claudeAgentId,
-    claude_env_id: claudeEnvId,
+    skills: options?.skills ?? [],
+    coin: options?.coin ?? 'BTC',
+    custom_description: options?.customDescription ?? null,
+    broadcast_enabled: options?.broadcastEnabled ?? true,
+    wallet_address: wallet.address,
+    wallet_network: 'solana',
+    wallet_mode: 'agent_custody',
+    wallet_ready: true,
+    metadata: {
+      agent_type: 'claude_managed',
+      strategy: strategy ?? 'Grid Trader',
+      skills: options?.skills ?? [],
+      coin: options?.coin ?? 'BTC',
+      customDescription: options?.customDescription ?? '',
+      broadcast_enabled: options?.broadcastEnabled ?? true,
+      wallet_mode: 'agent_custody',
+      wallet_network: 'solana',
+    },
+    // Legacy bridge identifiers. Current hosted runtime can operate without them.
+    claude_agent_id: claudeAgentId ?? null,
+    claude_env_id: claudeEnvId ?? null,
     created_at: serverTimestamp(),
   })
+  await setDoc(doc(db, 'agents', ref.id, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    solana_wallet_public_key: wallet.address,
+    solana_wallet_secret_key: wallet.secretKey,
+    custody_mode: 'agent_custody',
+    updated_at: serverTimestamp(),
+  }, { merge: true })
   return ref.id
 }
 
+export async function ensureAgentWallet(agentId: string): Promise<string> {
+  const ref = doc(db, 'agents', agentId)
+  const snap = await getDoc(ref)
+  const existingAddress = snap.exists() ? snap.data()?.wallet_address : null
+
+  if (typeof existingAddress === 'string' && existingAddress.length > 0) {
+    return existingAddress
+  }
+
+  const wallet = generateAgentWallet()
+
+  await setDoc(ref, {
+    wallet_address: wallet.address,
+    wallet_network: 'solana',
+    wallet_mode: 'agent_custody',
+    wallet_ready: true,
+    metadata: {
+      wallet_mode: 'agent_custody',
+      wallet_network: 'solana',
+    },
+    updated_at: serverTimestamp(),
+  }, { merge: true })
+
+  await setDoc(doc(db, 'agents', agentId, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    solana_wallet_public_key: wallet.address,
+    solana_wallet_secret_key: wallet.secretKey,
+    custody_mode: 'agent_custody',
+    updated_at: serverTimestamp(),
+  }, { merge: true })
+
+  return wallet.address
+}
+
+export async function setAgentTradingFundingMode(
+  agentId: string,
+  mode: 'paper' | 'live',
+): Promise<void> {
+  const isLive = mode === 'live'
+  await setDoc(doc(db, 'agents', agentId), {
+    paper_mode: !isLive,
+    live_trading_enabled: isLive,
+    funding_mode: isLive ? 'agent_wallet_live' : 'paper',
+    deployment_status: 'active',
+    updated_at: serverTimestamp(),
+    metadata: {
+      paper_mode: !isLive,
+      live_trading_enabled: isLive,
+      funding_mode: isLive ? 'agent_wallet_live' : 'paper',
+      wallet_mode: 'agent_custody',
+      wallet_network: 'solana',
+    },
+  }, { merge: true })
+}
+
 export async function createMarketAdvisorAgent(uid: string, name: string, geminiApiKey: string): Promise<string> {
+  const wallet = generateAgentWallet()
   const ref = await addDoc(collection(db, 'agents'), {
     user_id: uid,
     name,
@@ -1093,13 +1706,24 @@ export async function createMarketAdvisorAgent(uid: string, name: string, gemini
     last_seen: serverTimestamp(),
     agent_type: 'market_advisor',
     live_state: null,
-    metadata: { agent_type: 'market_advisor' },
+    wallet_address: wallet.address,
+    wallet_network: 'solana',
+    wallet_mode: 'agent_custody',
+    wallet_ready: true,
+    metadata: {
+      agent_type: 'market_advisor',
+      wallet_mode: 'agent_custody',
+      wallet_network: 'solana',
+    },
     created_at: serverTimestamp(),
   })
   await setDoc(doc(db, 'agents', ref.id, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    solana_wallet_public_key: wallet.address,
+    solana_wallet_secret_key: wallet.secretKey,
+    custody_mode: 'agent_custody',
     gemini_api_key: geminiApiKey,
     updated_at: serverTimestamp(),
-  })
+  }, { merge: true })
   return ref.id
 }
 
@@ -1110,6 +1734,7 @@ export async function createTradingBoyAgent(
   tbTraderId: string,
   tbApiKey: string,
 ): Promise<string> {
+  const wallet = generateAgentWallet()
   const ref = await addDoc(collection(db, 'agents'), {
     user_id: uid,
     name,
@@ -1120,12 +1745,19 @@ export async function createTradingBoyAgent(
     tb_trader_id: tbTraderId,
     live_state: null,
     last_synced: null,
+    wallet_address: wallet.address,
+    wallet_network: 'solana',
+    wallet_mode: 'agent_custody',
+    wallet_ready: true,
     created_at: serverTimestamp(),
   })
   await setDoc(doc(db, 'agents', ref.id, AGENT_PRIVATE_COLLECTION, AGENT_SECRETS_DOC_ID), {
+    solana_wallet_public_key: wallet.address,
+    solana_wallet_secret_key: wallet.secretKey,
+    custody_mode: 'agent_custody',
     tb_api_key: tbApiKey,
     updated_at: serverTimestamp(),
-  })
+  }, { merge: true })
   return ref.id
 }
 
@@ -1271,4 +1903,10 @@ export function subscribeToMarketNews(coins: string[], cb: (events: any[]) => vo
   return onSnapshot(q, (snap) => {
     cb(snap.docs.map(d => ({ id: d.id, ...d.data() })))
   }, _noop)
+}
+
+export async function getMarketNewsById(newsId: string) {
+  const snap = await getDoc(doc(db, 'market_news', newsId))
+  if (!snap.exists()) return null
+  return { id: snap.id, ...snap.data() }
 }

@@ -75,6 +75,14 @@ async function writeReply(firestoreAgentId, content) {
         created_at: firebase_1.FieldValue.serverTimestamp(),
     });
 }
+function isLiveFundingQuestion(text) {
+    const lower = text.toLowerCase();
+    return (lower.includes('real money') ||
+        lower.includes('real funds') ||
+        lower.includes('trade live') ||
+        lower.includes('live trade') ||
+        ((lower.includes('wallet') || lower.includes('send')) && (lower.includes('trade') || lower.includes('fund'))));
+}
 function stateEmoji(state) {
     if (!state)
         return '❓';
@@ -405,6 +413,7 @@ async function buildAllAgentsContext(userId, excludeAgentId) {
 }
 // ── Build live agent context for AI system prompt ─────────────────────────────
 async function buildLiveContext(firestoreAgentId, agentName, apiKey, tbAgentId) {
+    const agentDoc = (await firebase_1.db.collection('agents').doc(firestoreAgentId).get()).data() ?? {};
     let live = {};
     let admin = {};
     let watchlist = [];
@@ -422,6 +431,10 @@ async function buildLiveContext(firestoreAgentId, agentName, apiKey, tbAgentId) 
     }
     const state = live.state ?? 'UNKNOWN';
     const paused = admin.paused === true;
+    const liveTradingEnabled = agentDoc.paper_mode === false ||
+        agentDoc.live_trading_enabled === true ||
+        agentDoc.funding_mode === 'agent_wallet_live';
+    const walletAddress = typeof agentDoc.wallet_address === 'string' ? agentDoc.wallet_address : null;
     let positions = live.openPositions ?? [];
     try {
         const fetched = await (0, api_1.fetchAgentPositions)(apiKey, tbAgentId);
@@ -451,6 +464,8 @@ async function buildLiveContext(firestoreAgentId, agentName, apiKey, tbAgentId) 
         return `  [${ts}] ${dec.actionType ?? dec.decisionType} ${dec.tokenSymbol ?? ''} (${dec.confidence ?? 0}%): ${(dec.details ?? '').slice(0, 120)}`;
     }).join('\n');
     return `AGENT: ${agentName} | STATUS: ${paused ? 'PAUSED' : state}
+LIVE WALLET MODE: ${liveTradingEnabled ? 'ENABLED' : 'PAPER'}
+AGENT WALLET: ${walletAddress ?? 'not provisioned'}
 WATCHLIST: ${watchlist.join(', ') || 'none'}
 DAILY PnL: $${Number(pnl).toFixed(2)} | DAILY TRADES: ${trades}
 
@@ -611,6 +626,20 @@ function startChatListener(firestoreAgentId, apiKey, tbAgentId, agentName, opena
                 const portfolioContext = userId
                     ? await buildAllAgentsContext(userId, firestoreAgentId)
                     : 'Portfolio data unavailable.';
+                const agentDoc = thisDoc.data() ?? {};
+                const liveTradingEnabled = agentDoc.paper_mode === false ||
+                    agentDoc.live_trading_enabled === true ||
+                    agentDoc.funding_mode === 'agent_wallet_live';
+                const walletAddress = String(agentDoc.wallet_address ?? '').trim();
+                if (isLiveFundingQuestion(text)) {
+                    if (liveTradingEnabled && walletAddress) {
+                        await writeReply(firestoreAgentId, `Yes. I can trade live with funds already in my agent wallet. Send funds to ${walletAddress} and I can use them without asking per trade.`);
+                    }
+                    else {
+                        await writeReply(firestoreAgentId, 'I’m still in paper mode right now. Switch me to live mode and fund my agent wallet, then I can trade with those funds.');
+                    }
+                    continue;
+                }
                 // Load recent conversation history
                 const historySnap = await firebase_1.db
                     .collection('agents').doc(firestoreAgentId).collection('messages')
@@ -644,6 +673,8 @@ Rules:
 - Always confirm trade details with the user before appending TRADE_ACTION
 - Be concise and data-driven. Plain text only. Never fabricate prices or data.
 - If asked about a position or token not in your data, say so honestly.
+- If LIVE WALLET MODE is ENABLED, you may tell the user that this agent is configured to trade with funds already sent to its dedicated agent wallet.
+- Do not say you lack an agent wallet if AGENT WALLET is present in the live state above.
 - Remember the conversation history above.`;
                 const messages = [
                     { role: 'system', content: system },
@@ -973,6 +1004,7 @@ function startMarketAdvisorChatListener(firestoreAgentId, userId, agentName, gem
                     `- Be honest about uncertainty — don't fabricate prices or data\n\n` +
                     `RULES:\n` +
                     `- You don't execute trades — you advise, the user acts\n` +
+                    `- If a trading agent is live-funded, you may explain that it can trade with crypto already sent to its dedicated agent wallet\n` +
                     `- Keep responses concise (3-5 sentences) unless deep analysis is requested\n` +
                     `- Reference actual numbers from the portfolio data above\n` +
                     `- Plain text only, no markdown`;

@@ -158,6 +158,7 @@ export function startPoller(
         next_scan_at: agent.nextScanAt,
         live_state: enrichedLiveState,
         live_admin: live.admin,
+        last_seen: FieldValue.serverTimestamp(),
         last_synced: FieldValue.serverTimestamp(),
       })
 

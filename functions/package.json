@@ -2,7 +2,9 @@
   "name": "slugs-functions",
   "version": "1.0.0",
   "private": true,
-  "engines": { "node": "22" },
+  "engines": {
+    "node": "22"
+  },
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
@@ -12,12 +14,18 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@goat-sdk/core": "^0.5.0",
+    "@goat-sdk/plugin-jupiter": "^0.2.17",
+    "@goat-sdk/wallet-solana": "^0.3.1",
     "@google-cloud/pubsub": "^4.0.0",
+    "@solana/web3.js": "^1.98.4",
+    "bs58": "^6.0.0",
     "firebase-admin": "^13.0.0",
     "firebase-functions": "^6.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "firebase-tools": "^15.15.0",
+    "typescript": "^5.4.0"
   }
 }

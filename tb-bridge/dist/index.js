@@ -59,11 +59,11 @@ process.on('unhandledRejection', (reason) => {
 });
 // Track running agents to avoid duplicate listeners
 const runningAgents = new Set();
-function activateAgent(firestoreId, apiKey, tbAgentId, tbTraderId, agentName, openaiKey) {
+function activateAgent(firestoreId, apiKey, tbAgentId, tbTraderId, agentName, userId, openaiKey) {
     if (runningAgents.has(firestoreId))
         return;
     runningAgents.add(firestoreId);
-    (0, poller_1.startPoller)(firestoreId, apiKey, tbAgentId, tbTraderId, openaiKey);
+    (0, poller_1.startPoller)(firestoreId, apiKey, tbAgentId, tbTraderId, userId, agentName, openaiKey);
     (0, chat_1.startChatListener)(firestoreId, apiKey, tbAgentId, agentName, openaiKey);
     console.log(`[tb-bridge] activated agent ${firestoreId} (${agentName}) openai=${openaiKey ? 'yes' : 'no'}`);
 }
@@ -205,7 +205,7 @@ const server = http.createServer(async (req, res) => {
                 const docRef = firebase_1.db.collection('agents').doc(firestoreId);
                 const secSnap = await secretsRef(docRef).get();
                 const currentOpenaiKey = openaiKey ?? secSnap.data()?.openai_api_key ?? undefined;
-                activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name, currentOpenaiKey);
+                activateAgent(firestoreId, apiKey, agent.id, agent.traderId, agent.name, userId, currentOpenaiKey);
                 connectedAgents.push({ id: firestoreId, name: agent.name, tbAgentId: agent.id });
             }
             return send(res, 200, { agents: connectedAgents });
@@ -310,7 +310,7 @@ async function startup() {
     for (const doc of tbSnap.docs) {
         const data = await (0, agentSecrets_1.getAgentDataWithSecrets)(doc);
         if (data.tb_agent_id && data.tb_trader_id && data.tb_api_key) {
-            activateAgent(doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined);
+            activateAgent(doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.user_id ?? '', data.openai_api_key ?? undefined);
             count++;
         }
     }
@@ -353,7 +353,7 @@ async function startup() {
                 data.tb_trader_id &&
                 data.tb_api_key &&
                 !runningAgents.has(change.doc.id)) {
-                activateAgent(change.doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.openai_api_key ?? undefined);
+                activateAgent(change.doc.id, data.tb_api_key, data.tb_agent_id, data.tb_trader_id, data.name ?? 'Agent', data.user_id ?? '', data.openai_api_key ?? undefined);
             }
         }));
     });

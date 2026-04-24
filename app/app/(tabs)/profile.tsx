@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
+  Image,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect, router } from 'expo-router'
@@ -17,6 +18,7 @@ import {
   listPublicFeedEventsForUser,
   listFollowersOf,
   listFollowingUsers,
+  subscribeToUserAgents,
   type PublicUserListItem,
 } from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
@@ -43,6 +45,18 @@ interface AgentRow {
   name: string
   status: AgentStatus
   last_seen: string | null
+  last_synced?: string | null
+  live_state?: {
+    unrealizedPnlUsd?: number | null
+    unrealized_pnl?: number | null
+    dailyPnlUsd?: number | null
+    daily_pnl?: number | null
+    session_pnl?: number | null
+  } | null
+}
+
+function agentActivityIso(agent: { last_seen?: string | null; last_synced?: string | null }) {
+  return agent.last_seen ?? agent.last_synced ?? null
 }
 
 interface FeedRow {
@@ -59,6 +73,113 @@ function timeAgo(iso: string | null): string {
   if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
   if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
   return `${Math.floor(secs / 86400)}d ago`
+}
+
+function readFiniteNumber(...values: any[]): number | null {
+  for (const value of values) {
+    if (value == null || value === '') continue
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) return numeric
+  }
+  return null
+}
+
+function resolvePositionPnl(position: any): number | null {
+  const explicit = readFiniteNumber(
+    position?.unrealizedPnlUsd,
+    position?.unrealized_pnl,
+    position?.unrealizedPnl,
+    position?.unrealized,
+    position?.floatingPnl,
+    position?.pnl,
+  )
+  if (explicit != null) return explicit
+
+  const current = readFiniteNumber(
+    position?.currentPrice,
+    position?.current_price,
+    position?.markPrice,
+    position?.mark_price,
+  )
+  const entry = readFiniteNumber(
+    position?.entryPrice,
+    position?.entry_price,
+    position?.fillPrice,
+    position?.fill_price,
+  )
+  const qty = readFiniteNumber(position?.qty, position?.size, position?.quantity)
+  const sizeUsd = readFiniteNumber(position?.sizeUsd, position?.positionSize)
+  const sideRaw = String(position?.side ?? position?.direction ?? '').toLowerCase()
+  const multiplier = sideRaw.includes('sell') || sideRaw.includes('short') ? -1 : 1
+
+  if (current != null && entry != null && qty != null && qty !== 0) {
+    return (current - entry) * qty * multiplier
+  }
+
+  if (current != null && entry != null && entry > 0 && sizeUsd != null && sizeUsd > 0) {
+    return multiplier * ((current - entry) / entry) * sizeUsd
+  }
+
+  return null
+}
+
+function resolveAgentPnl(agent: AgentRow): number | null {
+  const metadata = (agent as any).metadata ?? {}
+  const metadataLive = metadata.live_state ?? metadata.liveState ?? null
+  const live = agent.live_state ?? metadataLive ?? null
+  const openPositions = Array.isArray(live?.openPositions)
+    ? live.openPositions
+    : Array.isArray(live?.positions)
+      ? live.positions
+      : Array.isArray(live?.open_positions)
+        ? live.open_positions
+        : []
+  const recentTrades = Array.isArray(live?.recentTrades)
+    ? live.recentTrades
+    : Array.isArray(live?.recent_trades)
+      ? live.recent_trades
+      : []
+
+  const explicit = readFiniteNumber(
+    live?.unrealizedPnlUsd,
+    live?.unrealized_pnl,
+    live?.unrealizedPnl,
+    live?.dailyPnlUsd,
+    live?.daily_pnl,
+    live?.dailyPnl,
+    live?.session_pnl,
+    metadata.unrealizedPnlUsd,
+    metadata.unrealized_pnl,
+    metadata.unrealizedPnl,
+    metadata.dailyPnlUsd,
+    metadata.daily_pnl,
+    metadata.dailyPnl,
+    metadata.session_pnl,
+  )
+  if (explicit != null) return explicit
+
+  const positionPnl = openPositions
+    .map((position: any) => resolvePositionPnl(position))
+    .filter((value: number | null): value is number => value != null)
+  if (positionPnl.length > 0) {
+    return positionPnl.reduce((sum, value) => sum + value, 0)
+  }
+
+  const tradePnl = recentTrades
+    .map((trade: any) => readFiniteNumber(
+      trade?.pnlUsd,
+      trade?.pnl,
+      trade?.realizedPnlUsd,
+      trade?.realized_pnl,
+      trade?.realizedPnl,
+      trade?.unrealizedPnlUsd,
+      trade?.unrealized_pnl,
+      trade?.unrealizedPnl,
+    ))
+    .filter((value: number | null): value is number => value != null)
+  if (tradePnl.length > 0) return tradePnl[0]
+
+  return null
 }
 
 function ChevronMark() {
@@ -134,7 +255,7 @@ function UserListModal({
 
 export default function ProfileTabScreen() {
   const showGlyphIcons = Platform.OS !== 'web'
-  const { user, username } = useAuthStore()
+  const { user, username, displayName, avatarUrl } = useAuthStore()
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState<string | null>(null)
   const [aiKey, setAiKey] = useState('')
@@ -144,8 +265,9 @@ export default function ProfileTabScreen() {
   const [following, setFollowing] = useState<PublicUserListItem[]>([])
   const [openList, setOpenList] = useState<'followers' | 'following' | null>(null)
 
-  const loadProfile = useCallback(async () => {
+  const loadProfile = useCallback(async (isActive?: () => boolean) => {
     if (!user?.uid) return
+    if (isActive && !isActive()) return
     setLoading(true)
     try {
       const [profile, agentRows, feedRows, followerRows, followingRows] = await Promise.all([
@@ -156,6 +278,7 @@ export default function ProfileTabScreen() {
         listFollowingUsers(user.uid),
       ])
 
+      if (isActive && !isActive()) return
       setEmail((profile?.email as string) ?? user.email ?? null)
       setAiKey(((profile?.ai_api_key as string) ?? '').trim())
       setAgents(agentRows as AgentRow[])
@@ -163,15 +286,42 @@ export default function ProfileTabScreen() {
       setFollowers(followerRows)
       setFollowing(followingRows)
     } finally {
+      if (isActive && !isActive()) return
       setLoading(false)
     }
   }, [user?.email, user?.uid])
 
   useFocusEffect(
     useCallback(() => {
-      loadProfile()
+      let active = true
+      void loadProfile(() => active)
+      return () => {
+        active = false
+      }
     }, [loadProfile])
   )
+
+  useEffect(() => {
+    if (!user?.uid) return
+    return subscribeToUserAgents(user.uid, (liveAgents) => {
+      const nextAgents = liveAgents
+        .map((agent) => ({
+          id: String(agent.id),
+          name: String(agent.name ?? 'Agent'),
+          status: (agent.status as AgentStatus) ?? 'disconnected',
+          last_seen: (agent.last_seen as string | null) ?? null,
+          last_synced: (agent.last_synced as string | null) ?? null,
+          live_state: (agent.live_state as Record<string, any> | null) ?? null,
+          metadata: (agent.metadata as Record<string, unknown>) ?? {},
+        }))
+        .sort((a, b) => {
+          const ta = agentActivityIso(a) ? new Date(agentActivityIso(a) as string).getTime() : 0
+          const tb = agentActivityIso(b) ? new Date(agentActivityIso(b) as string).getTime() : 0
+          return tb - ta
+        })
+      setAgents(nextAgents)
+    })
+  }, [user?.uid])
 
   const connectedCount = agents.filter((agent) => agent.status === 'connected').length
   const displayHandle = username ? `@${username}` : user?.email ?? '@you'
@@ -207,30 +357,40 @@ export default function ProfileTabScreen() {
 
         <View style={styles.heroCard}>
           <View style={styles.heroTop}>
-            <View style={styles.avatarRing}>
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarInitial}>{initials}</Text>
-              </View>
-            </View>
-            <View style={styles.heroMeta}>
-              <Text style={styles.handle}>{displayHandle}</Text>
-              {!!email && <Text style={styles.email}>{email}</Text>}
+            <View style={styles.heroStatusWrap}>
               <View style={styles.statusRow}>
                 <View style={[styles.statusDot, { backgroundColor: aiKey ? Colors.accentGreen : Colors.accentAmber }]} />
                 <Text style={[styles.statusText, { color: aiKey ? Colors.accentGreen : Colors.accentAmber }]}>{profileTone}</Text>
               </View>
             </View>
+            <View style={styles.avatarRing}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatarCircle}>
+                  <Text style={styles.avatarInitial}>{initials}</Text>
+                </View>
+              )}
+            </View>
+            <View style={styles.heroMeta}>
+              <Text style={styles.handle}>{displayHandle}</Text>
+              {!!displayName && <Text style={styles.displayName}>{displayName}</Text>}
+            </View>
           </View>
 
           <View style={styles.heroActions}>
-            <TouchableOpacity style={styles.primaryBtn} onPress={() => router.push('/set-username')} activeOpacity={0.85}>
-              {showGlyphIcons ? <Ionicons name="create-outline" size={16} color={Colors.bgPrimary} /> : null}
-              <Text style={styles.primaryBtnText}>Edit username</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.85}>
-              {showGlyphIcons ? <Ionicons name="key-outline" size={16} color={Colors.accentAmber} /> : null}
-              <Text style={styles.secondaryBtnText}>{aiKey ? 'Manage AI key' : 'Add AI key'}</Text>
-            </TouchableOpacity>
+            <View style={styles.heroActionSlot}>
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => router.push('/account')} activeOpacity={0.85}>
+                {showGlyphIcons ? <Ionicons name="create-outline" size={16} color={Colors.bgPrimary} /> : null}
+                <Text style={styles.primaryBtnText}>Edit profile</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.heroActionSlot}>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.push('/(tabs)/settings')} activeOpacity={0.85}>
+                {showGlyphIcons ? <Ionicons name="sparkles-outline" size={16} color={Colors.accentAmber} /> : null}
+                <Text style={styles.secondaryBtnText}>{aiKey ? 'Manage AI key' : 'Add AI key'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -290,30 +450,43 @@ export default function ProfileTabScreen() {
                   <Text style={styles.emptyText}>No slugs connected yet.</Text>
                 ) : (
                   agents.map((agent, index) => (
-                    <TouchableOpacity
-                      key={agent.id}
-                      style={[styles.agentRow, index < agents.length - 1 && styles.rowBorder]}
-                      activeOpacity={0.85}
-                      onPress={() => router.push(`/slug/${agent.id}`)}
-                    >
-                      <View style={styles.agentLeft}>
-                        <View style={[styles.agentAvatar, { borderColor: STATUS_COLOR[agent.status] }]}>
-                          <View style={[styles.agentAvatarInner, { backgroundColor: agentColor(agent.name) + '22' }]}>
-                            <Text style={[styles.agentAvatarInitial, { color: agentColor(agent.name) }]}>
-                              {agent.name[0]?.toUpperCase() ?? '?'}
-                            </Text>
+                    (() => {
+                      const pnl = resolveAgentPnl(agent)
+                      const pnlPositive = (pnl ?? 0) >= 0
+                      return (
+                        <TouchableOpacity
+                          key={agent.id}
+                          style={[styles.agentRow, index < agents.length - 1 && styles.rowBorder]}
+                          activeOpacity={0.85}
+                          onPress={() => router.push(`/agent/${agent.id}` as any)}
+                        >
+                          <View style={styles.agentLeft}>
+                            <View style={[styles.agentAvatar, { borderColor: STATUS_COLOR[agent.status] }]}>
+                              <View style={[styles.agentAvatarInner, { backgroundColor: agentColor(agent.name) + '22' }]}>
+                                <Text style={[styles.agentAvatarInitial, { color: agentColor(agent.name) }]}>
+                                  {agent.name[0]?.toUpperCase() ?? '?'}
+                                </Text>
+                              </View>
+                            </View>
+                            <View>
+                              <Text style={styles.agentName}>{agent.name}</Text>
+                              <Text style={styles.agentHandle}>@{usernameSlug}/{agent.name.toLowerCase().replace(/\s+/g, '-')}</Text>
+                            </View>
                           </View>
-                        </View>
-                        <View>
-                          <Text style={styles.agentName}>{agent.name}</Text>
-                          <Text style={styles.agentHandle}>@{usernameSlug}/{agent.name.toLowerCase().replace(/\s+/g, '-')}</Text>
-                        </View>
-                      </View>
-                      <View style={styles.agentRight}>
-                        <Text style={styles.agentTime}>{timeAgo(agent.last_seen)}</Text>
-                        <View style={[styles.agentStatusDot, { backgroundColor: STATUS_COLOR[agent.status] }]} />
-                      </View>
-                    </TouchableOpacity>
+                          <View style={styles.agentRight}>
+                            {pnl != null ? (
+                              <Text style={[styles.agentPnl, { color: pnlPositive ? Colors.accentGreen : Colors.accentRed }]}>
+                                {pnl >= 0 ? '+' : '-'}${Math.abs(pnl).toFixed(2)}
+                              </Text>
+                            ) : <View style={styles.agentPnlSpacer} />}
+                            <View style={styles.agentMetaRow}>
+                              <Text style={styles.agentTime}>{timeAgo(agentActivityIso(agent))}</Text>
+                              <View style={[styles.agentStatusDot, { backgroundColor: STATUS_COLOR[agent.status] }]} />
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      )
+                    })()
                   ))
                 )}
               </View>
@@ -395,16 +568,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+  },
   avatarInitial: { fontSize: 28, fontWeight: '800', color: Colors.accentAmber },
+  heroStatusWrap: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    zIndex: 2,
+  },
   heroMeta: { flex: 1, gap: 4 },
-  handle: { fontSize: 28, fontWeight: '800', color: Colors.textPrimary },
-  email: { fontSize: 13, color: Colors.textSecondary },
+  handle: { fontSize: 30, fontWeight: '800', color: Colors.textPrimary, letterSpacing: -0.6 },
+  displayName: { fontSize: 14, fontWeight: '600', color: Colors.textSecondary },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 12, fontWeight: '700' },
-  heroActions: { flexDirection: 'row', gap: 10 },
+  heroActions: { flexDirection: 'row', gap: 10, width: '100%' },
+  heroActionSlot: { flex: 1, flexBasis: 0 },
   primaryBtn: {
-    flex: 1,
+    width: '100%',
     minHeight: 44,
     backgroundColor: Colors.accentAmber,
     borderRadius: 14,
@@ -412,10 +597,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8,
+    paddingHorizontal: 12,
   },
-  primaryBtnText: { color: Colors.bgPrimary, fontWeight: '700', fontSize: 14 },
+  primaryBtnText: { color: Colors.bgPrimary, fontWeight: '700', fontSize: 13 },
   secondaryBtn: {
-    flex: 1,
+    width: '100%',
     minHeight: 44,
     borderRadius: 14,
     borderWidth: 1,
@@ -425,8 +611,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     backgroundColor: 'rgba(217,119,87,0.08)',
+    paddingHorizontal: 12,
   },
-  secondaryBtnText: { color: Colors.accentAmber, fontWeight: '700', fontSize: 14 },
+  secondaryBtnText: { color: Colors.accentAmber, fontWeight: '700', fontSize: 13 },
 
   statStrip: {
     flexDirection: 'row',
@@ -495,7 +682,17 @@ const styles = StyleSheet.create({
   agentAvatarInitial: { fontSize: 16, fontWeight: '800' },
   agentName: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
   agentHandle: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
-  agentRight: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 8 },
+  agentRight: { alignItems: 'flex-end', gap: 6, marginLeft: 8, minWidth: 92 },
+  agentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  agentPnl: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.accentGreen,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  agentPnlSpacer: {
+    minHeight: 18,
+  },
   agentTime: { fontSize: 11, color: Colors.textMuted },
   agentStatusDot: { width: 8, height: 8, borderRadius: 4 },
 

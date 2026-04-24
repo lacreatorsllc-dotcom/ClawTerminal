@@ -52,7 +52,19 @@ interface PublicAgent {
   name: string
   status: AgentStatus
   last_seen: string | null
+  last_synced?: string | null
   metadata: Record<string, unknown>
+  live_state?: {
+    unrealizedPnlUsd?: number | null
+    unrealized_pnl?: number | null
+    dailyPnlUsd?: number | null
+    daily_pnl?: number | null
+    session_pnl?: number | null
+  } | null
+}
+
+function agentActivityIso(agent: { last_seen?: string | null; last_synced?: string | null }) {
+  return agent.last_seen ?? agent.last_synced ?? null
 }
 
 interface FeedEvent {
@@ -63,6 +75,10 @@ interface FeedEvent {
   agent_id: string
 }
 
+function feedEventKind(type: string) {
+  return type === 'news_sentiment' ? 'news' : 'feed'
+}
+
 function timeAgo(iso: string | null): string {
   if (!iso) return 'never'
   const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
@@ -70,6 +86,113 @@ function timeAgo(iso: string | null): string {
   if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
   if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`
   return `${Math.floor(secs / 86400)}d ago`
+}
+
+function readFiniteNumber(...values: any[]): number | null {
+  for (const value of values) {
+    if (value == null || value === '') continue
+    const numeric = Number(value)
+    if (Number.isFinite(numeric)) return numeric
+  }
+  return null
+}
+
+function resolvePositionPnl(position: any): number | null {
+  const explicit = readFiniteNumber(
+    position?.unrealizedPnlUsd,
+    position?.unrealized_pnl,
+    position?.unrealizedPnl,
+    position?.unrealized,
+    position?.floatingPnl,
+    position?.pnl,
+  )
+  if (explicit != null) return explicit
+
+  const current = readFiniteNumber(
+    position?.currentPrice,
+    position?.current_price,
+    position?.markPrice,
+    position?.mark_price,
+  )
+  const entry = readFiniteNumber(
+    position?.entryPrice,
+    position?.entry_price,
+    position?.fillPrice,
+    position?.fill_price,
+  )
+  const qty = readFiniteNumber(position?.qty, position?.size, position?.quantity)
+  const sizeUsd = readFiniteNumber(position?.sizeUsd, position?.positionSize)
+  const sideRaw = String(position?.side ?? position?.direction ?? '').toLowerCase()
+  const multiplier = sideRaw.includes('sell') || sideRaw.includes('short') ? -1 : 1
+
+  if (current != null && entry != null && qty != null && qty !== 0) {
+    return (current - entry) * qty * multiplier
+  }
+
+  if (current != null && entry != null && entry > 0 && sizeUsd != null && sizeUsd > 0) {
+    return multiplier * ((current - entry) / entry) * sizeUsd
+  }
+
+  return null
+}
+
+function resolveAgentPnl(agent: PublicAgent): number | null {
+  const metadata = (agent as any).metadata ?? {}
+  const metadataLive = metadata.live_state ?? metadata.liveState ?? null
+  const live = agent.live_state ?? metadataLive ?? null
+  const openPositions = Array.isArray(live?.openPositions)
+    ? live.openPositions
+    : Array.isArray(live?.positions)
+      ? live.positions
+      : Array.isArray(live?.open_positions)
+        ? live.open_positions
+        : []
+  const recentTrades = Array.isArray(live?.recentTrades)
+    ? live.recentTrades
+    : Array.isArray(live?.recent_trades)
+      ? live.recent_trades
+      : []
+
+  const explicit = readFiniteNumber(
+    live?.unrealizedPnlUsd,
+    live?.unrealized_pnl,
+    live?.unrealizedPnl,
+    live?.dailyPnlUsd,
+    live?.daily_pnl,
+    live?.dailyPnl,
+    live?.session_pnl,
+    metadata.unrealizedPnlUsd,
+    metadata.unrealized_pnl,
+    metadata.unrealizedPnl,
+    metadata.dailyPnlUsd,
+    metadata.daily_pnl,
+    metadata.dailyPnl,
+    metadata.session_pnl,
+  )
+  if (explicit != null) return explicit
+
+  const positionPnl = openPositions
+    .map((position: any) => resolvePositionPnl(position))
+    .filter((value: number | null): value is number => value != null)
+  if (positionPnl.length > 0) {
+    return positionPnl.reduce((sum, value) => sum + value, 0)
+  }
+
+  const tradePnl = recentTrades
+    .map((trade: any) => readFiniteNumber(
+      trade?.pnlUsd,
+      trade?.pnl,
+      trade?.realizedPnlUsd,
+      trade?.realized_pnl,
+      trade?.realizedPnl,
+      trade?.unrealizedPnlUsd,
+      trade?.unrealized_pnl,
+      trade?.unrealizedPnl,
+    ))
+    .filter((value: number | null): value is number => value != null)
+  if (tradePnl.length > 0) return tradePnl[0]
+
+  return null
 }
 
 export default function PublicProfileScreen() {
@@ -91,10 +214,15 @@ export default function PublicProfileScreen() {
 
   useEffect(() => {
     if (!username) return
-    void loadProfile()
+    let active = true
+    void loadProfile(() => active)
+    return () => {
+      active = false
+    }
   }, [username, me?.uid])
 
-  async function loadProfile() {
+  async function loadProfile(isActive?: () => boolean) {
+    if (isActive && !isActive()) return
     setLoading(true)
     setNotFound(false)
     try {
@@ -105,6 +233,7 @@ export default function PublicProfileScreen() {
       const profileData = userId
         ? await getPublicProfileByUid(userId)
         : await getPublicProfileByUsername(uname)
+      if (isActive && !isActive()) return
       if (!profileData) {
         setNotFound(true)
         return
@@ -121,15 +250,18 @@ export default function PublicProfileScreen() {
         myUid ? isFollowingUser(myUid, profileData.id) : Promise.resolve(false),
       ])
 
+      if (isActive && !isActive()) return
       setAgents(agentRows as unknown as PublicAgent[])
       setFeed(feedRows)
       setFollowerCount(followers)
       setFollowingCount(following)
       setIsFollowing(amFollowing)
     } catch (error) {
+      if (isActive && !isActive()) return
       console.warn('[profile] loadProfile failed', error)
       setNotFound(true)
     } finally {
+      if (isActive && !isActive()) return
       setLoading(false)
     }
   }
@@ -278,12 +410,14 @@ export default function PublicProfileScreen() {
             <View style={styles.card}>
               {agents.map((agent, index) => {
                 const safeAgentName = agent.name || 'slug'
+                const pnl = resolveAgentPnl(agent)
+                const pnlPositive = (pnl ?? 0) >= 0
                 return (
                   <TouchableOpacity
                     key={agent.id}
                     style={[styles.agentRow, index < agents.length - 1 && styles.rowBorder]}
                     activeOpacity={0.85}
-                    onPress={() => router.push(`/slug/${agent.id}`)}
+                    onPress={() => router.push(`/agent/${agent.id}` as any)}
                   >
                     <View style={styles.agentLeft}>
                       <View style={[styles.agentAvatar, { borderColor: STATUS_COLOR[agent.status] }]}>
@@ -299,8 +433,15 @@ export default function PublicProfileScreen() {
                       </View>
                     </View>
                     <View style={styles.agentRight}>
-                      <Text style={styles.agentTime}>{timeAgo(agent.last_seen)}</Text>
-                      <View style={[styles.agentStatusDot, { backgroundColor: STATUS_COLOR[agent.status] }]} />
+                      {pnl != null ? (
+                        <Text style={[styles.agentPnl, { color: pnlPositive ? Colors.accentGreen : Colors.accentRed }]}>
+                          {pnl >= 0 ? '+' : '-'}${Math.abs(pnl).toFixed(2)}
+                        </Text>
+                      ) : <View style={styles.agentPnlSpacer} />}
+                      <View style={styles.agentMetaRow}>
+                        <Text style={styles.agentTime}>{timeAgo(agentActivityIso(agent))}</Text>
+                        <View style={[styles.agentStatusDot, { backgroundColor: STATUS_COLOR[agent.status] }]} />
+                      </View>
                     </View>
                   </TouchableOpacity>
                 )
@@ -316,13 +457,21 @@ export default function PublicProfileScreen() {
             </View>
             <View style={styles.card}>
               {feed.map((event, index) => (
-                <View key={event.id} style={[styles.feedRow, index < feed.length - 1 && styles.rowBorder]}>
+                <TouchableOpacity
+                  key={event.id}
+                  style={[styles.feedRow, index < feed.length - 1 && styles.rowBorder]}
+                  activeOpacity={0.85}
+                  onPress={() => router.push({
+                    pathname: '/feed-event/[id]' as any,
+                    params: { id: event.id, kind: feedEventKind(event.type) },
+                  })}
+                >
                   <View style={styles.feedTag}>
                     <Text style={styles.feedTagText}>{event.type || 'update'}</Text>
                   </View>
                   <Text style={styles.feedContent} numberOfLines={3}>{event.content || 'No details yet.'}</Text>
                   <Text style={styles.feedTime}>{timeAgo(event.created_at)}</Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </View>
@@ -434,6 +583,7 @@ const styles = StyleSheet.create({
   handleDesktop: { fontSize: 36, letterSpacing: -0.8 },
   displayName: { fontSize: 13, color: Colors.textMuted },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  statusDot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 12, fontWeight: '700', color: Colors.accentGreen },
   followBtnRow: {
     paddingHorizontal: 0,
@@ -443,7 +593,7 @@ const styles = StyleSheet.create({
   },
   followBtnRowDesktop: {
     marginBottom: 0,
-    justifyContent: 'stretch',
+    justifyContent: 'flex-start',
   },
   primaryBtn: {
     backgroundColor: Colors.accentAmber,
@@ -527,7 +677,17 @@ const styles = StyleSheet.create({
   agentAvatarInitial: { fontSize: 16, fontWeight: '700' },
   agentName: { fontSize: 15, fontWeight: '700', color: Colors.textPrimary },
   agentHandle: { fontSize: 11, color: Colors.textMuted, marginTop: 1 },
-  agentRight: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 8 },
+  agentRight: { alignItems: 'flex-end', gap: 6, marginLeft: 8, minWidth: 92 },
+  agentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  agentPnl: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: Colors.accentGreen,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  agentPnlSpacer: {
+    minHeight: 18,
+  },
   agentTime: { fontSize: 11, color: Colors.textMuted },
   agentStatusDot: { width: 8, height: 8, borderRadius: 4 },
 

@@ -1,7 +1,134 @@
 import { Tabs } from 'expo-router'
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
+import { View } from 'react-native'
 import { Colors } from '../../constants/colors'
 import { useDesktopWebLayout } from '../../lib/responsive'
+
+function TabIcon({
+  color,
+  kind,
+}: {
+  color: string
+  kind: 'chat' | 'feed' | 'search' | 'slugs' | 'profile'
+}) {
+  if (kind === 'chat') {
+    return (
+      <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{
+          width: 18,
+          height: 14,
+          borderWidth: 2,
+          borderColor: color,
+          borderRadius: 7,
+        }} />
+        <View style={{
+          position: 'absolute',
+          left: 4,
+          bottom: 2,
+          width: 7,
+          height: 7,
+          borderLeftWidth: 2,
+          borderBottomWidth: 2,
+          borderColor: color,
+          transform: [{ rotate: '-35deg' }],
+          backgroundColor: Colors.bgPrimary,
+        }} />
+      </View>
+    )
+  }
+
+  if (kind === 'feed') {
+    return (
+      <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+        {[0, 1, 2].map((line) => (
+          <View
+            key={line}
+            style={{
+              width: line === 2 ? 12 : 16,
+              height: 2,
+              borderRadius: 999,
+              backgroundColor: color,
+            }}
+          />
+        ))}
+      </View>
+    )
+  }
+
+  if (kind === 'search') {
+    return (
+      <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{
+          width: 12,
+          height: 12,
+          borderWidth: 2,
+          borderColor: color,
+          borderRadius: 999,
+          position: 'absolute',
+          top: 4,
+          left: 4,
+        }} />
+        <View style={{
+          width: 8,
+          height: 2,
+          borderRadius: 999,
+          backgroundColor: color,
+          position: 'absolute',
+          right: 3,
+          bottom: 5,
+          transform: [{ rotate: '45deg' }],
+        }} />
+      </View>
+    )
+  }
+
+  if (kind === 'slugs') {
+    return (
+      <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{
+          width: 18,
+          height: 18,
+          borderWidth: 2,
+          borderColor: color,
+          borderRadius: 999,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <View style={{
+            width: 6,
+            height: 6,
+            borderRadius: 999,
+            backgroundColor: color,
+          }} />
+        </View>
+      </View>
+    )
+  }
+
+  return (
+    <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{
+        width: 9,
+        height: 9,
+        borderWidth: 2,
+        borderColor: color,
+        borderRadius: 999,
+        position: 'absolute',
+        top: 2,
+      }} />
+      <View style={{
+        width: 16,
+        height: 9,
+        borderWidth: 2,
+        borderColor: color,
+        borderTopWidth: 0,
+        borderBottomLeftRadius: 10,
+        borderBottomRightRadius: 10,
+        position: 'absolute',
+        bottom: 2,
+      }} />
+    </View>
+  )
+}
 
 export default function TabsLayout() {
   const isDesktopWeb = useDesktopWebLayout()
@@ -60,20 +187,11 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Chat',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="chatbubble-ellipses-outline" size={23} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="feed"
         options={{
           title: 'Feed',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="reader" size={24} color={color} />
+            <TabIcon kind="feed" color={color} />
           ),
         }}
       />
@@ -82,7 +200,7 @@ export default function TabsLayout() {
         options={{
           title: 'Search',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="search" size={24} color={color} />
+            <TabIcon kind="search" color={color} />
           ),
         }}
       />
@@ -91,7 +209,16 @@ export default function TabsLayout() {
         options={{
           title: 'Slugs',
           tabBarIcon: ({ color }) => (
-            <MaterialCommunityIcons name="access-point" size={28} color={color} />
+            <TabIcon kind="slugs" color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Messages',
+          tabBarIcon: ({ color }) => (
+            <TabIcon kind="chat" color={color} />
           ),
         }}
       />
@@ -104,7 +231,7 @@ export default function TabsLayout() {
         options={{
           title: 'Profile',
           tabBarIcon: ({ color }) => (
-            <Ionicons name={color === Colors.accentAmber ? 'person-circle' : 'person-circle-outline'} size={26} color={color} />
+            <TabIcon kind="profile" color={color} />
           ),
         }}
       />

@@ -1,13 +1,31 @@
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Platform } from 'react-native'
+import { useState } from 'react'
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Platform, ActivityIndicator, Linking, Image } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import * as Clipboard from 'expo-clipboard'
 import { router } from 'expo-router'
+import type { WalletProvider } from '../lib/phantomConnect'
 import { useAuthStore } from '../stores/authStore'
-import { auth, signOut } from '../lib/firebase'
+import { auth, setProfile, signOut } from '../lib/firebase'
 import { Colors } from '../constants/colors'
+import { WalletPickerSheet } from '../components/WalletPickerSheet'
+
+const BASE_SOLANA_WALLETS: { id: WalletProvider; label: string; subtitle: string }[] = [
+  { id: 'phantom', label: 'Phantom', subtitle: 'Most popular Solana wallet' },
+  { id: 'backpack', label: 'Backpack', subtitle: 'Wallet plus xNFT ecosystem' },
+  { id: 'solflare', label: 'Solflare', subtitle: 'Popular Solana wallet for mobile and web' },
+]
 
 export default function SettingsScreen() {
-  const { user, username, walletAddress, walletProvider, setLoading } = useAuthStore()
+  const { user, username, displayName, avatarUrl, walletAddress, walletProvider, setWallet, clearWallet, setLoading } = useAuthStore()
+  const [connectingWallet, setConnectingWallet] = useState<WalletProvider | null>(null)
+  const [walletError, setWalletError] = useState<string | null>(null)
+  const [walletSheetVisible, setWalletSheetVisible] = useState(false)
+  const walletOptions = Platform.OS === 'android'
+    ? [
+        { id: 'seeker' as WalletProvider, label: 'Seeker wallet', subtitle: 'Use Android native wallet connection' },
+        ...BASE_SOLANA_WALLETS,
+      ]
+    : BASE_SOLANA_WALLETS
 
   const initials = (() => {
     if (username) {
@@ -29,6 +47,80 @@ export default function SettingsScreen() {
     await signOut(auth)
   }
 
+  async function persistWalletConnection(address: string, provider: WalletProvider) {
+    if (!user?.uid) return
+
+    await setProfile(user.uid, {
+      wallet_address: address,
+      wallet_provider: provider,
+      wallet_connected_at: new Date().toISOString(),
+    })
+    setWallet(address, provider)
+  }
+
+  async function handleWalletConnect(provider: WalletProvider) {
+    if (!user?.uid) return
+
+    setConnectingWallet(provider)
+    setWalletError(null)
+
+    try {
+      if (provider === 'seeker' && Platform.OS === 'android') {
+        const { connectSeekerWallet } = await import('../lib/mobileWallet')
+        const result = await connectSeekerWallet()
+        await persistWalletConnection(result.walletPublicKey, result.provider)
+        return
+      }
+
+      const {
+        beginMobileWalletConnect,
+        connectInjectedWallet,
+        getWalletInstallUrl,
+      } = await import('../lib/phantomConnect')
+
+      if (Platform.OS === 'web') {
+        const result = await connectInjectedWallet(provider)
+        if (!result) {
+          window.open(getWalletInstallUrl(provider), '_blank', 'noopener,noreferrer')
+          setWalletError(`${provider[0].toUpperCase()}${provider.slice(1)} is not installed in this browser`)
+          return
+        }
+
+        await persistWalletConnection(result.walletPublicKey, result.provider)
+        return
+      }
+
+      const url = beginMobileWalletConnect(provider)
+      const supported = await Linking.canOpenURL(url)
+
+      if (!supported) {
+        const installUrl = getWalletInstallUrl(provider)
+        await Linking.openURL(installUrl)
+        setWalletError(`${provider[0].toUpperCase()}${provider.slice(1)} is not installed on this device`)
+        return
+      }
+
+      await Linking.openURL(url)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Wallet connection failed'
+      setWalletError(message)
+    } finally {
+      setConnectingWallet(null)
+    }
+  }
+
+  async function handleDisconnectWallet() {
+    if (!user?.uid) return
+
+    await setProfile(user.uid, {
+      wallet_address: null,
+      wallet_provider: null,
+      wallet_connected_at: null,
+    })
+    clearWallet()
+    setWalletError(null)
+  }
+
   function confirmSignOut() {
     if (Platform.OS === 'web') {
       if (window.confirm('Sign out of SLUGS?')) handleSignOut()
@@ -42,7 +134,8 @@ export default function SettingsScreen() {
 
   const ROWS: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }[] = [
     { icon: 'add-circle-outline', label: 'Connect a slug', onPress: () => router.push('/connect') },
-    { icon: 'storefront-outline', label: 'Browse marketplace', onPress: () => router.push('/(tabs)/skills') },
+    { icon: 'image-outline', label: 'Edit profile photo', onPress: () => router.push('/set-avatar' as any) },
+    { icon: 'create-outline', label: 'Edit display name', onPress: () => router.push('/set-name') },
     { icon: 'person-outline', label: 'Edit username', onPress: () => router.push('/set-username') },
   ]
 
@@ -62,12 +155,16 @@ export default function SettingsScreen() {
         <Text style={styles.sectionLabel}>ACCOUNT</Text>
         <View style={styles.card}>
           <View style={styles.accountRow}>
-            <View style={styles.accountAvatar}>
-              <Text style={styles.accountInitials}>{initials}</Text>
-            </View>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.accountAvatarImage} />
+            ) : (
+              <View style={styles.accountAvatar}>
+                <Text style={styles.accountInitials}>{initials}</Text>
+              </View>
+            )}
             <View style={styles.accountInfo}>
-              <Text style={styles.accountHandle}>{username ? `@${username}` : user?.email}</Text>
-              {username && <Text style={styles.accountEmail}>{user?.email}</Text>}
+              <Text style={styles.accountHandle}>{displayName || (username ? `@${username}` : user?.email)}</Text>
+              <Text style={styles.accountEmail}>{username ? `@${username}` : user?.email}</Text>
             </View>
           </View>
           <View style={styles.divider} />
@@ -75,7 +172,7 @@ export default function SettingsScreen() {
             <Ionicons name="key-outline" size={18} color={Colors.textSecondary} />
             <View style={styles.rowContent}>
               <Text style={styles.rowLabel}>User ID</Text>
-              <Text style={styles.userIdText} numberOfLines={1}>{user?.id ?? '—'}</Text>
+              <Text style={styles.userIdText} numberOfLines={1}>{user?.uid ?? '—'}</Text>
             </View>
             <Ionicons name="copy-outline" size={16} color={Colors.textMuted} />
           </TouchableOpacity>
@@ -83,23 +180,74 @@ export default function SettingsScreen() {
       </View>
 
       {/* Wallet */}
-      {walletAddress && (
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>WALLET</Text>
-          <View style={styles.card}>
-            <View style={styles.row}>
-              <Ionicons name="wallet-outline" size={18} color={Colors.accentGreen} />
-              <View style={styles.rowContent}>
-                <Text style={styles.rowLabel}>{walletProvider ?? 'Wallet'}</Text>
-                <Text style={styles.walletAddr}>{walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}</Text>
-              </View>
-              <View style={styles.connectedBadge}>
-                <Text style={styles.connectedText}>Connected</Text>
-              </View>
-            </View>
-          </View>
+      <View style={styles.section}>
+        <Text style={styles.sectionLabel}>WALLET</Text>
+        <View style={styles.walletNotice}>
+          <Text style={styles.walletNoticeTitle}>Paper trade first, fund later</Text>
+          <Text style={styles.walletNoticeBody}>
+            Once you feel confident in how an agent is performing with paper trading, you can send crypto to its agent wallet and let it trade live on its own.
+          </Text>
         </View>
-      )}
+        <View style={styles.card}>
+          {walletAddress ? (
+            <>
+              <View style={styles.row}>
+                <Ionicons name="wallet-outline" size={18} color={Colors.accentGreen} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>{walletProvider ?? 'Wallet'}</Text>
+                  <Text style={styles.walletAddr}>{walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}</Text>
+                </View>
+                <View style={styles.connectedBadge}>
+                  <Text style={styles.connectedText}>Connected</Text>
+                </View>
+              </View>
+              <View style={styles.divider} />
+              <TouchableOpacity style={styles.row} onPress={() => void Clipboard.setStringAsync(walletAddress)} activeOpacity={0.7}>
+                <Ionicons name="copy-outline" size={18} color={Colors.textSecondary} />
+                <Text style={styles.rowLabel}>Copy wallet address</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+              <View style={styles.divider} />
+              <TouchableOpacity style={styles.row} onPress={handleDisconnectWallet} activeOpacity={0.7}>
+                <Ionicons name="unlink-outline" size={18} color={Colors.accentRed} />
+                <Text style={[styles.rowLabel, styles.disconnectLabel]}>Disconnect wallet</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <View style={styles.walletStack}>
+              <View style={styles.walletIntro}>
+                <Text style={styles.walletTitle}>Connect a Solana wallet</Text>
+                <Text style={styles.walletSubtitle}>
+                  Link your wallet so account permissions and agent funding stay tied to the same profile on Android and web.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.walletAction}
+                onPress={() => setWalletSheetVisible(true)}
+                disabled={!!connectingWallet}
+                activeOpacity={0.85}
+              >
+                <View style={styles.walletActionCopy}>
+                  <Text style={styles.walletActionLabel}>Connect wallet</Text>
+                  <Text style={styles.walletActionSub}>
+                    {Platform.OS === 'android'
+                      ? 'Choose Seeker wallet, Phantom, Backpack, or Solflare'
+                      : 'Choose Phantom, Backpack, or Solflare'}
+                  </Text>
+                </View>
+                {connectingWallet
+                  ? <ActivityIndicator color={Colors.bgPrimary} />
+                  : <Ionicons name="chevron-up" size={18} color={Colors.bgPrimary} />
+                }
+              </TouchableOpacity>
+
+              {walletError && <Text style={styles.walletError}>{walletError}</Text>}
+            </View>
+          )}
+        </View>
+      </View>
 
       {/* Actions */}
       <View style={styles.section}>
@@ -127,6 +275,29 @@ export default function SettingsScreen() {
       </View>
 
       <Text style={styles.version}>SLUGS v1.0.0</Text>
+
+      <WalletPickerSheet
+        visible={walletSheetVisible}
+        title="Connect a Solana wallet"
+        subtitle="Pick the wallet you want to use with this account."
+        options={walletOptions.map((option) => ({
+          ...option,
+          icon:
+            option.id === 'seeker'
+              ? 'S'
+              : option.id === 'phantom'
+                ? '◎'
+                : option.id === 'backpack'
+                  ? '⬡'
+                  : '◌',
+        }))}
+        connectingWallet={connectingWallet}
+        onClose={() => setWalletSheetVisible(false)}
+        onSelect={(provider) => {
+          setWalletSheetVisible(false)
+          void handleWalletConnect(provider)
+        }}
+      />
     </ScrollView>
   )
 }
@@ -165,6 +336,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.accentAmber,
     justifyContent: 'center', alignItems: 'center',
   },
+  accountAvatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: Colors.accentAmber,
+  },
   accountInitials: { fontSize: 15, fontWeight: '700', color: Colors.accentAmber, letterSpacing: 0.5 },
   accountInfo: { gap: 2 },
   accountHandle: { fontSize: 15, fontWeight: '600', color: Colors.textPrimary },
@@ -183,11 +361,77 @@ const styles = StyleSheet.create({
     fontSize: 11, color: Colors.textMuted,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
+  walletStack: {
+    gap: 12,
+    padding: 16,
+  },
+  walletIntro: {
+    gap: 6,
+  },
+  walletTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  walletSubtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.textMuted,
+  },
+  walletNotice: {
+    marginBottom: 10,
+    padding: 14,
+    gap: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(217,119,87,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,87,0.22)',
+  },
+  walletNoticeTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textPrimary,
+  },
+  walletNoticeBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: Colors.textSecondary,
+  },
+  walletAction: {
+    minHeight: 52,
+    borderRadius: 14,
+    backgroundColor: Colors.accentAmber,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  walletActionCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  walletActionLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.bgPrimary,
+  },
+  walletActionSub: {
+    fontSize: 11,
+    color: 'rgba(0,0,0,0.68)',
+  },
+  walletError: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: Colors.accentRed,
+  },
   connectedBadge: {
     backgroundColor: 'rgba(0,200,150,0.1)',
     borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
   },
   connectedText: { fontSize: 11, fontWeight: '700', color: Colors.accentGreen },
+  disconnectLabel: { color: Colors.accentRed },
 
   signOutBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

@@ -1,27 +1,33 @@
-const fs = require("fs");
-const fetch = require("node-fetch");
+if (process.env.EXPO_OS || process.env.REACT_NATIVE_PACKAGER_HOSTNAME) {
+  require("./app/index.ts");
+} else if (require.main === module) {
+  // Keep Node-only dependencies out of Metro's static resolution path.
+  const nodeRequire = eval("require");
+  const fs = nodeRequire("fs");
+  const fetch = nodeRequire("node-fetch");
 
-async function fixFile() {
-  const file = fs.readFileSync("index.js", "utf-8");
+  async function fixFile() {
+    const file = fs.readFileSync("index.js", "utf-8");
 
-  const res = await fetch("http://127.0.0.1:11434/api/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "qwen2.5-coder:7b",
-      prompt: `
+    const res = await fetch("http://127.0.0.1:11434/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "qwen2.5-coder:7b",
+        prompt: `
 You are a coding agent.
 
 Fix this file to reduce API calls and improve structure.
 
 ${file}
 `,
-      stream: false
-    })
-  });
+        stream: false
+      })
+    });
 
-  const data = await res.json();
-  fs.writeFileSync("index.js", data.response);
+    const data = await res.json();
+    fs.writeFileSync("index.js", data.response);
+  }
+
+  fixFile();
 }
-
-fixFile();

@@ -60,7 +60,49 @@ function formatAlert(d) {
 }
 // ── Poller ────────────────────────────────────────────────────────────────────
 const POLL_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes — agent status doesn't need sub-minute freshness
-function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId, openaiApiKey) {
+async function publishTradeFeedEvent(firestoreAgentId, userId, agentName, d) {
+    const agentDoc = await firebase_1.db.collection('agents').doc(firestoreAgentId).get();
+    if (!agentDoc.exists)
+        return;
+    const broadcastEnabled = agentDoc.data()?.broadcast_enabled !== false;
+    const action = d.actionType ?? d.decisionType ?? 'TRADE';
+    let actionLabel = action;
+    if (action.includes('LONG'))
+        actionLabel = 'ENTRY';
+    else if (action.includes('SHORT'))
+        actionLabel = 'ENTRY';
+    else if (action.includes('EXIT') || action.includes('CLOSE'))
+        actionLabel = 'EXIT';
+    else if (action.includes('STOP'))
+        actionLabel = 'STOP_HIT';
+    else if (action.includes('PROFIT') || action.includes('TP'))
+        actionLabel = 'TAKE_PROFIT';
+    const direction = d.direction ?? (action.includes('SHORT') ? 'SHORT' : action.includes('LONG') ? 'LONG' : null);
+    const symbol = d.tokenSymbol ?? null;
+    const price = actionLabel === 'EXIT' ? (d.exitPrice ?? d.entryPrice) : d.entryPrice;
+    const priceStr = price ? ` @ $${Number(price).toLocaleString()}` : '';
+    const content = `${actionLabel}: ${direction ?? ''} ${symbol ?? ''}${priceStr}`.trim();
+    await firebase_1.db.collection('feed_events').add({
+        agent_id: firestoreAgentId,
+        agent_name: agentName,
+        user_id: userId,
+        type: 'trade',
+        content,
+        is_public: broadcastEnabled,
+        payload: {
+            action: actionLabel,
+            symbol,
+            direction,
+            entry_price: d.entryPrice ?? null,
+            exit_price: d.exitPrice ?? null,
+            confidence: d.confidence ?? null,
+            details: d.details ?? null,
+            emotional_tag: d.emotionalTag ?? null,
+        },
+        created_at: firebase_1.FieldValue.serverTimestamp(),
+    });
+}
+function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId, userId, agentName, openaiApiKey) {
     const seenIds = new Set();
     let firstPoll = true;
     async function poll() {
@@ -152,6 +194,7 @@ function startPoller(firestoreAgentId, apiKey, tbAgentId, tbTraderId, openaiApiK
                         decision_id: d.id,
                         created_at: firebase_1.FieldValue.serverTimestamp(),
                     });
+                    await publishTradeFeedEvent(firestoreAgentId, userId, agentName, d);
                 }
             }
             console.log(`[poller:${firestoreAgentId}] synced`);

@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.NEWS_COL = exports.FEED_COL = exports.AGENTS_COL = exports.FieldValue = exports.db = void 0;
+exports.AGENT_SECRETS_DOC_ID = exports.AGENT_PRIVATE_COLLECTION = exports.NEWS_COL = exports.FEED_COL = exports.AGENTS_COL = exports.FieldValue = exports.db = void 0;
 const admin = __importStar(require("firebase-admin"));
 if (!admin.apps.length) {
     admin.initializeApp();
@@ -43,4 +43,6 @@ exports.FieldValue = admin.firestore.FieldValue;
 exports.AGENTS_COL = exports.db.collection('agents');
 exports.FEED_COL = exports.db.collection('feed_events');
 exports.NEWS_COL = exports.db.collection('market_news');
+exports.AGENT_PRIVATE_COLLECTION = 'private';
+exports.AGENT_SECRETS_DOC_ID = 'secrets';
 //# sourceMappingURL=firebase.js.map

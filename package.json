@@ -1,8 +1,22 @@
 {
+  "name": "ClawTerminal",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "expo": "^55.0.15",
-    "node-fetch": "^2.7.0"
+    "expo-constants": "~55.0.15",
+    "expo-linking": "~55.0.14",
+    "expo-router": "~55.0.13",
+    "expo-status-bar": "~55.0.5",
+    "node-fetch": "^2.7.0",
+    "react": "19.2.0",
+    "react-native": "0.83.6",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.10",

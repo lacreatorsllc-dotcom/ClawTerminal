@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import {
-  View, Text, TouchableOpacity, StyleSheet, Alert,
+  View, Text, TouchableOpacity, StyleSheet, Alert, Image,
   TextInput, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { router } from 'expo-router'
-import { auth, signOut, getProfile, setProfile } from '../../lib/firebase'
+import { auth, signOut, getProfile, setProfile, subscribeToUserAgents } from '../../lib/firebase'
 import { useAuthStore } from '../../stores/authStore'
 import { Colors } from '../../constants/colors'
 
@@ -26,13 +26,23 @@ function BackMark() {
   )
 }
 
+function SettingsIconText({ children, muted = false }: { children: string; muted?: boolean }) {
+  return (
+    <Text style={[s.iconText, muted && s.iconTextMuted]}>
+      {children}
+    </Text>
+  )
+}
+
 export default function SettingsScreen() {
-  const { user, setLoading: setAuthLoading } = useAuthStore()
+  const { user, username, displayName, avatarUrl, walletAddress, walletProvider, setLoading: setAuthLoading } = useAuthStore()
   const [aiKey, setAiKey] = useState('')
   const [savedKey, setSavedKey] = useState('')
   const [showKey, setShowKey] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [ownedAgents, setOwnedAgents] = useState<any[]>([])
+  const [walletPromptDismissed, setWalletPromptDismissed] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -40,13 +50,29 @@ export default function SettingsScreen() {
       const k = (p?.ai_api_key as string) ?? ''
       setSavedKey(k)
       setAiKey(k)
+      setWalletPromptDismissed(Boolean(p?.wallet_funding_prompt_dismissed))
       setLoading(false)
     })
+  }, [user?.uid])
+
+  useEffect(() => {
+    if (!user) return
+    return subscribeToUserAgents(user.uid, setOwnedAgents)
   }, [user?.uid])
 
   const provider = detectProvider(aiKey)
   const savedProvider = detectProvider(savedKey)
   const isDirty = aiKey !== savedKey
+  const fundedAgents = ownedAgents.filter((agent) => typeof agent.wallet_address === 'string' && agent.wallet_address.length > 0)
+  const fundingPrompt = fundedAgents.length > 0
+    ? `${fundedAgents.length} agent wallet${fundedAgents.length === 1 ? '' : 's'} ready to fund`
+    : 'No agent wallets ready yet'
+
+  async function handleDismissWalletPrompt() {
+    if (!user) return
+    setWalletPromptDismissed(true)
+    await setProfile(user.uid, { wallet_funding_prompt_dismissed: true })
+  }
 
   async function handleSave() {
     if (!user || !aiKey.trim()) return
@@ -104,10 +130,73 @@ export default function SettingsScreen() {
         {/* Account */}
         <View style={s.section}>
           <Text style={s.sectionLabel}>ACCOUNT</Text>
-          <View style={s.card}>
-            <Text style={s.label}>Email</Text>
-            <Text style={s.value}>{user?.email ?? '—'}</Text>
-          </View>
+          <TouchableOpacity style={[s.card, s.accountCard]} onPress={() => router.push('/account')} activeOpacity={0.85}>
+            <View style={s.accountIdentity}>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={s.accountAvatarImage} />
+              ) : (
+                <View style={s.accountAvatarFallback}>
+                  <Text style={s.accountAvatarInitial}>
+                    {(username ?? user?.email ?? '?').replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase() || '?'}
+                  </Text>
+                </View>
+              )}
+              <View style={s.accountCopy}>
+                <Text style={s.label}>{displayName || (username ? `@${username}` : user?.email ?? 'Your account')}</Text>
+                <Text style={s.value}>{user?.email ?? '—'}</Text>
+              </View>
+            </View>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.section}>
+          <Text style={s.sectionLabel}>WALLETS & FUNDING</Text>
+
+          {!walletPromptDismissed ? (
+            <View style={s.walletPromptCard}>
+              <View style={s.walletPromptHeader}>
+                <View style={s.walletPromptCopy}>
+                  <Text style={s.walletPromptTitle}>
+                    {walletAddress ? `${walletProvider ?? 'Wallet'} connected` : 'Connect a wallet or fund an agent'}
+                  </Text>
+                  <Text style={s.walletPromptBody}>
+                    {walletAddress
+                      ? 'Use your wallet for approvals, or fund an agent wallet for autonomous trading.'
+                      : 'Connect Phantom or Backpack, or send crypto to an agent wallet for autonomous trading.'}
+                  </Text>
+                </View>
+                <TouchableOpacity style={s.walletPromptClose} onPress={handleDismissWalletPrompt} activeOpacity={0.8}>
+                  {Platform.OS === 'web'
+                    ? <SettingsIconText muted>×</SettingsIconText>
+                    : <Ionicons name="close" size={16} color={Colors.textMuted} />
+                  }
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+
+          <TouchableOpacity style={[s.card, s.walletActionCard]} onPress={() => router.push('/account')}>
+            <View style={s.walletActionTextWrap}>
+              <Text style={s.label}>Personal wallet</Text>
+              <Text style={s.walletActionSubtext}>
+                {walletAddress
+                  ? `${walletProvider ?? 'Wallet'} connected · ${walletAddress.slice(0, 6)}…${walletAddress.slice(-4)}`
+                  : 'Connect Phantom or Backpack'}
+              </Text>
+            </View>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[s.card, s.walletActionCard, { marginTop: 8 }]} onPress={() => router.push('/agent-wallets' as any)}>
+            <View style={s.walletActionTextWrap}>
+              <Text style={s.label}>Agent wallets</Text>
+              <Text style={s.walletActionSubtext}>
+                {fundingPrompt}. View every agent wallet and copy the funding address.
+              </Text>
+            </View>
+            <Text style={s.chevron}>›</Text>
+          </TouchableOpacity>
         </View>
 
         {/* AI Keys */}
@@ -122,13 +211,16 @@ export default function SettingsScreen() {
                 {savedProvider === 'gemini' ? 'Gemini 2.0 Flash connected' : savedProvider === 'openai' ? 'OpenAI GPT-4o connected' : 'AI key connected'}
               </Text>
               <TouchableOpacity onPress={handleRemove}>
-                <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                {Platform.OS === 'web'
+                  ? <SettingsIconText muted>×</SettingsIconText>
+                  : <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                }
               </TouchableOpacity>
             </View>
           ) : (
             <View style={s.disconnectedBanner}>
-              <View style={[s.providerDot, { backgroundColor: Colors.textMuted }]} />
-              <Text style={s.disconnectedText}>No AI key — agents can't respond to free-form chat</Text>
+              <View style={[s.providerDot, { backgroundColor: '#818cf8' }]} />
+              <Text style={s.disconnectedText}>Managed Gemini Flash is active. Add your own key only if you want agents to use your account.</Text>
             </View>
           )}
 
@@ -150,7 +242,10 @@ export default function SettingsScreen() {
                   secureTextEntry={!showKey}
                 />
                 <TouchableOpacity style={s.eyeBtn} onPress={() => setShowKey(v => !v)}>
-                  <Ionicons name={showKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
+                  {Platform.OS === 'web'
+                    ? <SettingsIconText muted>{showKey ? 'hide' : 'show'}</SettingsIconText>
+                    : <Ionicons name={showKey ? 'eye-off' : 'eye'} size={18} color={Colors.textMuted} />
+                  }
                 </TouchableOpacity>
               </View>
 
@@ -179,8 +274,9 @@ export default function SettingsScreen() {
               )}
 
               <Text style={s.hint}>
-                Used for all agent chat — Trading Boy, Market Advisor, Range Farmer.{'\n'}
-                Gemini: <Text style={{ color: Colors.accentAmber }}>aistudio.google.com</Text> (free){'\n'}
+                New users use SLUGS managed Gemini Flash without seeing the private platform key.{'\n'}
+                Add your own key to override it for all your agents.{'\n'}
+                Gemini: <Text style={{ color: Colors.accentAmber }}>aistudio.google.com</Text>{'\n'}
                 OpenAI: <Text style={{ color: Colors.accentAmber }}>platform.openai.com</Text>
               </Text>
 
@@ -251,6 +347,18 @@ const s = StyleSheet.create({
   },
   backStrokeTop: { top: 4, transform: [{ rotate: '-45deg' }] },
   backStrokeBottom: { bottom: 4, transform: [{ rotate: '45deg' }] },
+  iconText: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    lineHeight: 18,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  iconTextMuted: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    letterSpacing: 0.2,
+  },
   title: { fontSize: 28, fontWeight: '700', color: Colors.textPrimary },
 
   section: { marginBottom: 24, paddingHorizontal: 16 },
@@ -264,6 +372,55 @@ const s = StyleSheet.create({
     backgroundColor: '#0f0f0f', borderRadius: 16, padding: 16,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
+  accountCard: { alignItems: 'center' },
+  accountIdentity: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
+  accountCopy: { flex: 1, gap: 4 },
+  accountAvatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: Colors.accentAmber,
+  },
+  accountAvatarFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: Colors.accentAmber,
+    backgroundColor: Colors.bgElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accountAvatarInitial: { fontSize: 15, fontWeight: '700', color: Colors.accentAmber, letterSpacing: 0.5 },
+  walletPromptCard: {
+    backgroundColor: 'rgba(217,119,87,0.08)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,87,0.18)',
+    padding: 16,
+    marginBottom: 10,
+  },
+  walletPromptHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  walletPromptCopy: { gap: 6 },
+  walletPromptTitle: { fontSize: 16, fontWeight: '700', color: Colors.textPrimary },
+  walletPromptBody: { fontSize: 13, lineHeight: 19, color: Colors.textSecondary },
+  walletPromptClose: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  walletActionCard: { alignItems: 'flex-start' },
+  walletActionTextWrap: { flex: 1, gap: 4, paddingRight: 12 },
+  walletActionSubtext: { fontSize: 12, lineHeight: 18, color: Colors.textMuted },
   label: { fontSize: 15, color: Colors.textPrimary },
   value: { fontSize: 14, color: Colors.textSecondary },
   chevron: { fontSize: 20, color: Colors.textSecondary },

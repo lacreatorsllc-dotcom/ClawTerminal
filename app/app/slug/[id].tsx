@@ -8,8 +8,10 @@ import {
   ActivityIndicator,
   Switch,
   Platform,
+  Alert,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import * as Clipboard from 'expo-clipboard'
 import { router, useLocalSearchParams } from 'expo-router'
 import {
   getPublicAgentProfile,
@@ -145,6 +147,15 @@ export default function PublicSlugScreen() {
     router.push({ pathname: '/messages/[threadId]', params: { threadId, otherUid: slug.user_id, username: slug.owner_username } })
   }
 
+  async function copyWalletAddress(address: string) {
+    await Clipboard.setStringAsync(address)
+    if (Platform.OS === 'web') {
+      window.alert('Wallet address copied.')
+    } else {
+      Alert.alert('Copied', 'Wallet address copied.')
+    }
+  }
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -234,6 +245,28 @@ export default function PublicSlugScreen() {
             ))}
           </View>
         ) : null}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardEyebrow}>AGENT WALLET</Text>
+        <Text style={styles.walletHelper}>
+          Let it paper trade first. When you&apos;re confident, send crypto to this wallet so the agent can trade live with its own funds.
+        </Text>
+        {slug.wallet_address ? (
+          <TouchableOpacity
+            style={styles.walletRow}
+            onPress={() => void copyWalletAddress(slug.wallet_address)}
+            activeOpacity={0.8}
+          >
+            <View style={styles.walletRowCopy}>
+              <Text style={styles.walletTitle}>Deposit address</Text>
+              <Text style={styles.walletValue} numberOfLines={1}>{slug.wallet_address}</Text>
+            </View>
+            <Ionicons name="copy-outline" size={18} color={Colors.textMuted} />
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.walletEmpty}>No funding wallet yet.</Text>
+        )}
       </View>
 
       <View style={styles.actionsRow}>
@@ -397,6 +430,42 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#171614', borderWidth: 1, borderColor: Colors.bgBorder, borderRadius: 22, padding: 18, gap: 12 },
   cardEyebrow: { color: Colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 1.2 },
   description: { color: Colors.textPrimary, fontSize: 16, lineHeight: 25 },
+  walletHelper: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  walletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    backgroundColor: '#12110f',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  walletRowCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  walletTitle: {
+    color: Colors.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  walletValue: {
+    color: Colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  walletEmpty: {
+    color: Colors.textMuted,
+    fontSize: 14,
+    lineHeight: 21,
+  },
   tagRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 2 },
   tag: { backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.bgBorder, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
   tagText: { color: Colors.textSecondary, fontSize: 12, fontWeight: '700' },
