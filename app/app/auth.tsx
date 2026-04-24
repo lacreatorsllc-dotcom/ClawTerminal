@@ -475,20 +475,12 @@ export default function AuthScreen() {
               </View>
 
               <View style={styles.socialStack}>
-                <TouchableOpacity
-                  style={[styles.phantomBtn, (loading || !!connectingWallet) && styles.walletBtnDisabled]}
-                  onPress={() => handleWalletConnect('phantom')}
-                  disabled={loading || !!connectingWallet}
-                  activeOpacity={0.84}
-                >
-                  {connectingWallet === 'phantom'
-                    ? <ActivityIndicator color="#fff" />
-                    : <>
-                        <Text style={styles.phantomIcon}>👻</Text>
-                        <Text style={styles.phantomBtnText}>Sign in with Phantom</Text>
-                      </>
-                  }
-                </TouchableOpacity>
+                <GoogleSignInButton
+                  config={googleClientConfig}
+                  loading={loading}
+                  setLoading={setLoading}
+                  setError={setError}
+                />
 
                 <SocialSignInButton
                   provider="twitter"
