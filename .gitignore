@@ -13,3 +13,5 @@ supabase/.temp/
 
 # Project memory (local only)
 project_memory/
+.aider*
+.claude/
