@@ -410,6 +410,17 @@ export async function completeNativeTwitterXSignIn({
   return userCredential
 }
 
+export async function signInWithGooglePopup() {
+  if (Platform.OS !== 'web') {
+    throw new Error('Popup sign-in is web only.')
+  }
+  const provider = new GoogleAuthProvider()
+  provider.setCustomParameters({ prompt: 'select_account' })
+  const result = await signInWithPopup(auth, provider)
+  await syncGoogleProfileFromCredential(result)
+  return result
+}
+
 export async function signInWithGoogleIdToken(idToken: string) {
   const credential = GoogleAuthProvider.credential(idToken)
   const result = await signInWithCredential(auth, credential)

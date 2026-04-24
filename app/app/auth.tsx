@@ -14,6 +14,7 @@ import {
   ensureUserProfile,
   signInWithTwitterX,
   signInWithGoogleIdToken,
+  signInWithGooglePopup,
   startNativeTwitterXSignIn,
   completeNativeTwitterXSignIn,
 } from '../lib/firebase'
@@ -143,6 +144,11 @@ function GoogleSignInButton({
     setError(null)
 
     try {
+      if (Platform.OS === 'web') {
+        await signInWithGooglePopup()
+        setLoading(false)
+        return
+      }
       await promptGoogleAsync()
     } catch (e: any) {
       setLoading(false)
@@ -181,7 +187,7 @@ export default function AuthScreen() {
         ? { iosClientId: googleIosClientId, webClientId: googleWebClientId }
         : { androidClientId: googleAndroidClientId, webClientId: googleWebClientId }
   const googleEnabled = Platform.OS === 'web'
-    ? !!googleWebClientId
+    ? true
     : Platform.OS === 'ios'
       ? !!googleIosClientId && !!googleWebClientId
       : !!googleAndroidClientId && !!googleWebClientId
