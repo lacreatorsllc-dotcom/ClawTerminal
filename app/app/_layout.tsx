@@ -67,14 +67,14 @@ export default function RootLayout() {
           typeof profile?.wallet_provider === 'string' ? profile.wallet_provider as any : null
         )
         if (!profile?.username) {
-          safeReplace('/set-username')
+          safeReplace('/onboarding')
         } else {
           safeReplace('/(tabs)/agents')
         }
       } catch (e) {
         if (authChangeIdRef.current !== authChangeId) return
         console.warn('[_layout] ensureUserProfile failed', e)
-        safeReplace('/set-username')
+        safeReplace('/onboarding')
       } finally {
         if (authChangeIdRef.current !== authChangeId) return
         setLoading(false)

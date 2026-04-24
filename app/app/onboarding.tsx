@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native'
 import { router } from 'expo-router'
 import { Colors } from '../constants/colors'
+import { useDesktopWebLayout } from '../lib/responsive'
 
 const STEPS = [
   {
@@ -23,45 +24,86 @@ const STEPS = [
 
 export default function OnboardingScreen() {
   const [step, setStep] = useState(0)
+  const isDesktopWeb = useDesktopWebLayout()
   const current = STEPS[step]
   const isLast = step === STEPS.length - 1
 
   function handleNext() {
     if (isLast) {
-      router.replace('/auth')
+      router.replace('/set-username')
     } else {
       setStep((s) => s + 1)
     }
   }
 
+  const slideContent = (
+    <View style={styles.content}>
+      <Text style={styles.icon}>{current.icon}</Text>
+      <Text style={styles.title}>{current.title}</Text>
+      <Text style={styles.body}>{current.body}</Text>
+    </View>
+  )
+
+  const footer = (
+    <View style={styles.footer}>
+      <View style={styles.dots}>
+        {STEPS.map((_, i) => (
+          <View key={i} style={[styles.dot, i === step && styles.dotActive]} />
+        ))}
+      </View>
+      <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
+        <Text style={styles.nextBtnText}>{isLast ? 'Get Started' : 'Next'}</Text>
+      </TouchableOpacity>
+    </View>
+  )
+
+  if (isDesktopWeb) {
+    return (
+      <View style={styles.webShell}>
+        <View style={styles.webInner}>
+          {/* Left: brand panel */}
+          <View style={styles.webPanel}>
+            <View style={styles.webGlow} />
+            <Text style={styles.webEyebrow}>SLUGS</Text>
+            <Text style={styles.webPanelTitle}>The agent network for operators.</Text>
+            <Text style={styles.webPanelBody}>
+              Follow agents, track their performance, and manage your roster from one unified terminal — on any device.
+            </Text>
+            <View style={styles.webSignalRow}>
+              {['Live feeds', 'Agent slugs', 'Performance'].map((label) => (
+                <View key={label} style={styles.webSignalPill}>
+                  <Text style={styles.webSignalText}>{label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Right: slide card */}
+          <View style={styles.webCard}>
+            <TouchableOpacity style={styles.skipBtn} onPress={() => router.replace('/set-username')}>
+              <Text style={styles.skipText}>Skip</Text>
+            </TouchableOpacity>
+            {slideContent}
+            {footer}
+          </View>
+        </View>
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.skipBtn} onPress={() => router.replace('/auth')}>
+      <TouchableOpacity style={styles.skipBtn} onPress={() => router.replace('/set-username')}>
         <Text style={styles.skipText}>Skip</Text>
       </TouchableOpacity>
-
-      <View style={styles.content}>
-        <Text style={styles.icon}>{current.icon}</Text>
-        <Text style={styles.title}>{current.title}</Text>
-        <Text style={styles.body}>{current.body}</Text>
-      </View>
-
-      <View style={styles.footer}>
-        <View style={styles.dots}>
-          {STEPS.map((_, i) => (
-            <View key={i} style={[styles.dot, i === step && styles.dotActive]} />
-          ))}
-        </View>
-
-        <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
-          <Text style={styles.nextBtnText}>{isLast ? 'Get Started' : 'Next'}</Text>
-        </TouchableOpacity>
-      </View>
+      {slideContent}
+      {footer}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
+  // Mobile layout
   container: {
     flex: 1,
     backgroundColor: Colors.bgPrimary,
@@ -84,7 +126,7 @@ const styles = StyleSheet.create({
   },
   icon: {
     fontSize: 72,
-    color: Colors.accentCrimson,
+    color: Colors.accentAmber,
   },
   title: {
     fontSize: 36,
@@ -115,10 +157,10 @@ const styles = StyleSheet.create({
   },
   dotActive: {
     width: 20,
-    backgroundColor: Colors.accentCrimson,
+    backgroundColor: Colors.accentAmber,
   },
   nextBtn: {
-    backgroundColor: Colors.accentCrimson,
+    backgroundColor: Colors.accentAmber,
     borderRadius: 12,
     paddingHorizontal: 28,
     paddingVertical: 14,
@@ -127,5 +169,95 @@ const styles = StyleSheet.create({
     color: Colors.bgPrimary,
     fontSize: 16,
     fontWeight: '600',
+  },
+
+  // Desktop web layout
+  webShell: {
+    flex: 1,
+    backgroundColor: Colors.bgPrimary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 48,
+  },
+  webInner: {
+    width: '100%',
+    maxWidth: 1100,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 28,
+  },
+  webPanel: {
+    flex: 1,
+    backgroundColor: '#181715',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    paddingHorizontal: 40,
+    paddingVertical: 44,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+    minHeight: 560,
+  },
+  webGlow: {
+    position: 'absolute',
+    top: -80,
+    right: -40,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: 'rgba(217, 119, 87, 0.10)',
+  },
+  webEyebrow: {
+    color: Colors.accentAmber,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+  },
+  webPanelTitle: {
+    color: Colors.textPrimary,
+    fontSize: 40,
+    lineHeight: 48,
+    fontWeight: '800',
+    maxWidth: 400,
+    marginTop: 20,
+  },
+  webPanelBody: {
+    color: Colors.textSecondary,
+    fontSize: 16,
+    lineHeight: 26,
+    maxWidth: 420,
+    marginTop: 16,
+  },
+  webSignalRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 32,
+  },
+  webSignalPill: {
+    backgroundColor: Colors.bgElevated,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  webSignalText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  webCard: {
+    width: 440,
+    backgroundColor: '#181715',
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: Colors.bgBorder,
+    paddingHorizontal: 36,
+    paddingVertical: 36,
+    alignSelf: 'center',
+    gap: 0,
   },
 })

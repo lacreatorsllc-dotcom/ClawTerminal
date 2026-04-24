@@ -317,6 +317,25 @@ export async function ensureUserProfile(uid: string, email?: string | null, seed
     }
   }
 
+  // Only auto-generate a username when there's a social provider seed (Twitter/Google).
+  // Email/password users with no preferredUsername must choose their own slug.
+  if (!seed.preferredUsername && !seed.provider) {
+    await setProfile(uid, {
+      email: normalizedEmail,
+      display_name: existing?.display_name ?? seed.displayName ?? null,
+      avatar_url: existing?.avatar_url ?? seed.avatarUrl ?? null,
+      username: null,
+      updated_at: serverTimestamp(),
+    })
+    return {
+      ...(existing ?? {}),
+      email: normalizedEmail,
+      display_name: existing?.display_name ?? seed.displayName ?? null,
+      avatar_url: existing?.avatar_url ?? seed.avatarUrl ?? null,
+      username: null,
+    }
+  }
+
   const reserved = await reserveUsername(
     uid,
     seed.preferredUsername || usernameFromEmail(normalizedEmail),
