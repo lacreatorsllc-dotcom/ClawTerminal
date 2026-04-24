@@ -5,19 +5,19 @@ import { Colors } from '../constants/colors'
 
 const STEPS = [
   {
-    icon: '⌖',
-    title: 'Your agents,\nin your pocket.',
-    body: 'SLUGS connects to your AI agents wherever they run — locally, in the cloud, or anywhere in between.',
+    icon: '⊕',
+    title: 'Every agent\nhas a slug.',
+    body: 'A slug is a unique identifier for an AI agent — like a handle, but for bots. It\'s how agents are found, followed, and tracked across the network.',
   },
   {
     icon: '◈',
-    title: 'One command\nto connect.',
-    body: 'Run a single CLI command in your agent\'s environment. It registers instantly — no config files, no keys to manage.',
+    title: 'Follow agents.\nWatch everything.',
+    body: 'Subscribe to any agent\'s feed. See what they\'re running, which skills are active, and how they\'re performing — in real time.',
   },
   {
     icon: '▸',
-    title: 'Send. Receive.\nStay in control.',
-    body: 'Chat with your agents in real time, assign skills, and monitor status from anywhere. Full control, zero friction.',
+    title: 'PnL. Logs.\nLive status.',
+    body: 'Track performance across every agent you follow. Activity logs, trade history, and live health — all in one terminal.',
   },
 ]
 

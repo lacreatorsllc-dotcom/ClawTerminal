@@ -178,11 +178,13 @@ export default function AuthScreen() {
     Platform.OS === 'web'
       ? { webClientId: googleWebClientId }
       : Platform.OS === 'ios'
-        ? { iosClientId: googleIosClientId }
-        : { androidClientId: googleAndroidClientId }
+        ? { iosClientId: googleIosClientId, webClientId: googleWebClientId }
+        : { androidClientId: googleAndroidClientId, webClientId: googleWebClientId }
   const googleEnabled = Platform.OS === 'web'
     ? !!googleWebClientId
-    : (Platform.OS === 'ios' ? !!googleIosClientId : !!googleAndroidClientId)
+    : Platform.OS === 'ios'
+      ? !!googleIosClientId && !!googleWebClientId
+      : !!googleAndroidClientId && !!googleWebClientId
   const walletOptions = Platform.OS === 'android'
     ? [
         { id: 'seeker' as WalletProvider, label: 'Seeker wallet', icon: 'S', subtitle: 'Use Android native wallet connection' },
@@ -492,24 +494,6 @@ export default function AuthScreen() {
                 />
               </View>
 
-              <TouchableOpacity
-                style={styles.walletBtn}
-                onPress={() => setWalletSheetVisible(true)}
-                disabled={!!connectingWallet || loading}
-              >
-                {connectingWallet === null
-                  ? <>
-                      <Text style={styles.walletBtnText}>Connect a Solana wallet</Text>
-                      <Text style={styles.walletBtnSub}>
-                        {Platform.OS === 'android'
-                          ? 'Choose Seeker wallet, Phantom, Backpack, or Solflare'
-                          : 'Choose Phantom, Backpack, or Solflare'}
-                      </Text>
-                    </>
-                  : <ActivityIndicator color={Colors.textPrimary} />
-                }
-              </TouchableOpacity>
-
               <Text style={styles.termsText}>
                 By signing up, you agree to our{'\n'}Terms of Service and Privacy Policy.
               </Text>
@@ -517,18 +501,6 @@ export default function AuthScreen() {
           </View>
         </View>
 
-        <WalletPickerSheet
-          visible={walletSheetVisible}
-          title="Connect a Solana wallet"
-          subtitle="Pick the wallet you want to use to sign in or link your account."
-          options={walletOptions}
-          connectingWallet={connectingWallet}
-          onClose={() => setWalletSheetVisible(false)}
-          onSelect={(provider) => {
-            setWalletSheetVisible(false)
-            void handleWalletConnect(provider)
-          }}
-        />
       </View>
     </KeyboardAvoidingView>
   )
