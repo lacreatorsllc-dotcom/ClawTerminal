@@ -6,7 +6,7 @@ import * as SplashScreen from 'expo-splash-screen'
 import { useFonts } from 'expo-font'
 import * as Linking from 'expo-linking'
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons'
-import { auth, onAuthStateChanged, ensureUserProfile, setProfile } from '../lib/firebase'
+import { auth, onAuthStateChanged, ensureUserProfile, getProfile, setProfile } from '../lib/firebase'
 import { useAuthStore } from '../stores/authStore'
 import { Colors } from '../constants/colors'
 import { DesktopChatDock } from '../components/DesktopChatDock'
@@ -48,32 +48,38 @@ export default function RootLayout() {
       setUser(firebaseUser)
 
       try {
-        const socialProfile = firebaseUser.providerData.find((entry) => ['twitter.com', 'google.com'].includes(entry?.providerId ?? ''))
-        const profile = await ensureUserProfile(firebaseUser.uid, firebaseUser.email, {
-          preferredUsername: socialProfile?.providerId === 'twitter.com'
-            ? (socialProfile?.displayName ?? firebaseUser.displayName ?? null)
-            : null,
-          displayName: firebaseUser.displayName ?? socialProfile?.displayName ?? null,
-          avatarUrl: firebaseUser.photoURL ?? socialProfile?.photoURL ?? null,
-          provider: socialProfile?.providerId ?? null,
-          providerUid: socialProfile?.uid ?? null,
-        })
+        const existingProfile = await getProfile(firebaseUser.uid)
         if (authChangeIdRef.current !== authChangeId) return
-        setUsername(profile?.username ?? null)
-        setDisplayName(typeof profile?.display_name === 'string' ? profile.display_name : null)
-        setAvatarUrl(typeof profile?.avatar_url === 'string' ? profile.avatar_url : null)
-        setWallet(
-          typeof profile?.wallet_address === 'string' ? profile.wallet_address : null,
-          typeof profile?.wallet_provider === 'string' ? profile.wallet_provider as any : null
-        )
-        if (!profile?.username) {
+
+        if (!existingProfile?.username) {
+          // New user — send to onboarding, let set-username create the profile
+          setUsername(null)
           safeReplace('/onboarding')
         } else {
+          // Existing user — sync social data and go to agents
+          const socialProfile = firebaseUser.providerData.find((entry) => ['twitter.com', 'google.com'].includes(entry?.providerId ?? ''))
+          const profile = await ensureUserProfile(firebaseUser.uid, firebaseUser.email, {
+            preferredUsername: socialProfile?.providerId === 'twitter.com'
+              ? (socialProfile?.displayName ?? firebaseUser.displayName ?? null)
+              : null,
+            displayName: firebaseUser.displayName ?? socialProfile?.displayName ?? null,
+            avatarUrl: firebaseUser.photoURL ?? socialProfile?.photoURL ?? null,
+            provider: socialProfile?.providerId ?? null,
+            providerUid: socialProfile?.uid ?? null,
+          })
+          if (authChangeIdRef.current !== authChangeId) return
+          setUsername(profile?.username ?? null)
+          setDisplayName(typeof profile?.display_name === 'string' ? profile.display_name : null)
+          setAvatarUrl(typeof profile?.avatar_url === 'string' ? profile.avatar_url : null)
+          setWallet(
+            typeof profile?.wallet_address === 'string' ? profile.wallet_address : null,
+            typeof profile?.wallet_provider === 'string' ? profile.wallet_provider as any : null
+          )
           safeReplace('/(tabs)/agents')
         }
       } catch (e) {
         if (authChangeIdRef.current !== authChangeId) return
-        console.warn('[_layout] ensureUserProfile failed', e)
+        console.warn('[_layout] profile check failed', e)
         safeReplace('/onboarding')
       } finally {
         if (authChangeIdRef.current !== authChangeId) return
