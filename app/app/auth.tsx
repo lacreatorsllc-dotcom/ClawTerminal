@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Linking,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Linking, ScrollView,
 } from 'react-native'
 import * as WebBrowser from 'expo-web-browser'
 import * as AuthSession from 'expo-auth-session'
@@ -337,7 +337,7 @@ export default function AuthScreen() {
   if (mode === 'forgot') {
     return (
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.shell}>
+        <ScrollView contentContainerStyle={styles.shell} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={[styles.inner, isDesktopWeb && styles.innerDesktop]}>
             {isDesktopWeb && (
               <View style={styles.desktopShowcase}>
@@ -385,7 +385,7 @@ export default function AuthScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     )
   }
@@ -393,7 +393,7 @@ export default function AuthScreen() {
   // ── Credentials step ───────────────────────────────────────────────────────
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.shell}>
+      <ScrollView contentContainerStyle={styles.shell} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={[styles.inner, isDesktopWeb && styles.innerDesktop]}>
           {isDesktopWeb && (
             <View style={styles.desktopShowcase}>
@@ -475,21 +475,20 @@ export default function AuthScreen() {
               </View>
 
               <View style={styles.socialStack}>
-                {googleEnabled ? (
-                  <GoogleSignInButton
-                    config={googleClientConfig}
-                    loading={loading}
-                    setLoading={setLoading}
-                    setError={setError}
-                  />
-                ) : (
-                  <SocialSignInButton
-                    provider="google"
-                    label="Sign in with Google"
-                    disabled={loading}
-                    onPress={() => setError('Google sign-in is not configured yet. Add the Google client IDs to the Expo env.')}
-                  />
-                )}
+                <TouchableOpacity
+                  style={[styles.phantomBtn, (loading || !!connectingWallet) && styles.walletBtnDisabled]}
+                  onPress={() => handleWalletConnect('phantom')}
+                  disabled={loading || !!connectingWallet}
+                  activeOpacity={0.84}
+                >
+                  {connectingWallet === 'phantom'
+                    ? <ActivityIndicator color="#fff" />
+                    : <>
+                        <Text style={styles.phantomIcon}>◎</Text>
+                        <Text style={styles.phantomBtnText}>Sign in with Phantom</Text>
+                      </>
+                  }
+                </TouchableOpacity>
 
                 <SocialSignInButton
                   provider="twitter"
@@ -507,14 +506,14 @@ export default function AuthScreen() {
           </View>
         </View>
 
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bgPrimary },
-  shell: { flex: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 32 },
+  shell: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 32 },
   inner: { flex: 1, justifyContent: 'center' },
   innerDesktop: {
     width: '100%',
@@ -696,6 +695,13 @@ const styles = StyleSheet.create({
   },
   walletBtnText: { color: Colors.textPrimary, fontSize: 15, fontWeight: '600' },
   walletBtnSub: { color: Colors.textMuted, fontSize: 11 },
+  phantomBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingVertical: 14, borderRadius: 14,
+    backgroundColor: '#AB9FF2',
+  },
+  phantomIcon: { fontSize: 18, color: '#fff', fontWeight: '700' },
+  phantomBtnText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   resetSentText: { color: Colors.accentGreen, fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: 24 },
   usernameTitle: { fontSize: 28, fontWeight: '800', color: Colors.textPrimary, marginBottom: 10, marginTop: 32 },
   usernameSubtitle: { fontSize: 14, color: Colors.textSecondary, lineHeight: 22, marginBottom: 32 },
