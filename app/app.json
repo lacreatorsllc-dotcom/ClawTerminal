@@ -17,10 +17,9 @@
       "bundleIdentifier": "com.mememarketer.slugs"
     },
     "android": {
-      "icon": "./assets/icon.png",
       "adaptiveIcon": {
-        "backgroundColor": "#141413",
-        "foregroundImage": "./assets/icon.png"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#141413"
       },
       "package": "com.mememarketer.slugs",
       "predictiveBackGestureEnabled": false

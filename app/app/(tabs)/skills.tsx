@@ -661,7 +661,7 @@ export default function SkillsScreen() {
                 ))}
               </>
             )}
-            {activeSource === 'skillssh' && filteredSkillsSh.length === 0 && activeSource !== 'saved' && (
+            {activeSource === 'skillssh' && filteredSkillsSh.length === 0 && (
               <Text style={styles.emptyText}>No skills found</Text>
             )}
             {localSkillsToShow.length > 0 && (

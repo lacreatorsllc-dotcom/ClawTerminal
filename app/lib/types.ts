@@ -17,6 +17,11 @@ export interface Agent {
   last_seen: string | null
   metadata: Record<string, unknown>
   created_at: string
+  // Optional wallet/mode fields added via Firestore
+  wallet_address?: string | null
+  wallet_mode?: string | null
+  wallet_network?: string | null
+  paper_mode?: boolean | null
 }
 
 export interface Message {
@@ -28,7 +33,7 @@ export interface Message {
   created_at: string
   input_tokens?: number | null
   output_tokens?: number | null
-  metadata?: { attachments?: string[] } | null
+  metadata?: { attachments?: string[]; video_url?: string | null } | null
 }
 
 export interface Skill {

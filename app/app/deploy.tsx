@@ -625,8 +625,8 @@ const s = StyleSheet.create({
 
   typeCard: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 14,
-    backgroundColor: Colors.bgCard, borderRadius: 16,
-    padding: 16, borderWidth: 1, borderColor: Colors.borderSubtle,
+    backgroundColor: Colors.bgSurface, borderRadius: 16,
+    padding: 16, borderWidth: 1, borderColor: Colors.bgBorder,
   },
   typeCardFeatured: {
     borderColor: 'rgba(251,146,60,0.3)',
@@ -642,7 +642,7 @@ const s = StyleSheet.create({
   typeHandle: { fontSize: 12, color: Colors.textMuted, fontFamily: 'monospace' },
   typeDesc: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18, marginTop: 2 },
   typeTags: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' },
-  tag: { backgroundColor: Colors.bgSubtle, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  tag: { backgroundColor: Colors.bgElevated, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   tagText: { fontSize: 11, color: Colors.textMuted },
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
   badgeText: { fontSize: 10, fontWeight: '700' },
@@ -650,7 +650,7 @@ const s = StyleSheet.create({
   coinGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   coinBtn: {
     paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10,
-    backgroundColor: Colors.bgSubtle, borderWidth: 1, borderColor: Colors.borderSubtle,
+    backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.bgBorder,
   },
   coinBtnActive: { backgroundColor: 'rgba(217,119,87,0.15)', borderColor: Colors.accentAmber },
   coinBtnText: { fontSize: 13, fontWeight: '700', color: Colors.textMuted, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
@@ -666,10 +666,10 @@ const s = StyleSheet.create({
   },
   stratDescText: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
   guideCard: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.bgSurface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.bgBorder,
     padding: 12,
     gap: 6,
   },
@@ -688,9 +688,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: Colors.bgSubtle,
+    backgroundColor: Colors.bgElevated,
     borderWidth: 1,
-    borderColor: Colors.borderSubtle,
+    borderColor: Colors.bgBorder,
   },
   presetChipActive: {
     backgroundColor: 'rgba(251,146,60,0.12)',
@@ -720,7 +720,7 @@ const s = StyleSheet.create({
   skillChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10,
-    backgroundColor: Colors.bgSubtle, borderWidth: 1, borderColor: Colors.borderSubtle,
+    backgroundColor: Colors.bgElevated, borderWidth: 1, borderColor: Colors.bgBorder,
   },
   skillChipActive: { backgroundColor: 'rgba(251,146,60,0.12)', borderColor: '#fb923c' },
   skillChipFocused: { borderColor: '#60a5fa', borderWidth: 1.5 },
@@ -752,21 +752,21 @@ const s = StyleSheet.create({
   byoText: { fontSize: 13, color: Colors.textMuted },
 
   infoBox: {
-    backgroundColor: Colors.bgCard, borderRadius: 14, padding: 16, gap: 10,
-    borderWidth: 1, borderColor: Colors.borderSubtle,
+    backgroundColor: Colors.bgSurface, borderRadius: 14, padding: 16, gap: 10,
+    borderWidth: 1, borderColor: Colors.bgBorder,
   },
   infoRow: { fontSize: 14, color: Colors.textSecondary },
 
   fieldLabel: { fontSize: 12, fontWeight: '600', color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: {
-    backgroundColor: Colors.bgCard, borderRadius: 12, borderWidth: 1,
-    borderColor: Colors.borderSubtle, padding: 14,
+    backgroundColor: Colors.bgSurface, borderRadius: 12, borderWidth: 1,
+    borderColor: Colors.bgBorder, padding: 14,
     fontSize: 15, color: Colors.textPrimary,
   },
   keyInputRow: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: Colors.bgCard, borderRadius: 12,
-    borderWidth: 1, borderColor: Colors.borderSubtle,
+    backgroundColor: Colors.bgSurface, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.bgBorder,
   },
   keyInput: { flex: 1, padding: 14, fontSize: 15, color: Colors.textPrimary },
   eyeBtn: { paddingHorizontal: 14, paddingVertical: 14 },
@@ -795,8 +795,8 @@ const s = StyleSheet.create({
   successPillText: { fontSize: 11, fontWeight: '700', color: Colors.accentGreen, letterSpacing: 1 },
 
   successCard: {
-    backgroundColor: Colors.bgCard, borderRadius: 18,
-    borderWidth: 1, borderColor: Colors.borderSubtle,
+    backgroundColor: Colors.bgSurface, borderRadius: 18,
+    borderWidth: 1, borderColor: Colors.bgBorder,
     padding: 18, gap: 14,
   },
   successCardTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -818,8 +818,8 @@ const s = StyleSheet.create({
   successSkills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   successSkillChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: Colors.bgSubtle, borderRadius: 8,
-    borderWidth: 1, borderColor: Colors.borderSubtle,
+    backgroundColor: Colors.bgElevated, borderRadius: 8,
+    borderWidth: 1, borderColor: Colors.bgBorder,
     paddingHorizontal: 9, paddingVertical: 5,
   },
   successSkillEmoji: { fontSize: 12 },

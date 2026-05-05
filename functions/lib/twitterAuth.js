@@ -67,6 +67,9 @@ async function postOAuth(url, authorization) {
     const body = await response.text();
     if (!response.ok) {
         console.error('[twitter-auth] OAuth request failed', response.status, body);
+        if (body.includes('Callback URL not approved') || body.includes('code="415"')) {
+            throw new https_1.HttpsError('failed-precondition', 'X callback URL is not approved. Add slugs://auth/twitter to the X app callback URLs, then try again.');
+        }
         throw new https_1.HttpsError('unauthenticated', 'X sign-in failed. Please try again.');
     }
     return parseOAuthResponse(body);

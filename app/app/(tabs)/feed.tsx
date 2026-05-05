@@ -272,7 +272,7 @@ function resolveAgentSnapshotPnl(agent: any): number | null {
     .map((position: any) => resolvePositionPnl(position))
     .filter((value: number | null): value is number => value != null)
   if (derivedPositionPnl.length > 0) {
-    return derivedPositionPnl.reduce((sum, value) => sum + value, 0)
+    return derivedPositionPnl.reduce((sum: number, value: number) => sum + value, 0)
   }
 
   const recentTrades = Array.isArray(liveState?.recentTrades)
@@ -801,7 +801,7 @@ function renderCard(item: FeedItem, onShare: (item: FeedItem) => void, agentSnap
     agentSnapshots?.[normalizedName] ??
     agentSnapshots?.[normalizedSlug]
 
-  if (item.cardType === 'pnl' && item.pnl != null) return <PnLCard item={item} onShare={() => onShare(item)} />
+  if (item.cardType === 'pnl') return <PnLCard item={item} onShare={() => onShare(item)} />
   if (item.cardType === 'trade') return <TradeCard item={item} agentSnapshot={resolvedAgentSnapshot ?? null} />
   if (item.cardType === 'news') return <NewsSentimentCard item={item} />
   return <UpdateCard item={item} />
@@ -1419,6 +1419,7 @@ export default function FeedScreen() {
           <FlatList
             style={styles.feedList}
             data={[]}
+            renderItem={() => null}
             keyExtractor={(item, index) => String(index)}
             ListHeaderComponent={feedChrome}
             ListEmptyComponent={<EmptyFollowing />}
@@ -1448,6 +1449,7 @@ export default function FeedScreen() {
           <FlatList
             style={styles.feedList}
             data={[]}
+            renderItem={() => null}
             keyExtractor={(item, index) => String(index)}
             ListHeaderComponent={feedChrome}
             ListEmptyComponent={<EmptyPosts />}

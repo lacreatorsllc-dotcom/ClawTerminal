@@ -25,7 +25,7 @@ export default function SkillDetailScreen() {
     if (saved) {
       unsave(skill.id)
     } else {
-      save({ id: skill.id, name: skill.name, source: 'anthropic', category: skill.category, savedAt: Date.now() })
+      save({ id: skill.id, name: skill.name, source: 'anthropic', category: skill.category ?? undefined, savedAt: Date.now() })
     }
   }
 

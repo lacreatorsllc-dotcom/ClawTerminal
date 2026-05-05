@@ -271,12 +271,12 @@ function ImageBubble({ url }: { url: string }) {
         return
       }
       const MediaLibrary = await import('expo-media-library')
-      const FileSystem = await import('expo-file-system')
+      const FileSystem = await import('expo-file-system') as any
       const { status } = await MediaLibrary.requestPermissionsAsync()
       if (status !== 'granted') { Alert.alert('Permission needed', 'Allow photo library access to save images.'); return }
       const fileName = url.split('/').pop() ?? 'koda-image.png'
-      const localUri = FileSystem.cacheDirectory + fileName
-      await FileSystem.downloadAsync(url, localUri)
+      const localUri = (FileSystem.cacheDirectory ?? FileSystem.default?.cacheDirectory ?? '') + fileName
+      await (FileSystem.downloadAsync ?? FileSystem.default?.downloadAsync)(url, localUri)
       await MediaLibrary.saveToLibraryAsync(localUri)
       Alert.alert('Saved', 'Image saved to your photo library.')
     } catch (e: any) {
@@ -866,6 +866,7 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
       <ShareCardModal
         visible={showShare}
         onClose={() => setShowShare(false)}
+        agentId={agentId}
         agentName={agentName}
         initialTrade={{
           pair: agentDoc?.watchlist?.[0] ?? 'CRYPTO',
@@ -1274,7 +1275,7 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
     setPendingReplies((count) => count + 1)
     await addMessage(agentId, {
       agent_id: agentId,
-      user_id: user.id,
+      user_id: user.uid,
       direction: 'inbound',
       content: text,
     })
@@ -1284,14 +1285,14 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
   const showTyping = pendingReplies > 0 || hasPendingReply(messages)
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bgPrimary }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
       {/* Header */}
       <View style={s001.header}>
         <TouchableOpacity onPress={() => router.back()} style={s001.backBtn}>
           {Platform.OS === 'web' ? <WebBackLabel /> : <Text style={s001.backText}>‹</Text>}
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: 'center' }}>
-          <Text style={{ color: Colors.text, fontWeight: '700', fontSize: 17 }}>Blue Chip</Text>
+          <Text style={{ color: Colors.textPrimary, fontWeight: '700', fontSize: 17 }}>Blue Chip</Text>
           <Text style={{ color: Colors.accentGreen, fontSize: 12, marginTop: 1 }}>● connected</Text>
         </View>
         <View style={{ width: 44 }} />
@@ -1318,7 +1319,7 @@ function BlueChipScreen({ agentId }: { agentId: string }) {
                 paddingVertical: 10,
                 maxWidth: '80%',
               }}>
-                <Text style={{ color: isUser ? '#000' : Colors.text, fontSize: 15, lineHeight: 21 }}>{item.content}</Text>
+                <Text style={{ color: isUser ? '#000' : Colors.textPrimary, fontSize: 15, lineHeight: 21 }}>{item.content}</Text>
               </View>
               <Text style={{ color: Colors.textMuted, fontSize: 11, marginTop: 3, marginHorizontal: 4 }}>
                 {item.created_at ? new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
@@ -1622,6 +1623,7 @@ function Slug001Screen() {
       <ShareCardModal
         visible={showShare}
         onClose={() => setShowShare(false)}
+        agentId="slug-001"
         agentName="Slug #001"
         initialTrade={shareInitialTrade}
       />
@@ -2722,7 +2724,7 @@ export default function AgentDetailScreen() {
   const sendTimingRef = useRef<Record<string, { startedAt: number; contentPreview: string }>>({})
 
   const { agents, getConnectionStatus, upsertAgent } = useAgentsStore()
-  const { user, session, isLoading: authLoading } = useAuthStore()
+  const { user, isLoading: authLoading } = useAuthStore()
   const { messagesByAgent, setMessages, addMessage } = useChatStore()
   const showToast = useUIStore((s) => s.showToast)
 
@@ -3048,7 +3050,8 @@ export default function AgentDetailScreen() {
     setAttachments((prev) => [...prev, ...newItems])
 
     // Upload via base64 → ArrayBuffer → direct fetch with explicit auth token
-    const token = session?.access_token
+    const { data: { session: uploadSession } } = await supabase.auth.getSession()
+    const token = uploadSession?.access_token
     if (!token) { Alert.alert('Not logged in', 'Please sign out and back in.'); setUploading(false); return }
     setUploading(true)
     for (const asset of result.assets) {
@@ -3103,7 +3106,7 @@ export default function AgentDetailScreen() {
     addMessage(id, {
       id: `local-${Date.now()}`,
       agent_id: id,
-      user_id: user.id,
+      user_id: user.uid,
       direction: 'inbound',
       content,
       created_at: sentAt,
@@ -3120,7 +3123,7 @@ export default function AgentDetailScreen() {
     if (agent?.metadata?.type === 'telegram') {
       // Telegram: persist inbound + forward via edge function
       await supabase.from('messages').insert({
-        agent_id: id, user_id: user.id, direction: 'inbound' as const, content,
+        agent_id: id, user_id: user.uid, direction: 'inbound' as const, content,
       })
       console.log('[agentTiming]', 'telegram-insert-complete', {
         agentId: id,
@@ -3129,12 +3132,12 @@ export default function AgentDetailScreen() {
       fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/telegram-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ agentId: id, userId: user.id, text: content }),
+        body: JSON.stringify({ agentId: id, userId: user.uid, text: content }),
       }).catch(() => { setIsAgentTyping(false) })
     } else if (agent?.metadata?.paired) {
       // Connector agent: persist inbound + relay via Realtime for connector to pick up
       const { error: insertError } = await supabase.from('messages').insert({
-        agent_id: id, user_id: user.id, direction: 'inbound' as const, content,
+        agent_id: id, user_id: user.uid, direction: 'inbound' as const, content,
       })
       console.log('[agentTiming]', 'paired-insert-complete', {
         agentId: id,
@@ -3142,7 +3145,7 @@ export default function AgentDetailScreen() {
         insertError: insertError?.message ?? null,
       })
       if (insertError) showToast('Message not saved')
-      await sendMessage(channelRef.current, id, user.id, content, meta)
+      await sendMessage(channelRef.current, id, user.uid, content, meta)
       console.log('[agentTiming]', 'paired-relay-sent', {
         agentId: id,
         elapsedMs: Math.round(nowMs() - sendStartedAt),
@@ -3150,7 +3153,7 @@ export default function AgentDetailScreen() {
     } else {
       // Platform agent: persist inbound first, then call chat edge function
       await supabase.from('messages').insert({
-        agent_id: id, user_id: user.id, direction: 'inbound' as const, content,
+        agent_id: id, user_id: user.uid, direction: 'inbound' as const, content,
       })
       console.log('[agentTiming]', 'platform-insert-complete', {
         agentId: id,
@@ -3538,8 +3541,8 @@ export default function AgentDetailScreen() {
                     setInput('')
                     if (!user || !id) return
                     const content = c.cmd
-                    addMessage(id, { id: Date.now().toString(), agent_id: id, user_id: user.id, direction: 'inbound', content, created_at: new Date().toISOString() })
-                    sendMessage(channelRef.current, id, user.id, content, {})
+                    addMessage(id, { id: Date.now().toString(), agent_id: id, user_id: user.uid, direction: 'inbound', content, created_at: new Date().toISOString() })
+                    sendMessage(channelRef.current, id, user.uid, content, {})
                   }}
                   activeOpacity={0.7}
                 >

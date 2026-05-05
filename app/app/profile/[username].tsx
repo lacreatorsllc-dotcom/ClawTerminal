@@ -175,7 +175,7 @@ function resolveAgentPnl(agent: PublicAgent): number | null {
     .map((position: any) => resolvePositionPnl(position))
     .filter((value: number | null): value is number => value != null)
   if (positionPnl.length > 0) {
-    return positionPnl.reduce((sum, value) => sum + value, 0)
+    return positionPnl.reduce((sum: number, value: number) => sum + value, 0)
   }
 
   const tradePnl = recentTrades

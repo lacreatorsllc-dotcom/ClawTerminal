@@ -19,6 +19,7 @@ export interface TradeData {
   pnlPct: string
   entryPrice: string
   markPrice: string
+  isWin?: boolean
 }
 
 const EMPTY_TRADE: TradeData = {
