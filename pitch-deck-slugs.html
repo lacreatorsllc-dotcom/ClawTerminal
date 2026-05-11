@@ -130,7 +130,7 @@
 
     /* Ambient bg glows */
     .amb{position:absolute;border-radius:50%;pointer-events:none;filter:blur(80px);z-index:0}
-    .slide>*{position:relative;z-index:1}
+    .slide>*:not(.amb){position:relative;z-index:1}
 
     /* ─── Ticker strip ─── */
     .ticker-strip{
@@ -365,15 +365,15 @@
       <div class="col flex1 gap16">
         <span class="cap a">The Product</span>
         <h1 class="h1 a" style="margin-top:4px;max-width:680px">
-          Import your agent from anywhere.<br><span class="amber">Show it off. Build an audience.</span>
+          Host your agent here, or import from anywhere.<br><span class="amber">Show it off. Build an audience.</span>
         </h1>
         <div class="divider a"></div>
         <div class="col gap12 a">
           <div class="card-o row gap16 icenter" style="padding:16px 20px">
             <div style="font-size:28px">🐌</div>
             <div>
-              <p class="h3">Import</p>
-              <p class="sm">Connect your existing agent from any platform. SLUGS gives it a public profile.</p>
+              <p class="h3">Host or import</p>
+              <p class="sm">Run your agent natively on SLUGS, or connect one from another platform. Either way, it gets a public profile.</p>
             </div>
           </div>
           <div class="card-o row gap16 icenter" style="padding:16px 20px">
