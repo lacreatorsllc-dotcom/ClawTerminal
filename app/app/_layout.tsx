@@ -30,7 +30,20 @@ export default function RootLayout() {
   const [fontsLoaded] = useFonts({ ...Ionicons.font, ...MaterialCommunityIcons.font })
 
   useEffect(() => {
+    let settled = false
+    const fallback = Platform.OS === 'web'
+      ? window.setTimeout(() => {
+          if (settled) return
+          console.warn('[_layout] auth state timed out; showing auth screen')
+          setLoading(false)
+          safeReplace('/auth')
+        }, 8000)
+      : null
+
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
+      settled = true
+      if (fallback) window.clearTimeout(fallback)
+
       const authChangeId = authChangeIdRef.current + 1
       authChangeIdRef.current = authChangeId
 
@@ -87,7 +100,11 @@ export default function RootLayout() {
       }
     })
 
-    return unsub
+    return () => {
+      settled = true
+      if (fallback) window.clearTimeout(fallback)
+      unsub()
+    }
   }, [])
 
   useEffect(() => {

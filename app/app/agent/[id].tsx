@@ -147,6 +147,111 @@ function parsePositionsFromResponse(text: string): TradeData[] {
   return positions
 }
 
+function firstText(...values: unknown[]): string {
+  for (const value of values) {
+    if (value == null) continue
+    const text = String(value).trim()
+    if (text.length > 0) return text
+  }
+  return ''
+}
+
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    if (value == null || value === '') continue
+    const parsed = typeof value === 'number'
+      ? value
+      : Number(String(value).replace(/[$,%+,]/g, '').trim())
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function sharePrice(value: unknown): string {
+  const num = firstNumber(value)
+  if (num == null) return ''
+  if (Math.abs(num) >= 1000) return num.toLocaleString(undefined, { maximumFractionDigits: 2 })
+  if (Math.abs(num) >= 1) return num.toLocaleString(undefined, { maximumFractionDigits: 4 })
+  return num.toPrecision(4)
+}
+
+function normalizePair(symbol: string, pair: string): string {
+  const raw = firstText(pair, symbol, 'CRYPTO').toUpperCase()
+  if (raw.includes('/')) return raw
+  if (raw.includes('-')) return raw.replace('-', '/')
+  return `${raw}/USDC`
+}
+
+function tradeDataFromPosition(position: any, fallback: any = {}): TradeData | null {
+  if (!position && !fallback) return null
+  const symbol = firstText(position?.symbol, position?.asset, position?.coin, fallback?.symbol, fallback?.coin)
+  const pair = normalizePair(symbol, firstText(position?.pair, position?.market, fallback?.pair))
+  const direction = firstText(position?.direction, position?.side, position?.type, fallback?.direction, 'LONG').toUpperCase()
+  const entry = firstNumber(position?.entry_price, position?.entryPrice, position?.fillPrice, position?.avgEntryPrice, fallback?.entry_price, fallback?.entryPrice)
+  const mark = firstNumber(position?.current_price, position?.currentPrice, position?.mark_price, position?.markPrice, position?.price, fallback?.currentPrice, fallback?.markPrice)
+  const size = firstNumber(position?.sizeUsd, position?.notionalUsd, position?.size, position?.amountUsd, position?.capital, fallback?.sizeUsd)
+  const pnl = firstNumber(
+    position?.pnl,
+    position?.unrealized_pnl,
+    position?.unrealizedPnl,
+    position?.unrealizedPnlUsd,
+    position?.realized_pnl,
+    position?.realizedPnl,
+    fallback?.unrealizedPnlUsd,
+    fallback?.dailyPnlUsd,
+    fallback?.pnl
+  )
+  if (pnl == null && entry == null && mark == null) return null
+
+  const pnlPct = firstNumber(
+    position?.pnlPct,
+    position?.pnl_pct,
+    position?.unrealizedPct,
+    position?.unrealized_pnl_pct,
+    position?.percent,
+    size && pnl != null ? (pnl / Math.abs(size)) * 100 : null
+  )
+
+  return {
+    pair,
+    direction: direction.includes('SHORT') || direction === 'SELL' ? 'SHORT' : direction.includes('LONG') || direction === 'BUY' ? 'LONG' : direction,
+    leverage: firstText(position?.leverage, position?.margin, fallback?.leverage),
+    pnl: (pnl ?? 0).toFixed(2),
+    pnlPct: pnlPct == null ? '0' : Math.abs(pnlPct).toFixed(2),
+    entryPrice: sharePrice(entry),
+    markPrice: sharePrice(mark),
+    isWin: (pnl ?? 0) >= 0,
+  }
+}
+
+function tradeDataFromAgentDoc(agentDoc: any, agentName: string): TradeData {
+  const live = agentDoc?.live_state ?? agentDoc?.liveState ?? {}
+  const positions = [
+    ...(Array.isArray(live?.positions) ? live.positions : []),
+    ...(Array.isArray(agentDoc?.positions) ? agentDoc.positions : []),
+    ...(Array.isArray(live?.openPositions) ? live.openPositions : []),
+  ]
+  const bestPosition = positions
+    .map((position) => ({ position, pnl: firstNumber(position?.pnl, position?.unrealized_pnl, position?.unrealizedPnl, position?.unrealizedPnlUsd) ?? 0 }))
+    .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))[0]?.position
+
+  const fromPosition = tradeDataFromPosition(bestPosition, live)
+  if (fromPosition) return fromPosition
+
+  const pnl = firstNumber(live?.unrealizedPnlUsd, live?.dailyPnlUsd, live?.sessionPnlUsd, agentDoc?.unrealizedPnlUsd, agentDoc?.dailyPnlUsd) ?? 0
+  const pct = firstNumber(live?.pnlPct, live?.dailyPnlPct, live?.price_change_24h_pct) ?? 0
+  return {
+    pair: normalizePair(firstText(live?.coin, agentDoc?.coin), firstText(live?.pair, agentDoc?.pair, agentName)),
+    direction: firstText(live?.direction, live?.side, 'LONG').toUpperCase(),
+    leverage: firstText(live?.leverage),
+    pnl: pnl.toFixed(2),
+    pnlPct: Math.abs(pct).toFixed(2),
+    entryPrice: sharePrice(firstNumber(live?.entry_price, live?.entryPrice)),
+    markPrice: sharePrice(firstNumber(live?.current_price, live?.currentPrice, live?.markPrice, live?.btc_price)),
+    isWin: pnl >= 0,
+  }
+}
+
 interface InstalledSkill {
   id: string           // used as key
   skillId?: string     // local skills UUID → /skill/[id]
@@ -874,6 +979,8 @@ function TradingBoyScreen({ agentId }: { agentId: string }) {
           leverage: '',
           pnl: Math.abs(agentDoc?.live_state?.dailyPnlUsd ?? 0).toFixed(2),
           pnlPct: '',
+          entryPrice: '',
+          markPrice: '',
           isWin: (agentDoc?.live_state?.dailyPnlUsd ?? 0) >= 0,
         }}
       />
@@ -2198,6 +2305,8 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [provisioningWallet, setProvisioningWallet] = useState(false)
+  const [showShareCard, setShowShareCard] = useState(false)
+  const [replyTimedOut, setReplyTimedOut] = useState(false)
   const flatListRef = useRef<FlatList>(null)
 
   useEffect(() => {
@@ -2211,6 +2320,16 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
   }, [agentId])
 
   const waitingOnAgent = messages[0]?.agent_reply !== true && messages[0]?.direction === 'inbound'
+  const shareTrade = useMemo(() => tradeDataFromAgentDoc(agentDoc ?? agentSnap, agentName), [agentDoc, agentName])
+
+  useEffect(() => {
+    if (!waitingOnAgent) {
+      setReplyTimedOut(false)
+      return
+    }
+    const timer = setTimeout(() => setReplyTimedOut(true), 20_000)
+    return () => clearTimeout(timer)
+  }, [waitingOnAgent, messages[0]?.id])
 
   async function send() {
     const text = input.trim()
@@ -2290,8 +2409,26 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
           <Text style={{ color: Colors.textPrimary, fontSize: 17, fontWeight: '700' }}>{agentName}</Text>
           <Text style={{ color: Colors.accentGreen, fontSize: 11 }}>{`● ${providerLabel}`}</Text>
         </TouchableOpacity>
-        <AgentMenuButton agentId={agentId} agentName={agentName} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => setShowShareCard(true)}
+            style={cmStyles.sharePnlButton}
+            activeOpacity={0.85}
+          >
+            <Text style={cmStyles.sharePnlText}>Share PnL</Text>
+          </TouchableOpacity>
+          <AgentMenuButton agentId={agentId} agentName={agentName} />
+        </View>
       </View>
+
+      <ShareCardModal
+        visible={showShareCard}
+        onClose={() => setShowShareCard(false)}
+        agentId={agentId}
+        agentName={agentName}
+        agentAvatarUrl={agentDoc?.avatar_url ?? agentDoc?.avatarUrl}
+        initialTrade={shareTrade}
+      />
 
       <View style={cmStyles.walletCard}>
         <View style={cmStyles.walletCopy}>
@@ -2361,7 +2498,16 @@ function ClaudeManagedAgentScreen({ agentId }: { agentId: string }) {
       {/* Typing indicator */}
       {(sending || waitingOnAgent) && (
         <View style={{ paddingHorizontal: 16, paddingBottom: 6, alignItems: 'flex-start' }}>
-          <TypingBubble />
+          {replyTimedOut ? (
+            <View style={cmStyles.replyIssueBubble}>
+              <Text style={cmStyles.replyIssueTitle}>Agent reply service is not responding.</Text>
+              <Text style={cmStyles.replyIssueText}>
+                Your message was sent, but the hosted Firebase worker did not answer. This usually means billing/functions are disabled or the AI key needs attention.
+              </Text>
+            </View>
+          ) : (
+            <TypingBubble />
+          )}
         </View>
       )}
 
@@ -4421,6 +4567,41 @@ const modelStyles = StyleSheet.create({
 })
 
 const cmStyles = StyleSheet.create({
+  sharePnlButton: {
+    minHeight: 34,
+    borderRadius: 17,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(217,119,87,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,87,0.32)',
+  },
+  sharePnlText: {
+    color: Colors.accentAmber,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  replyIssueBubble: {
+    maxWidth: '88%',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(217,119,87,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(217,119,87,0.28)',
+    gap: 6,
+  },
+  replyIssueTitle: {
+    color: Colors.accentAmber,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  replyIssueText: {
+    color: Colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
   walletCard: {
     marginHorizontal: 16,
     marginBottom: 10,

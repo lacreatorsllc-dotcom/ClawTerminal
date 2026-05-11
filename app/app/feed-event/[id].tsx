@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Linking,
@@ -11,6 +11,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router'
 import { Colors } from '../../constants/colors'
 import { getFeedEventById, getMarketNewsById } from '../../lib/firebase'
+import { ShareCardModal, type TradeData } from '../../components/share-card'
 
 function formatStamp(value: string | null | undefined) {
   if (!value) return 'Unknown time'
@@ -46,6 +47,46 @@ function formatText(value: unknown) {
   if (value == null) return null
   const text = String(value).trim()
   return text.length > 0 ? text : null
+}
+
+function firstNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (value == null || value === '') continue
+    const parsed = typeof value === 'number'
+      ? value
+      : Number(String(value).replace(/[$,%+,]/g, '').trim())
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function priceText(value: unknown) {
+  const num = firstNumber(value)
+  if (num == null) return ''
+  if (Math.abs(num) >= 1000) return num.toLocaleString(undefined, { maximumFractionDigits: 2 })
+  if (Math.abs(num) >= 1) return num.toLocaleString(undefined, { maximumFractionDigits: 4 })
+  return num.toPrecision(4)
+}
+
+function tradeDataFromRecord(record: any): TradeData | null {
+  const payload = record?.payload ?? {}
+  const pnl = firstNumber(payload.pnl, payload.realized_pnl, payload.realizedPnl, payload.unrealized_pnl, payload.unrealizedPnl)
+  if (pnl == null) return null
+  const symbol = formatText(payload.symbol ?? payload.asset ?? payload.coin) ?? 'CRYPTO'
+  const pair = formatText(payload.pair ?? payload.market) ?? `${symbol.toUpperCase()}/USDC`
+  const direction = String(payload.direction ?? payload.side ?? (String(payload.action ?? '').toLowerCase() === 'exit' ? 'CLOSED' : 'LONG')).toUpperCase()
+  const size = firstNumber(payload.sizeUsd, payload.notionalUsd, payload.size, payload.qty)
+  const pnlPct = firstNumber(payload.pnlPct, payload.pnl_pct, payload.realizedPnlPct, payload.unrealizedPnlPct, size ? (pnl / Math.abs(size)) * 100 : null)
+  return {
+    pair: pair.includes('/') ? pair.toUpperCase() : `${pair.toUpperCase()}/USDC`,
+    direction,
+    leverage: formatText(payload.leverage) ?? '',
+    pnl: pnl.toFixed(2),
+    pnlPct: pnlPct == null ? '0' : Math.abs(pnlPct).toFixed(2),
+    entryPrice: priceText(payload.entry_price ?? payload.entryPrice),
+    markPrice: priceText(payload.exit_price ?? payload.exitPrice ?? payload.current_price ?? payload.currentPrice ?? payload.markPrice),
+    isWin: pnl >= 0,
+  }
 }
 
 function DetailRow({ label, value, accent }: { label: string; value: string; accent?: 'green' | 'red' | 'amber' | 'default' }) {
@@ -90,6 +131,7 @@ export default function FeedEventDetailScreen() {
   const [loading, setLoading] = useState(true)
   const [record, setRecord] = useState<any | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [showShareCard, setShowShareCard] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -149,6 +191,7 @@ export default function FeedEventDetailScreen() {
     : String(record?.content ?? '')
   const payload = !isNews ? record?.payload ?? null : null
   const articleUrl = isNews ? newsUrl : payload?.url ?? null
+  const shareTrade = useMemo(() => isNews ? null : tradeDataFromRecord(record), [isNews, record])
   const detailRows = !isNews && payload
     ? (
       isNewsSentiment
@@ -245,6 +288,25 @@ export default function FeedEventDetailScreen() {
                 >
                   <Text style={styles.primaryBtnText}>Open agent</Text>
                 </TouchableOpacity>
+              ) : null}
+
+              {shareTrade ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.primaryBtn}
+                    activeOpacity={0.85}
+                    onPress={() => setShowShareCard(true)}
+                  >
+                    <Text style={styles.primaryBtnText}>Generate PnL card</Text>
+                  </TouchableOpacity>
+                  <ShareCardModal
+                    visible={showShareCard}
+                    onClose={() => setShowShareCard(false)}
+                    agentId={record?.agent_id ?? 'feed-event'}
+                    agentName={record?.agent_name ?? 'Agent'}
+                    initialTrade={shareTrade}
+                  />
+                </>
               ) : null}
 
               {detailRows.length > 0 ? (

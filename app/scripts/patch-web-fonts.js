@@ -7,8 +7,11 @@ const path = require('path')
 const htmlPath = path.join(__dirname, '../dist/index.html')
 let html = fs.readFileSync(htmlPath, 'utf8')
 
+html = html.replace(/href="\/favicon\.ico(?:\?[^"]*)?"/, 'href="/favicon.ico?v=slugs"')
+
 if (html.includes('Ionicons')) {
-  console.log('[patch-web-fonts] fonts already injected, skipping')
+  fs.writeFileSync(htmlPath, html)
+  console.log('[patch-web-fonts] favicon patched; fonts already injected, skipping')
   process.exit(0)
 }
 

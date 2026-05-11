@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
 import * as FileSystem from 'expo-file-system/legacy'
+import { persistState } from './persist'
 
 export type SavedSkillSource = 'anthropic' | 'clawhub' | 'skillssh'
 
@@ -43,7 +43,7 @@ const fileStorage = {
 }
 
 export const useSavedSkillsStore = create<SavedSkillsState>()(
-  persist(
+  persistState(
     (set, get) => ({
       saved: [],
       save: (skill) =>
@@ -58,7 +58,8 @@ export const useSavedSkillsStore = create<SavedSkillsState>()(
     }),
     {
       name: 'slugs-saved-skills',
-      storage: createJSONStorage(() => fileStorage),
+      storage: fileStorage,
+      partialize: (state) => ({ saved: state.saved }),
     }
   )
 )

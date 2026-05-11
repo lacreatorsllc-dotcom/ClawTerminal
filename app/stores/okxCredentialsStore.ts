@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
 import { Platform } from 'react-native'
+import { persistState } from './persist'
 
 export interface OKXCredentials {
   api_key: string
@@ -17,11 +17,11 @@ interface OKXCredentialsState {
 
 function makeStorage() {
   if (Platform.OS === 'web') {
-    return createJSONStorage(() => localStorage)
+    return localStorage
   }
   const FileSystem = require('expo-file-system/legacy')
   const FILE_PATH = (FileSystem.documentDirectory ?? '') + 'slugs-okx-credentials.json'
-  return createJSONStorage(() => ({
+  return {
     getItem: async (_name: string): Promise<string | null> => {
       try {
         const info = await FileSystem.getInfoAsync(FILE_PATH)
@@ -38,16 +38,20 @@ function makeStorage() {
         if (info.exists) await FileSystem.deleteAsync(FILE_PATH)
       } catch {}
     },
-  }))
+  }
 }
 
 export const useOKXCredentialsStore = create<OKXCredentialsState>()(
-  persist(
+  persistState(
     (set) => ({
       credentials: null,
       save: (creds) => set({ credentials: creds }),
       clear: () => set({ credentials: null }),
     }),
-    { name: 'slugs-okx-credentials', storage: makeStorage() }
+    {
+      name: 'slugs-okx-credentials',
+      storage: makeStorage(),
+      partialize: (state) => ({ credentials: state.credentials }),
+    }
   )
 )
