@@ -276,7 +276,7 @@ export default function Hero() {
                   <path d="M4 7h13.5l2.5-2H6.5L4 7z" fill="url(#sol-hero)"/>
                 </svg>
                 <div>
-                  <div className="text-[9px] leading-none mb-0.5" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Also on</div>
+                  <div className="text-[9px] leading-none mb-0.5" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Coming soon to</div>
                   <div className="text-xs font-semibold leading-none" style={{ background: 'linear-gradient(90deg, #9945ff, #2dd4bf)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Seeker</div>
                 </div>
               </div>
