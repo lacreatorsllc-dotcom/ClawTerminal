@@ -1,0 +1,19 @@
+# Exclude everything except web/
+app/
+agent/
+ai-agent/
+android/
+ios/
+connector/
+designs/
+docs/
+functions/
+project_memory/
+supabase/
+tb-bridge/
+blue-chip/
+cinema/
+ClawTerminal/
+node_modules/
+.claude/
+*.sh
