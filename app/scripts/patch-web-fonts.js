@@ -7,7 +7,7 @@ const path = require('path')
 const htmlPath = path.join(__dirname, '../dist/index.html')
 let html = fs.readFileSync(htmlPath, 'utf8')
 
-html = html.replace(/href="\/favicon\.ico(?:\?[^"]*)?"/, 'href="/favicon.ico?v=slugs"')
+html = html.replace(/<link rel="icon"[^>]*>/, '<link rel="icon" type="image/png" href="/favicon.png" />')
 
 if (html.includes('Ionicons')) {
   fs.writeFileSync(htmlPath, html)
