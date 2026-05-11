@@ -256,26 +256,6 @@ export default function Hero() {
 
             {/* Platform badges */}
             <motion.div variants={itemVariants} className="flex items-center gap-3 flex-wrap justify-center">
-              {/* iOS */}
-              <div className="flex items-center gap-2 bg-bg2 border border-glass rounded-xl px-4 py-2.5 opacity-60">
-                <svg className="w-4 h-4 text-text2" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-                </svg>
-                <div>
-                  <div className="text-[9px] text-text2 leading-none mb-0.5">Coming soon to</div>
-                  <div className="text-xs font-semibold text-text leading-none">iOS</div>
-                </div>
-              </div>
-              {/* Android */}
-              <div className="flex items-center gap-2 bg-bg2 border border-glass rounded-xl px-4 py-2.5 opacity-60">
-                <svg className="w-4 h-4 text-text2" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M17.523 15.341c-.51 0-.93-.419-.93-.93s.42-.93.93-.93.929.419.929.93-.419.93-.929.93m-11.046 0c-.511 0-.93-.419-.93-.93s.419-.93.93-.93.929.419.929.93-.418.93-.929.93m11.4-6.142l1.86-3.22a.387.387 0 0 0-.141-.529.386.386 0 0 0-.529.141l-1.884 3.262A11.447 11.447 0 0 0 12 8.018c-1.661 0-3.238.348-4.665.961L5.45 5.717a.386.386 0 0 0-.528-.141.386.386 0 0 0-.142.529l1.861 3.22C3.93 10.63 2.18 13.163 2 16.104h20c-.18-2.941-1.929-5.474-4.123-6.905"/>
-                </svg>
-                <div>
-                  <div className="text-[9px] text-text2 leading-none mb-0.5">Coming soon to</div>
-                  <div className="text-xs font-semibold text-text leading-none">Android</div>
-                </div>
-              </div>
               {/* Seeker */}
               <div
                 className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5"
