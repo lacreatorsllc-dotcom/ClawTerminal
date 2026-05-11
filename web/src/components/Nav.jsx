@@ -18,13 +18,21 @@ export default function Nav() {
         {/* Logo */}
         <img src="/slugs-logo.png" alt="SLUGS" className="h-7 w-auto" style={{ imageRendering: 'pixelated' }} />
 
-        {/* CTA */}
-        <button
-          onClick={handleWaitlist}
-          className="bg-amber text-black text-sm font-semibold px-5 py-2 rounded-lg hover:bg-amber/90 transition-colors"
-        >
-          Get Early Access
-        </button>
+        {/* CTAs */}
+        <div className="flex items-center gap-3">
+          <a
+            href="https://app.slugs.run"
+            className="text-sm font-semibold px-5 py-2 rounded-lg border border-glass text-white/70 hover:text-white hover:border-white/20 transition-colors"
+          >
+            Open App
+          </a>
+          <button
+            onClick={handleWaitlist}
+            className="bg-amber text-black text-sm font-semibold px-5 py-2 rounded-lg hover:bg-amber/90 transition-colors"
+          >
+            Get Early Access
+          </button>
+        </div>
       </div>
     </motion.nav>
   )
