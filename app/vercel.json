@@ -3,21 +3,28 @@
   "buildCommand": "npx expo export --platform web && node scripts/patch-web-fonts.js",
   "outputDirectory": "dist",
   "framework": null,
-  "headers": [
+  "routes": [
     {
-      "source": "/",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+      "src": "/",
+      "headers": { "Cache-Control": "no-cache, no-store, must-revalidate" },
+      "continue": true
     },
     {
-      "source": "/index.html",
-      "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+      "src": "/index\\.html",
+      "headers": { "Cache-Control": "no-cache, no-store, must-revalidate" },
+      "continue": true
     },
     {
-      "source": "/_expo/static/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
-    }
-  ],
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+      "src": "/_expo/static/(.*)",
+      "headers": { "Cache-Control": "public, max-age=31536000, immutable" },
+      "continue": true
+    },
+    {
+      "src": "/favicon\\.(png|ico|svg)",
+      "headers": { "Cache-Control": "no-cache, no-store, must-revalidate" },
+      "continue": true
+    },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/" }
   ]
 }
