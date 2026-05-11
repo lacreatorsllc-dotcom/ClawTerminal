@@ -4,6 +4,28 @@
 const fs = require('fs')
 const path = require('path')
 
+// Overwrite Expo's white-background favicon.ico with our dark PNG wrapped in ICO container
+;(function patchFavicon() {
+  const pngPath = path.join(__dirname, '../dist/favicon.png')
+  const icoPath = path.join(__dirname, '../dist/favicon.ico')
+  const png = fs.readFileSync(pngPath)
+  const header = Buffer.alloc(6)
+  header.writeUInt16LE(0, 0)
+  header.writeUInt16LE(1, 2)
+  header.writeUInt16LE(1, 4)
+  const dir = Buffer.alloc(16)
+  dir.writeUInt8(64, 0)
+  dir.writeUInt8(64, 1)
+  dir.writeUInt8(0, 2)
+  dir.writeUInt8(0, 3)
+  dir.writeUInt16LE(1, 4)
+  dir.writeUInt16LE(32, 6)
+  dir.writeUInt32LE(png.length, 8)
+  dir.writeUInt32LE(22, 12)
+  fs.writeFileSync(icoPath, Buffer.concat([header, dir, png]))
+  console.log('[patch-web-fonts] favicon.ico overwritten with dark background')
+})()
+
 const htmlPath = path.join(__dirname, '../dist/index.html')
 let html = fs.readFileSync(htmlPath, 'utf8')
 
