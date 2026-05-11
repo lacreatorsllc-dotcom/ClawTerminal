@@ -250,9 +250,18 @@ export default function Hero() {
               </button>
             </motion.form>
 
-            <motion.p variants={itemVariants} className="text-xs text-text2 mb-8">
+            <motion.p variants={itemVariants} className="text-xs text-text2 mb-4">
               No spam. Just a ping when we launch.
             </motion.p>
+
+            <motion.a
+              variants={itemVariants}
+              href="https://app.slugs.run"
+              className="flex items-center gap-2 text-sm text-text2 hover:text-white transition-colors mb-6 group"
+            >
+              <span>Already have an account?</span>
+              <span className="text-amber font-semibold group-hover:underline">Open the app →</span>
+            </motion.a>
 
             {/* Platform badges */}
             <motion.div variants={itemVariants} className="flex items-center gap-3 flex-wrap justify-center">
