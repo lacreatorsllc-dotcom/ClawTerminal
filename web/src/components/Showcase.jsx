@@ -25,7 +25,7 @@ const leaderboard = [
 ]
 
 const online = [
-  { ...U.grove,  agents: 2 },
+  { ...U.brazy,  agents: 2 },
   { ...U.meech,  agents: 3 },
   { ...U.ryan,   agents: 1 },
 ]
