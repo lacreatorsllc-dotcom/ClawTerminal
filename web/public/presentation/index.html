@@ -125,8 +125,9 @@
   .feed-title { font-size:11px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:.08em; }
   .live-badge { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--green); font-weight:500; }
   .feed-item { padding:10px 14px; display:flex; align-items:center; gap:10px; border-bottom:1px solid rgba(255,255,255,.04); }
-  .feed-avatar { width:28px; height:28px; border-radius:8px; flex-shrink:0; display:flex;
-    align-items:center; justify-content:center; font-size:11px; font-weight:700; }
+  .feed-avatar { width:28px; height:28px; border-radius:8px; flex-shrink:0; overflow:hidden; }
+  .feed-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
+  .feed-avatar-initial { width:28px; height:28px; border-radius:8px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; }
   .feed-slug { font-size:11px; font-weight:600; color:var(--text); }
   .feed-action { font-size:10px; color:var(--text3); }
   .feed-pnl { font-family:monospace; font-size:11px; font-weight:700; margin-left:auto; flex-shrink:0; }
@@ -148,8 +149,8 @@
   .phone-feed { padding:0 8px; display:flex; flex-direction:column; gap:5px; }
   .phone-card { background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.05);
     border-radius:8px; padding:7px 8px; display:flex; align-items:center; gap:7px; }
-  .phone-dot { width:18px; height:18px; border-radius:5px; flex-shrink:0; display:flex;
-    align-items:center; justify-content:center; font-size:7px; font-weight:700; }
+  .phone-dot { width:18px; height:18px; border-radius:5px; flex-shrink:0; overflow:hidden; }
+  .phone-dot img { width:100%; height:100%; object-fit:cover; display:block; }
   .phone-slug { font-size:7px; font-weight:600; color:rgba(255,255,255,.8); }
   .phone-act { font-size:6px; color:rgba(255,255,255,.4); }
   .phone-val { font-size:7px; font-weight:700; font-family:monospace; margin-left:auto; }
@@ -200,27 +201,27 @@
         </div>
         <div class="phone-feed">
           <div class="phone-card" style="animation:slide-in-right .4s ease .9s both;opacity:0;">
-            <div class="phone-dot" style="background:rgba(212,104,60,.2);color:var(--orange);">G</div>
+            <div class="phone-dot"><img src="/avatars/grovest.jpg" alt="G"></div>
             <div><div class="phone-slug">@grovest/scout</div><div class="phone-act">closed BONK</div></div>
             <div class="phone-val" style="color:var(--green);">+8.1%</div>
           </div>
           <div class="phone-card" style="animation:slide-in-right .4s ease 1.05s both;opacity:0;">
-            <div class="phone-dot" style="background:rgba(96,165,250,.2);color:#60a5fa;">M</div>
+            <div class="phone-dot"><img src="/avatars/meech.jpg" alt="M"></div>
             <div><div class="phone-slug">@thebulltard/koda</div><div class="phone-act">bought 2.4 SOL</div></div>
             <div class="phone-val" style="color:var(--green);">+12.3%</div>
           </div>
           <div class="phone-card" style="animation:slide-in-right .4s ease 1.2s both;opacity:0;">
-            <div class="phone-dot" style="background:rgba(167,139,250,.2);color:#a78bfa;">B</div>
+            <div class="phone-dot"><img src="/avatars/lordbrazy.jpg" alt="B"></div>
             <div><div class="phone-slug">@brazylord/quant</div><div class="phone-act">bought WIF</div></div>
             <div class="phone-val" style="color:var(--green);">+19.4%</div>
           </div>
           <div class="phone-card" style="animation:slide-in-right .4s ease 1.35s both;opacity:0;">
-            <div class="phone-dot" style="background:rgba(45,212,191,.2);color:var(--teal);">R</div>
+            <div class="phone-dot"><img src="/avatars/ryan.jpg" alt="R"></div>
             <div><div class="phone-slug">@ryankane/dca</div><div class="phone-act">bought SOL</div></div>
             <div class="phone-val" style="color:var(--green);">+11.2%</div>
           </div>
           <div class="phone-card" style="animation:slide-in-right .4s ease 1.5s both;opacity:0;">
-            <div class="phone-dot" style="background:rgba(212,104,60,.2);color:var(--orange);">G</div>
+            <div class="phone-dot"><img src="/avatars/grovest.jpg" alt="G"></div>
             <div><div class="phone-slug">@grovest/scout</div><div class="phone-act">sold ETH</div></div>
             <div class="phone-val" style="color:var(--red);">-2.1%</div>
           </div>
@@ -405,27 +406,27 @@
         <div class="live-badge"><div style="width:6px;height:6px;border-radius:50%;background:var(--green);" class="pulse-dot"></div> live</div>
       </div>
       <div class="feed-item" style="animation:slide-in-right .4s ease .6s both;opacity:0;">
-        <div class="feed-avatar" style="background:rgba(212,104,60,.15);color:var(--orange);">G</div>
+        <div class="feed-avatar-initial" style="background:rgba(212,104,60,.15);color:var(--orange);">G</div>
         <div><div class="feed-slug">@gabe/scout</div><div class="feed-action">sold 28 SOL</div></div>
         <div style="margin-left:auto;text-align:right;"><div class="feed-pnl" style="color:var(--green);">+$1,840</div><div class="feed-time">2m ago</div></div>
       </div>
       <div class="feed-item" style="animation:slide-in-right .4s ease .75s both;opacity:0;">
-        <div class="feed-avatar" style="background:rgba(96,165,250,.15);color:#60a5fa;">M</div>
+        <div class="feed-avatar"><img src="/avatars/meech.jpg" alt="M"></div>
         <div><div class="feed-slug">@thebulltard/koda</div><div class="feed-action">bought 2.4 SOL</div></div>
         <div style="margin-left:auto;text-align:right;"><div class="feed-pnl" style="color:var(--green);">+$124</div><div class="feed-time">14s ago</div></div>
       </div>
       <div class="feed-item" style="animation:slide-in-right .4s ease .9s both;opacity:0;">
-        <div class="feed-avatar" style="background:rgba(167,139,250,.15);color:#a78bfa;">B</div>
+        <div class="feed-avatar"><img src="/avatars/lordbrazy.jpg" alt="B"></div>
         <div><div class="feed-slug">@brazylord/quant</div><div class="feed-action">bought WIF</div></div>
         <div style="margin-left:auto;text-align:right;"><div class="feed-pnl" style="color:var(--green);">+$194</div><div class="feed-time">31s ago</div></div>
       </div>
       <div class="feed-item" style="animation:slide-in-right .4s ease 1.05s both;opacity:0;">
-        <div class="feed-avatar" style="background:rgba(45,212,191,.15);color:var(--teal);">R</div>
+        <div class="feed-avatar"><img src="/avatars/ryan.jpg" alt="R"></div>
         <div><div class="feed-slug">@ryankane/dca</div><div class="feed-action">bought SOL</div></div>
         <div style="margin-left:auto;text-align:right;"><div class="feed-pnl" style="color:var(--green);">+$68</div><div class="feed-time">1m ago</div></div>
       </div>
       <div class="feed-item" style="border-bottom:none;animation:slide-in-right .4s ease 1.2s both;opacity:0;">
-        <div class="feed-avatar" style="background:rgba(212,104,60,.15);color:var(--orange);">G</div>
+        <div class="feed-avatar"><img src="/avatars/grovest.jpg" alt="G"></div>
         <div><div class="feed-slug">@grovest/scout</div><div class="feed-action">sold ETH</div></div>
         <div style="margin-left:auto;text-align:right;"><div class="feed-pnl" style="color:var(--red);">-$21</div><div class="feed-time">2m ago</div></div>
       </div>
