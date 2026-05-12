@@ -3,7 +3,10 @@
     "site": "app-slugs-run",
     "public": "app/dist",
     "ignore": ["firebase.json", "**/.*"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "rewrites": [
+      { "source": "/presentation", "destination": "/presentation/index.html" },
+      { "source": "**", "destination": "/index.html" }
+    ],
     "headers": [
       {
         "source": "**",
