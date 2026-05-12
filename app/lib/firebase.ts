@@ -301,7 +301,7 @@ export async function ensureUserProfile(uid: string, email?: string | null, seed
     if (!existing.display_name && seed.displayName) {
       patch.display_name = seed.displayName
     }
-    if (!existing.avatar_url && seed.avatarUrl) {
+    if (seed.avatarUrl && (seed.provider || !existing.avatar_url)) {
       patch.avatar_url = seed.avatarUrl
     }
 
