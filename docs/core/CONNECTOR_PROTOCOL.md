@@ -4,7 +4,7 @@ This document defines the contract the `claw-connector` package must implement. 
 
 ## Overview
 
-The connector is a sidecar process that runs alongside an agent. It bridges the agent environment to ClawTerminal via Supabase Realtime.
+The connector is a sidecar process that runs alongside an agent. It bridges the agent environment to SLUGS via Supabase Realtime.
 
 ```
 Agent process → claw-connector → Supabase Realtime channel → iOS app

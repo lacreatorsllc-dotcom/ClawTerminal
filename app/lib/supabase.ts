@@ -1,4 +1,4 @@
-// ClawTerminal — Supabase Client
+// SLUGS — Supabase Client
 // Dependency: npm install @supabase/supabase-js
 // Set env vars in .env (never commit):
 //   EXPO_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co

@@ -3,7 +3,7 @@
 ## MVP is successful if:
 
 ### Connection
-- [ ] A user can connect an existing agent in under 5 minutes with no prior ClawTerminal knowledge
+- [ ] A user can connect an existing agent in under 5 minutes with no prior SLUGS knowledge
 - [ ] The setup command / snippet is clear and copy-pasteable from within the app
 - [ ] The connected agent appears in the app reliably within seconds of running the command
 

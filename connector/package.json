@@ -1,7 +1,7 @@
 {
   "name": "claw-connector",
   "version": "0.1.0",
-  "description": "Bridges a local AI agent to the ClawTerminal mobile app via Supabase",
+  "description": "Bridges a local AI agent to the SLUGS mobile app via Supabase",
   "main": "./dist/index.js",
   "bin": {
     "claw-connector": "./dist/index.js"

@@ -1,7 +1,7 @@
 # Project Brief
 
 ## Product
-ClawTerminal iOS — a mobile command center for AI agents.
+SLUGS iOS — a mobile command center for AI agents.
 
 ## Problem
 People running AI agents have no good mobile interface. They're stuck using terminals, generic chat tools, or nothing. They can't easily talk to agents from their phone, monitor what agents are doing, manage multiple agents, or upgrade agents with new skills.

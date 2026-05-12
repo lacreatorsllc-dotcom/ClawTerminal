@@ -1,9 +1,9 @@
 ---
-name: ClawTerminal
+name: SLUGS
 description: A brief description of what this skill does
 ---
 
-# ClawTerminal
+# SLUGS
 
 Instructions for the agent to follow when this skill is activated.
 

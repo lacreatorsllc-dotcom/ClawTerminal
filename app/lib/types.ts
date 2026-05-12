@@ -1,4 +1,4 @@
-// ClawTerminal — TypeScript types matching Supabase schema
+// SLUGS — TypeScript types matching Supabase schema
 // Keep in sync with supabase/migrations/001_schema.sql
 
 // ─────────────────────────────────────────────

@@ -12,7 +12,7 @@ const SUPABASE_SERVICE_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRhdm9ucnRkeWRoZGdid25wdXh5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDIyMjg2OCwiZXhwIjoyMDg5Nzk4ODY4fQ.3LNbwLYn0zLmck-nRG-VclmKAFggLU0BV0HsZz3MyfQ';
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const HISTORY_LIMIT = 50;
-const PROJECT_ROOT = '/Users/mememarketer/Pentagon/ClawTerminal';
+const PROJECT_ROOT = '/Users/mememarketer/Pentagon/SLUGS';
 
 type StorageMode = 'relay' | 'local' | 'cloud';
 
@@ -607,7 +607,7 @@ export async function runAgent({ userId, agentName, systemPrompt, apiKey, storag
 
       // Build active LLM clients based on provider
       const activeOpenAI = llmProvider === 'openrouter'
-        ? new OpenAI({ apiKey: orKey!, baseURL: 'https://openrouter.ai/api/v1', defaultHeaders: { 'HTTP-Referer': 'https://clawterminal.app', 'X-Title': 'ClawTerminal' } })
+        ? new OpenAI({ apiKey: orKey!, baseURL: 'https://openrouter.ai/api/v1', defaultHeaders: { 'HTTP-Referer': 'https://slugs.run', 'X-Title': 'SLUGS' } })
         : llmProvider === 'openai'
           ? new OpenAI({ apiKey: metaOpenAIKey ?? apiKey })
           : null;
