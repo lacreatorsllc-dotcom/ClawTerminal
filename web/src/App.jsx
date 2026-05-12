@@ -1,3 +1,4 @@
+import { BrowserRouter, Routes, Route, useParams } from 'react-router-dom'
 import Nav from './components/Nav.jsx'
 import Hero from './components/Hero.jsx'
 import SocialProof from './components/SocialProof.jsx'
@@ -7,8 +8,9 @@ import Features from './components/Features.jsx'
 import Showcase from './components/Showcase.jsx'
 import EarlyAccess from './components/EarlyAccess.jsx'
 import Footer from './components/Footer.jsx'
+import ProfilePage from './components/ProfilePage.jsx'
 
-export default function App() {
+function Landing() {
   return (
     <div className="min-h-screen bg-bg">
       <Nav />
@@ -23,5 +25,21 @@ export default function App() {
       </main>
       <Footer />
     </div>
+  )
+}
+
+function Profile() {
+  const { username } = useParams()
+  return <ProfilePage username={username} />
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/:username" element={<Profile />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
